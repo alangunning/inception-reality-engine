@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { RealityEntity } from "@inception/domain";
 import {
@@ -6,6 +9,8 @@ import {
   configuredCodexModel,
   CodexRuntimeEventSchema,
   MockCodexRuntime,
+  normaliseCodexExecutionError,
+  prepareCodexExecutionEnvironment,
   SubjectCollaborationTrace,
   toSafeCodexRuntimeEvent,
   WakeReportParser,
@@ -21,6 +26,143 @@ const constitution = {
 };
 
 describe("Codex runtime", () => {
+  it("isolates personal Codex configuration while reusing CLI authentication", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-codex-home-"));
+    const sourceHome = path.join(root, "user-codex");
+    const runtimeHome = path.join(root, "runtime-codex");
+    fs.mkdirSync(sourceHome);
+    fs.mkdirSync(path.join(sourceHome, "sessions"));
+    fs.writeFileSync(path.join(sourceHome, "auth.json"), '{"auth_mode":"test"}');
+    fs.writeFileSync(path.join(sourceHome, "config.toml"), '[plugins."linear"]\nenabled=true\n');
+    fs.writeFileSync(path.join(sourceHome, "models_cache.json"), '{"models":["gpt-5.6"]}\n');
+    fs.writeFileSync(path.join(sourceHome, "sessions", "existing-thread.jsonl"), "{}\n");
+
+    try {
+      const prepared = prepareCodexExecutionEnvironment({
+        env: {
+          CODEX_HOME: sourceHome,
+          NODE_ENV: "development"
+        },
+        runtimeCodexHome: runtimeHome
+      });
+
+      expect(prepared).toMatchObject({
+        codexHome: runtimeHome,
+        configuration: "isolated",
+        cliAuthLinked: true,
+        sessionStateLinked: true,
+        modelMetadataLinked: true
+      });
+      expect(prepared.env.CODEX_HOME).toBe(runtimeHome);
+      expect(prepared.env.CODEX_SQLITE_HOME).toBe(sourceHome);
+      expect(prepared.env.NODE_ENV).toBeUndefined();
+      expect(fs.readFileSync(path.join(runtimeHome, "auth.json"), "utf8")).toContain('"auth_mode":"test"');
+      expect(fs.readFileSync(
+        path.join(runtimeHome, "sessions", "existing-thread.jsonl"),
+        "utf8"
+      )).toBe("{}\n");
+      expect(fs.readFileSync(path.join(runtimeHome, "models_cache.json"), "utf8")).toContain("gpt-5.6");
+      expect(fs.existsSync(path.join(runtimeHome, "config.toml"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("allows explicit user-config inheritance for missions that require personal MCPs", () => {
+    const sourceHome = path.join(os.tmpdir(), "inception-user-codex");
+    const prepared = prepareCodexExecutionEnvironment({
+      env: {
+        CODEX_HOME: sourceHome,
+        INCEPTION_CODEX_INHERIT_USER_CONFIG: "true"
+      }
+    });
+
+    expect(prepared).toMatchObject({
+      codexHome: sourceHome,
+      configuration: "inherited",
+      cliAuthLinked: false,
+      sessionStateLinked: false,
+      modelMetadataLinked: false
+    });
+    expect(prepared.env.CODEX_HOME).toBe(sourceHome);
+  });
+
+  it("repairs isolated-home links when the source Codex home changes", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-codex-relink-"));
+    const firstSource = path.join(root, "first");
+    const secondSource = path.join(root, "second");
+    const runtimeHome = path.join(root, "runtime");
+    for (const [source, marker] of [[firstSource, "first"], [secondSource, "second"]] as const) {
+      fs.mkdirSync(path.join(source, "sessions"), { recursive: true });
+      fs.writeFileSync(path.join(source, "auth.json"), JSON.stringify({ marker }));
+      fs.writeFileSync(path.join(source, "models_cache.json"), JSON.stringify({ marker }));
+      fs.writeFileSync(path.join(source, "sessions", `${marker}.jsonl`), "{}\n");
+    }
+
+    try {
+      prepareCodexExecutionEnvironment({
+        sourceCodexHome: firstSource,
+        runtimeCodexHome: runtimeHome,
+        env: {}
+      });
+      prepareCodexExecutionEnvironment({
+        sourceCodexHome: secondSource,
+        runtimeCodexHome: runtimeHome,
+        env: {}
+      });
+
+      expect(fs.readFileSync(path.join(runtimeHome, "auth.json"), "utf8")).toContain("second");
+      expect(fs.readFileSync(path.join(runtimeHome, "models_cache.json"), "utf8")).toContain("second");
+      expect(fs.existsSync(path.join(runtimeHome, "sessions", "second.jsonl"))).toBe(true);
+      expect(fs.existsSync(path.join(runtimeHome, "sessions", "first.jsonl"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps API-key-only state in the isolated home when no user Codex home exists", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-api-key-home-"));
+    const missingSourceHome = path.join(root, "missing-user-codex");
+    const runtimeHome = path.join(root, "runtime-codex");
+
+    try {
+      const prepared = prepareCodexExecutionEnvironment({
+        env: {
+          CODEX_API_KEY: "test-key"
+        },
+        sourceCodexHome: missingSourceHome,
+        runtimeCodexHome: runtimeHome
+      });
+
+      expect(prepared.env.CODEX_HOME).toBe(runtimeHome);
+      expect(prepared.env.CODEX_SQLITE_HOME).toBe(runtimeHome);
+      expect(prepared.cliAuthLinked).toBe(false);
+      expect(prepared.sessionStateLinked).toBe(false);
+      expect(prepared.modelMetadataLinked).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("turns MCP OAuth startup failures into an actionable Reality error", () => {
+    const error = normaliseCodexExecutionError(new Error(
+      'rmcp worker quit with AuthRequired: error="invalid_token"'
+    ));
+    expect(error.message).toContain("MCP server rejected its OAuth credential");
+    expect(error.message).toContain("INCEPTION_CODEX_INHERIT_USER_CONFIG");
+    expect(error.message).not.toContain("rmcp worker");
+  });
+
+  it("preserves an actionable policy refusal instead of a generic Codex exit", () => {
+    const error = normaliseCodexExecutionError(
+      new Error("Codex Exec exited with code 1"),
+      "This content was flagged for possible cybersecurity risk."
+    );
+    expect(error.message).toContain("cybersecurity safety gate");
+    expect(error.message).toContain("authorized defensive source-review");
+    expect(error.message).not.toContain("exited with code 1");
+  });
+
   it("keeps one deterministic thread per mocked Reality", async () => {
     const reality = RealityEntity.create({ depth: 0, kind: "waking", name: "Waking", premise: constitution.premise, constitution }).snapshot();
     const runtime = new MockCodexRuntime();

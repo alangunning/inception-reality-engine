@@ -41,7 +41,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260718.6";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260718.9";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,
@@ -89,6 +89,23 @@ function worktreeRoot(repoRoot: string): string {
   const configured = process.env.INCEPTION_WORKTREE_ROOT?.trim();
   if (!configured) return path.join(repoRoot, ".inception", "worktrees");
   return path.isAbsolute(configured) ? configured : path.resolve(repoRoot, configured);
+}
+
+function createCodexRuntime(
+  mode: RuntimeContainer["codexMode"],
+  repoRoot: string
+): CodexRuntime {
+  const configuredHome = process.env.INCEPTION_CODEX_RUNTIME_HOME?.trim();
+  const runtimeCodexHome = configuredHome
+    ? path.isAbsolute(configuredHome)
+      ? configuredHome
+      : path.resolve(repoRoot, configuredHome)
+    : path.join(repoRoot, ".inception", "codex-home");
+  return mode === "real"
+    ? new RealCodexRuntime({
+        runtimeCodexHome
+      })
+    : new MockCodexRuntime();
 }
 
 function createRepository(repoRoot: string): {
@@ -157,9 +174,7 @@ export function getRuntime(): RuntimeContainer {
       const repoRoot = legacyOrchestrator.repoRoot ?? discoverRepoRoot();
       const persistence = createRepository(repoRoot);
       const repository = persistence.repository;
-      const codexRuntime = existing.codexMode === "real"
-        ? new RealCodexRuntime()
-        : new MockCodexRuntime();
+      const codexRuntime = createCodexRuntime(existing.codexMode, repoRoot);
       const worktrees = new GitWorktreeManager(
         repoRoot,
         worktreeRoot(repoRoot),
@@ -196,9 +211,7 @@ export function getRuntime(): RuntimeContainer {
       codexRuntime?: CodexRuntime;
     }).codexRuntime;
     existing.codexRuntime = upgradeRuntimeCapabilities(
-      legacyRuntime ?? (
-        existing.codexMode === "real" ? new RealCodexRuntime() : new MockCodexRuntime()
-      ),
+      legacyRuntime ?? createCodexRuntime(existing.codexMode, discoverRepoRoot()),
       existing.codexMode
     );
     if (!existing.missionEventBus) {
@@ -232,9 +245,7 @@ export function getRuntime(): RuntimeContainer {
   const eventBus = new InMemoryRealityEventBus();
   const missionEventBus = new InMemoryRealityEventBus();
   const codexMode = process.env.INCEPTION_CODEX_MODE === "real" ? "real" : "mock";
-  const codexRuntime = codexMode === "real"
-    ? new RealCodexRuntime()
-    : new MockCodexRuntime();
+  const codexRuntime = createCodexRuntime(codexMode, repoRoot);
   const worktrees = new GitWorktreeManager(
     repoRoot,
     worktreeRoot(repoRoot),

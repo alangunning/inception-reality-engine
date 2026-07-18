@@ -138,6 +138,8 @@ classDiagram
 
 Real mode is intentionally powerful. Its Codex thread options use `danger-full-access`, `approvalPolicy: never`, network access, live web search, and the Reality worktree as the working directory. This is a trusted local execution model, not a hosted multi-tenant service.
 
+`CodexExecutionEnvironment` separates authentication, model metadata, and resumable session state from configuration. It exposes the user's existing CLI `auth.json`, model cache, session directory, and SQLite state through an ignored project runtime home, while excluding the user's personal `config.toml`, plugins, and MCP servers. This keeps SDK startup deterministic, preserves persisted Reality thread IDs and pinned-model metadata, and does not reduce model or worktree capabilities. Operators can explicitly widen the boundary with `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` when a Mission depends on authenticated personal integrations.
+
 ## Data and Trust
 
 All Codex responses cross a Zod boundary before persistence. SDK events are projected into an allowlisted metadata schema; raw reasoning, raw Subject messages, raw agent messages, and unrestricted SDK payloads are discarded. Subject evidence is accepted only when native collaboration events prove both:
@@ -186,6 +188,8 @@ This prevents test resets from deleting live worktrees. If a persisted Reality l
 ## Persistence
 
 Prisma is the production adapter and SQLite is the portable fallback. Both persist validated Reality state, event history, demo sessions, run archives, and Mission runs. The in-memory event bus carries the same validated `RealityEvent` objects over SSE.
+
+Canonical and generalized runs share the same presentation primitives: Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, memory reports, integrity seals, immutable proofs, event feed, and final diff. Saved Missions reopen as actionable Mission snapshots. Canonical run archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
 
 ## Architecture Decisions
 

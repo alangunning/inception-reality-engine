@@ -27,6 +27,11 @@ import {
   type CodexWakeResult
 } from "./types";
 import { WakeReportParser, WakeReportValidationError } from "./wake-report-parser";
+import {
+  normaliseCodexExecutionError,
+  prepareCodexExecutionEnvironment,
+  type CodexExecutionEnvironmentOptions
+} from "./codex-execution-environment";
 
 const CODEX_SDK_VERSION = "0.144.6";
 
@@ -497,14 +502,13 @@ export class RealCodexRuntime implements CodexRuntime {
     startedAt: string;
   }>();
 
-  constructor() {
-    const apiKey = process.env.CODEX_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim();
+  constructor(options: CodexExecutionEnvironmentOptions = {}) {
+    const executionEnvironment = prepareCodexExecutionEnvironment(options);
+    const apiKey = executionEnvironment.env.CODEX_API_KEY?.trim()
+      || executionEnvironment.env.OPENAI_API_KEY?.trim();
     this.codex = new Codex({
       apiKey: apiKey || undefined,
-      env: Object.fromEntries(
-        Object.entries(process.env)
-          .filter(([key, value]) => key !== "NODE_ENV" && value !== undefined)
-      ) as Record<string, string>,
+      env: executionEnvironment.env,
       config: {
         show_raw_agent_reasoning: false,
         features: {
@@ -795,6 +799,7 @@ Return only the structured synthesis report after the implementation and tests a
     });
     const events: CodexRuntimeEvent[] = [];
     let finalResponse = "";
+    let lastRuntimeFailure: string | undefined;
     const emit = async (event: CodexRuntimeEvent) => {
       events.push(event);
       await onEvent?.(event);
@@ -831,9 +836,19 @@ Return only the structured synthesis report after the implementation and tests a
           await emit(subjectEvent);
         }
         const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, scope);
-        if (event) await emit(event);
+        if (event) {
+          if (
+            event.metadata?.status === "failed"
+            && typeof event.metadata.detail === "string"
+          ) {
+            lastRuntimeFailure = event.metadata.detail;
+          }
+          await emit(event);
+        }
       }
       return { thread, events, finalResponse };
+    } catch (error) {
+      throw normaliseCodexExecutionError(error, lastRuntimeFailure);
     } finally {
       if (timeout) clearTimeout(timeout);
       this.operations.delete(operationId);

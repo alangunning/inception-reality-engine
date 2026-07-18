@@ -23,13 +23,25 @@
   font-size: 0.65rem;
   font-weight: 750;
 }
-.mission-nav a, .mission-nav span {
+.mission-nav a, .mission-nav span, .mission-nav button {
   display: flex;
   align-items: center;
   gap: 7px;
 }
 .mission-nav a { color: var(--text-soft); text-decoration: none; }
 .mission-nav a:hover { color: var(--cyan); }
+.mission-nav button {
+  min-height: 30px;
+  padding: 0 9px;
+  color: var(--cyan);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--surface-soft);
+  cursor: pointer;
+  font-size: 0.6rem;
+  font-weight: 800;
+}
+.mission-nav button:hover { color: var(--text); border-color: var(--cyan); }
 .mission-composer, .mission-run {
   width: min(1500px, 100%);
   margin: 0 auto;
@@ -366,9 +378,9 @@
   border: 1px solid var(--line);
   border-radius: 5px;
 }
-.subject-state { width: 7px; height: 7px; flex: 0 0 7px; margin-top: 5px; border-radius: 50%; background: var(--amber); }
-.subject-completed, .subject-returned { background: var(--green); }
-.subject-failed { background: var(--red); }
+.mission-subjects .subject-state { width: 7px; height: 7px; flex: 0 0 7px; margin-top: 5px; border-radius: 50%; background: var(--amber); }
+.mission-subjects .subject-completed, .mission-subjects .subject-returned { background: var(--green); }
+.mission-subjects .subject-failed { background: var(--red); }
 .mission-subjects article div { min-width: 0; }
 .mission-subjects strong { display: block; font-size: 0.65rem; }
 .mission-subjects small { display: block; margin-top: 3px; color: var(--muted); font-size: 0.51rem; }
@@ -532,6 +544,28 @@
   background: var(--red-deep);
   border-color: #773a36;
 }
+.mission-action-dock strong {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+.mission-guardrail-band {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  background: var(--surface-soft);
+}
+.mission-guardrail-band > article { margin: 0; }
+.mission-run .reality-timeline { border-right: 1px solid var(--line); border-left: 1px solid var(--line); }
+.mission-run [data-testid="reality-workspace"] {
+  overflow: hidden;
+  border-right: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
 
 @media (max-width: 1050px) {
   .mission-composer-header, .mission-run-header { grid-template-columns: 1fr; gap: 20px; }
@@ -542,6 +576,7 @@
   .mission-events { padding-left: 0; }
   .mission-event-list { max-height: 420px; }
   .mission-results { grid-template-columns: 1fr; }
+  .mission-guardrail-band { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {

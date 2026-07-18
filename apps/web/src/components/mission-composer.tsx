@@ -8,18 +8,14 @@ import {
   ChevronRight,
   CircleDot,
   Clock3,
-  Code2,
   ExternalLink,
-  FileDiff,
   Fingerprint,
   FolderGit2,
   GitBranch,
-  Layers3,
   LockKeyhole,
   MoonStar,
   Network,
   Play,
-  Radio,
   ShieldAlert,
   SquareTerminal,
   Trash2,
@@ -33,10 +29,15 @@ import type {
   Reality,
   RealityEvent
 } from "@inception/domain";
-import type {
-  MissionAction,
-  MissionSnapshot
-} from "@inception/orchestrator";
+import type { MissionAction, MissionSnapshot } from "@inception/orchestrator";
+import {
+  OperationMonitor,
+  RealityTimeline,
+  RealityWorkspace,
+  replayRealities,
+  type InspectorTab,
+  type PresentedRealityOperation
+} from "./reality-engine";
 
 interface MissionSummary {
   id: string;
@@ -79,13 +80,13 @@ interface ComposerState {
 }
 
 const initialState: ComposerState = {
-  name: "VAmPI Authorization Breach",
+  name: "VAmPI Authorization Review",
   repositoryPath: "",
-  mission: "Penetration-test VAmPI's book-secret and user-management authorization boundaries. Reproduce the highest-impact cross-user flaw using only local bundled data, return an executable regression test at tests/test_authorization_regression.py, and synthesise the smallest remediation that preserves the API contract.",
+  mission: "Perform an authorized defensive source-code and local-test review of VAmPI's documented book-secret and user-management authorization boundaries. Identify one known training defect using only the local source and bundled tests, return an executable regression test at tests/test_authorization_regression.py, and synthesise the smallest remediation that preserves the API contract.",
   scope: "VAmPI Flask API authorization for users, books, and secret content",
   premise: "A valid token prevents one ordinary user from reading or changing another user's private resources.",
-  constraints: "Work only inside the deliberately vulnerable local VAmPI clone.\nSend test traffic only to localhost and use bundled or synthetic data.\nDo not use real credentials, accounts, or external systems.\nPreserve the documented OpenAPI shape unless evidence requires a compatible correction.\nReturn reproducible exploit evidence without exposing hidden model reasoning.",
-  parentTruths: "This target is intentionally vulnerable and authorized for local security training.\nPrivate book secrets require owner authorization.\nOnly administrators may delete users.\nEvery security conclusion must cite executable or source evidence.",
+  constraints: "Work only inside the deliberately vulnerable local VAmPI clone.\nUse static source inspection and local unit or integration tests; do not contact a running service.\nDo not use real credentials, accounts, targets, or external systems.\nTreat every finding as defensive remediation evidence for the documented training application.\nPreserve the documented OpenAPI shape unless evidence requires a compatible correction.\nReturn reproducible test evidence without exposing hidden model reasoning.",
+  parentTruths: "This target is intentionally vulnerable and authorized for defensive local security training.\nPrivate book secrets require owner authorization.\nOnly administrators may delete users.\nEvery security conclusion must cite executable local-test or source evidence.",
   proofName: "Authorization regression",
   proofExecutable: "python3",
   proofArgs: "tests/test_authorization_regression.py",
@@ -111,8 +112,8 @@ const subjectCharters = [
   },
   {
     name: "Saito",
-    role: "Red team operator",
-    mission: "Attempt bounded cross-user attacks using only localhost, synthetic identities, and the authorized training target."
+    role: "Authorization boundary reviewer",
+    mission: "Compare authenticated endpoints with documented ownership requirements using only local source and tests; do not contact a running service."
   },
   {
     name: "Eames",
@@ -170,22 +171,6 @@ function eventMetadata(event: RealityEvent): Record<string, unknown> {
     : {};
 }
 
-function eventDetail(event: RealityEvent): string | null {
-  const metadata = eventMetadata(event);
-  if (typeof metadata.subjectRole === "string") {
-    const thread = typeof metadata.subjectThreadId === "string"
-      ? ` / thread ${metadata.subjectThreadId.slice(0, 12)}`
-      : "";
-    return `${metadata.subjectRole}${thread}`;
-  }
-  if (typeof metadata.command === "string") return metadata.command;
-  if (typeof metadata.model === "string") {
-    return `${metadata.model}${typeof metadata.sdkVersion === "string" ? ` / SDK ${metadata.sdkVersion}` : ""}`;
-  }
-  if (typeof metadata.diagnostic === "string") return metadata.diagnostic;
-  return null;
-}
-
 function statusLabel(status: MissionRun["status"]): string {
   return {
     forming: "FORMING",
@@ -196,24 +181,18 @@ function statusLabel(status: MissionRun["status"]): string {
   }[status];
 }
 
-function RealityTree({ run }: { run: MissionRun }) {
-  return (
-    <div className="mission-tree" data-testid="mission-reality-tree">
-      {run.realities.map((reality, index) => (
-        <div className="mission-node-wrap" key={reality.id}>
-          {index > 0 && <ChevronRight size={17} className="mission-tree-arrow" />}
-          <article className={`mission-node ${run.activeRealityId === reality.id ? "is-active" : ""} ${reality.status === "kicked" ? "is-returned" : ""}`}>
-            <span>{reality.kind === "dream" ? <MoonStar size={14} /> : <CircleDot size={14} />}</span>
-            <div>
-              <small>DEPTH {reality.depth} / {reality.kind.toUpperCase()}</small>
-              <strong>{reality.name}</strong>
-              <em>{reality.status === "kicked" ? "Memory returned" : reality.worldState.status}</em>
-            </div>
-          </article>
-        </div>
-      ))}
-    </div>
-  );
+function missionActionCommand(action: MissionAction | undefined): string {
+  switch (action) {
+    case "inspect": return "Run Codex audit";
+    case "intervene": return "Run intervention";
+    case "create_dream": return "Create Dream";
+    case "kick": return "Kick and return memory";
+    case "synthesise": return "Synthesise memories";
+    case "verify": return "Run immutable proofs";
+    case "repair": return "Repair failed proofs";
+    case "stabilise": return "Stabilise Reality";
+    default: return "Reality stabilised";
+  }
 }
 
 function MissionRunView({
@@ -229,6 +208,12 @@ function MissionRunView({
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRealityId, setSelectedRealityId] = useState(snapshot.run.activeRealityId);
+  const [inspectorTab, setInspectorTab] = useState<InspectorTab>("world");
+  const [timelineIndex, setTimelineIndex] = useState<number | null>(null);
+  const [revealCode, setRevealCode] = useState(false);
+  const [pulseRealityId, setPulseRealityId] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const run = snapshot.run;
   const reality = snapshot.activeReality;
   // Browser state may outlive a schema migration during local development.
@@ -262,7 +247,14 @@ function MissionRunView({
   useEffect(() => {
     const stream = new EventSource(`/api/missions/events?missionId=${encodeURIComponent(run.id)}`);
     stream.onmessage = (event) => {
-      const value = JSON.parse(event.data) as { type?: string };
+      const value = JSON.parse(event.data) as { type?: string; realityId?: string };
+      if (
+        value.realityId
+        && ["kick.triggered", "memory.returned", "reality.stabilised"].includes(value.type ?? "")
+      ) {
+        setPulseRealityId(value.realityId);
+        window.setTimeout(() => setPulseRealityId(null), 1_400);
+      }
       if (value.type !== "connected") void load();
     };
     return () => stream.close();
@@ -273,6 +265,15 @@ function MissionRunView({
     const poll = window.setInterval(() => void load(), 2_000);
     return () => window.clearInterval(poll);
   }, [busy, load, snapshot.operation]);
+
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = window.setInterval(
+      () => setNow(Date.now()),
+      snapshot.operation ? 1_000 : 15_000
+    );
+    return () => window.clearInterval(timer);
+  }, [snapshot.operation?.id]);
 
   const act = async (action: MissionAction) => {
     if (action === "create_dream" && !window.confirm(
@@ -292,6 +293,9 @@ function MissionRunView({
       );
       if (!response.ok) throw new Error(body.error ?? "The mission action failed.");
       onReload(body);
+      setSelectedRealityId(body.run.activeRealityId);
+      setInspectorTab("world");
+      setTimelineIndex(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
       await load().catch(() => undefined);
@@ -317,7 +321,23 @@ function MissionRunView({
     }
   };
 
-  const visibleEvents = [...run.events].reverse();
+  const replayedRealities = useMemo(
+    () => replayRealities(run.realities, run.events, timelineIndex),
+    [run.events, run.realities, timelineIndex]
+  );
+  const visibleEvents = useMemo(
+    () => timelineIndex === null ? run.events : run.events.slice(0, timelineIndex + 1),
+    [run.events, timelineIndex]
+  );
+  const activeOperation: PresentedRealityOperation | null = snapshot.operation
+    ? {
+        ...snapshot.operation,
+        executor: ["create_dream", "verify", "stabilise"].includes(snapshot.operation.action)
+          ? "orchestrator"
+          : "codex"
+      }
+    : null;
+  const replaying = timelineIndex !== null;
   return (
     <main className="mission-run">
       <section className="mission-run-header">
@@ -333,14 +353,6 @@ function MissionRunView({
         </dl>
       </section>
 
-      <section className="mission-tree-band">
-        <div className="mission-section-title">
-          <span><Network size={16} /> REALITY TREE</span>
-          <b>{run.realities.length} WORLDS / {run.memories.length} MEMORIES</b>
-        </div>
-        <RealityTree run={run} />
-      </section>
-
       {error && (
         <div className="mission-error">
           <XCircle size={16} />
@@ -350,13 +362,13 @@ function MissionRunView({
 
       <div className="mission-action-dock">
         <div>
-          <small>{snapshot.operation ? "CODEX OPERATION" : "NEXT REALITY ACTION"}</small>
-          <strong>{snapshot.operation?.label ?? snapshot.nextAction?.label ?? "Reality stabilised"}</strong>
+          <small>{replaying ? "TIMELINE REPLAY" : snapshot.operation ? "CODEX OPERATION" : "NEXT REALITY ACTION"}</small>
+          <strong>{replaying ? "Return the timeline to Live to continue" : snapshot.operation?.label ?? snapshot.nextAction?.label ?? "Reality stabilised"}</strong>
           {snapshot.operation && <span><Clock3 size={13} /> Began at {timeLabel(snapshot.operation.startedAt)}</span>}
         </div>
         <button
           type="button"
-          disabled={busy || Boolean(snapshot.operation) || !snapshot.nextAction}
+          disabled={busy || Boolean(snapshot.operation) || !snapshot.nextAction || replaying}
           onClick={() => snapshot.nextAction && void act(snapshot.nextAction.id)}
         >
           {snapshot.nextAction?.id === "create_dream"
@@ -364,208 +376,92 @@ function MissionRunView({
             : snapshot.nextAction?.id === "intervene"
               ? <ShieldAlert size={17} />
               : <Play size={17} />}
-          {busy || snapshot.operation ? "Reality shifting" : snapshot.nextAction?.label ?? "Reality stabilised"}
+          {replaying
+            ? "Replay active"
+            : snapshot.operation
+            ? "Operation active"
+            : busy
+              ? "Reality shifting"
+              : missionActionCommand(snapshot.nextAction?.id)}
         </button>
-        <button type="button" className="mission-delete" onClick={remove} disabled={busy || Boolean(snapshot.operation)} title="Delete mission and clean up worktrees" aria-label="Delete mission and clean up worktrees">
+        <button type="button" className="mission-delete" onClick={remove} disabled={busy || Boolean(snapshot.operation) || replaying} title="Delete mission and clean up worktrees" aria-label="Delete mission and clean up worktrees">
           <Trash2 size={16} />
         </button>
       </div>
 
-      <div className="mission-grid">
-        <section className="mission-locus">
-          <div className="mission-section-title">
-            <span><Layers3 size={16} /> CURRENT REALITY</span>
-            <b>DEPTH {reality.depth}</b>
-          </div>
-          <h2>{reality.name}</h2>
-          <p className="mission-premise">{reality.premise}</p>
-          <dl className="mission-world-state">
-            <div><dt>STATE</dt><dd>{reality.worldState.status}</dd></div>
-            <div><dt>FOCUS</dt><dd>{reality.worldState.currentFocus}</dd></div>
-            <div><dt>DREAM TIME</dt><dd>{reality.worldState.simulatedMinutes} minutes</dd></div>
-            <div><dt>THREAD</dt><dd>{reality.codexThreadId?.startsWith("unbound:") ? "Not started" : reality.codexThreadId?.slice(0, 18)}</dd></div>
-          </dl>
+      {activeOperation && (
+        <OperationMonitor
+          operation={activeOperation}
+          realities={run.realities}
+          events={run.events}
+          now={now}
+        />
+      )}
 
+      <RealityTimeline events={run.events} index={timelineIndex} onChange={setTimelineIndex} />
+
+      {(intervention || integritySeal || memoryIntegrity.length === 0) && (
+        <section className="mission-guardrail-band">
           {intervention && interventionContract && (
-            <div className="mission-subsection" data-testid="intervention-ledger">
-              <h3><ShieldAlert size={15} /> Sealed intervention</h3>
-              <article className={`mission-intervention intervention-${intervention.status}`}>
-                <div className="mission-intervention-heading">
-                  <span>
-                    <strong>{adversarialSubject.name} / {adversarialSubject.role}</strong>
-                    <small>{intervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
-                  </span>
-                  <b>{interventionContract.maxChangedFiles} FILES / {interventionContract.maxPatchLines} LINES</b>
-                </div>
-                {intervention.status === "armed" && (
-                  <p>No mutation has run. The operator-owned contract is armed for an explicit action.</p>
-                )}
-                {intervention.status === "sealed" && (
-                  <p>{intervention.changedFileCount ?? 0} changed file{intervention.changedFileCount === 1 ? "" : "s"} sealed. Cause, paths, and private Subject report remain hidden until Kick.</p>
-                )}
-                {intervention.status === "rejected" && (
-                  <p>{intervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>
-                )}
-                {intervention.diagnosis && intervention.status !== "revealed" && (
-                  <p>Investigator diagnosis returned at {Math.round(intervention.diagnosis.confidence * 100)}% model-reported confidence. The exact comparison remains sealed until Kick.</p>
-                )}
-                {intervention.status === "revealed" && intervention.report && intervention.assessment && (
-                  <>
-                    <p>{intervention.report.summary}</p>
-                    <dl>
-                      <div><dt>OUTCOME</dt><dd>{intervention.assessment.outcome.toUpperCase()}</dd></div>
-                      <div><dt>FAULT</dt><dd>{intervention.report.faultClass}</dd></div>
-                      <div><dt>FILES</dt><dd>{intervention.report.changedFiles.join(", ")}</dd></div>
-                    </dl>
-                  </>
-                )}
-              </article>
-            </div>
-          )}
-
-          <div className="mission-subsection" data-testid="memory-integrity">
-            <h3><Fingerprint size={15} /> Reality totem / memory integrity</h3>
-            {integritySeal ? (
-              <article className={`mission-integrity integrity-${integritySeal.verdict}`}>
-                <div className="mission-intervention-heading">
-                  <span>
-                    <strong>{integritySeal.verdict === "verified" ? "Memory verified" : "Memory quarantined"}</strong>
-                    <small>{integritySeal.policyVersion.toUpperCase()} / {integritySeal.checks.filter((check) => check.status === "passed").length} OF {integritySeal.checks.length} CHECKS PASSED</small>
-                  </span>
-                  <b>{integritySeal.descendantSealIds.length} DESCENDANT SEALS</b>
-                </div>
-                <div className="mission-integrity-checks">
-                  {integritySeal.checks.map((check) => (
-                    <span className={`integrity-check is-${check.status}`} key={check.name} title={check.summary}>
-                      {check.status === "passed" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                      {check.name.replaceAll("-", " ")}
-                    </span>
-                  ))}
-                </div>
-                <code>REPORT {integritySeal.reportDigest.slice(0, 16)} / STATE {integritySeal.sourceStateDigest.slice(0, 16)}</code>
-              </article>
-            ) : (
-              <article className="mission-integrity integrity-pending">
-                <div className="mission-intervention-heading">
-                  <span>
-                    <strong>Parent policy armed</strong>
-                    <small>NO MEMORY HAS CROSSED A KICK</small>
-                  </span>
-                  <b>{reality.anchors.length} REALITY ANCHOR{reality.anchors.length === 1 ? "" : "S"}</b>
-                </div>
-              </article>
-            )}
-          </div>
-
-          <div className="mission-subsection">
-            <h3><UsersRound size={15} /> Subjects</h3>
-            {reality.subjects.length ? (
-              <div className="mission-subjects">
-                {reality.subjects.map((subject) => {
-                  const threadEvent = [...run.events].reverse().find((event) =>
-                    eventMetadata(event).subjectId === subject.id
-                  );
-                  const metadata = threadEvent ? eventMetadata(threadEvent) : {};
-                  return (
-                    <article key={subject.id}>
-                      <span className={`subject-state subject-${String(metadata.subjectState ?? subject.status)}`} />
-                      <div>
-                        <strong>{subject.name}</strong>
-                        <small>{subject.role} / {String(metadata.subjectState ?? subject.status).toUpperCase()}</small>
-                        {typeof metadata.subjectThreadId === "string" && (
-                          <code>Codex thread {metadata.subjectThreadId}</code>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            ) : <p className="mission-empty">Subjects enter child Realities.</p>}
-          </div>
-
-          <div className="mission-subsection">
-            <h3><BrainCircuit size={15} /> Beliefs and uncertainty</h3>
-            {reality.beliefs.slice(-3).map((belief) => (
-              <article className="mission-belief" key={belief.id}>
-                <span>{Math.round(belief.confidence * 100)}%</span>
-                <p>{belief.statement}</p>
-                <small>MODEL-REPORTED CONFIDENCE / {belief.origin.toUpperCase()}</small>
-              </article>
-            ))}
-            {reality.proposals.filter((proposal) => proposal.status === "open").map((proposal) => (
-              <article className="mission-proposal" key={proposal.id}>
-                <small>OPEN DREAM PROPOSAL / MODEL ESTIMATE</small>
-                <strong>{proposal.title}</strong>
-                <p>{proposal.uncertainty}</p>
-              </article>
-            ))}
-          </div>
-
-          <div className="mission-subsection">
-            <h3><Code2 size={15} /> Evidence</h3>
-            <div className="mission-evidence">
-              {reality.evidence.map((entry) => (
-                <article key={entry.id}>
-                  <small>{entry.kind.toUpperCase()} / {(entry.provenance ?? "UNSPECIFIED").toUpperCase()}</small>
-                  <strong>{entry.title}</strong>
-                  <p>{entry.summary}</p>
-                  {entry.artefactPath && <code>{entry.artefactPath}</code>}
-                </article>
-              ))}
-              {!reality.evidence.length && <p className="mission-empty">No evidence has returned.</p>}
-            </div>
-          </div>
-        </section>
-
-        <aside className="mission-events">
-          <div className="mission-section-title">
-            <span><Radio size={16} /> LIVE EVENTS</span>
-            <b>{run.events.length} VALIDATED</b>
-          </div>
-          <div className="mission-event-list">
-            {visibleEvents.map((event) => (
-              <article key={event.id} className={`mission-event event-${event.type.split(".")[0]}`}>
-                <time>{timeLabel(event.occurredAt)}</time>
-                <div>
-                  <small>{event.type.replace(".", " / ")}</small>
-                  <strong>{event.summary}</strong>
-                  {eventDetail(event) && <code>{eventDetail(event)}</code>}
-                  <em>{run.realities.find((entry) => entry.id === event.realityId)?.name}</em>
-                </div>
-              </article>
-            ))}
-          </div>
-        </aside>
-      </div>
-
-      <section className="mission-results">
-        <div>
-          <div className="mission-section-title">
-            <span><LockKeyhole size={16} /> IMMUTABLE PROOFS</span>
-            <b>{run.proofResults.filter((result) => result.status === "passed").length} / {run.definition.proofs.length} PASSED</b>
-          </div>
-          {run.definition.proofs.map((proof) => {
-            const result = run.proofResults.find((entry) => entry.anchorId === proof.id);
-            return (
-              <article className="mission-proof" key={proof.id}>
-                {result?.status === "passed" ? <CheckCircle2 size={16} /> : <LockKeyhole size={16} />}
+            <article className={`mission-intervention intervention-${intervention.status}`} data-testid="intervention-ledger">
+              <div className="mission-intervention-heading">
                 <span>
-                  <strong>{proof.name}</strong>
-                  <code>{proof.executable} {proof.args.join(" ")}</code>
+                  <strong><ShieldAlert size={14} /> {adversarialSubject.name} / {adversarialSubject.role}</strong>
+                  <small>SEALED INTERVENTION / {intervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
                 </span>
-                <b>{result ? result.status.toUpperCase() : "UNVERIFIED"}</b>
-              </article>
-            );
-          })}
-        </div>
-        <div>
-          <div className="mission-section-title">
-            <span><FileDiff size={16} /> WAKING DIFF</span>
-            <b>{run.finalDiff ? `${run.finalDiff.split("\n").length} LINES` : "NOT SYNTHESISED"}</b>
-          </div>
-          <pre className="mission-diff">{run.finalDiff || "The waking worktree has not received returned memory."}</pre>
-        </div>
-      </section>
+                <b>{interventionContract.maxChangedFiles} FILES / {interventionContract.maxPatchLines} LINES</b>
+              </div>
+              {intervention.status === "armed" && <p>No mutation has run. The operator-owned contract is armed for an explicit action.</p>}
+              {intervention.status === "sealed" && <p>{intervention.changedFileCount ?? 0} changed file{intervention.changedFileCount === 1 ? "" : "s"} sealed. Cause and paths remain hidden until Kick.</p>}
+              {intervention.status === "rejected" && <p>{intervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>}
+              {intervention.status === "revealed" && intervention.report && intervention.assessment && (
+                <p>{intervention.assessment.outcome.toUpperCase()}: {intervention.report.summary}</p>
+              )}
+            </article>
+          )}
+          <article
+            className={`mission-integrity integrity-${integritySeal?.verdict ?? "pending"}`}
+            data-testid="memory-integrity"
+          >
+            <div className="mission-intervention-heading">
+              <span>
+                <strong><Fingerprint size={14} /> {integritySeal?.verdict === "verified" ? "Memory verified" : integritySeal?.verdict === "quarantined" ? "Memory quarantined" : "Parent policy armed"}</strong>
+                <small>{integritySeal ? `${integritySeal.policyVersion.toUpperCase()} / ${integritySeal.checks.filter((check) => check.status === "passed").length} OF ${integritySeal.checks.length} CHECKS PASSED` : "NO MEMORY HAS CROSSED A KICK"}</small>
+              </span>
+              <b>{integritySeal ? `${integritySeal.descendantSealIds.length} DESCENDANT SEALS` : `${reality.anchors.length} REALITY ANCHORS`}</b>
+            </div>
+            {integritySeal && (
+              <div className="mission-integrity-checks">
+                {integritySeal.checks.map((check) => (
+                  <span className={`integrity-check is-${check.status}`} key={check.name} title={check.summary}>
+                    {check.status === "passed" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                    {check.name.replaceAll("-", " ")}
+                  </span>
+                ))}
+              </div>
+            )}
+          </article>
+        </section>
+      )}
+
+      <RealityWorkspace
+        realities={replayedRealities}
+        sourceRealities={run.realities}
+        events={visibleEvents}
+        activeRealityId={run.activeRealityId}
+        selectedRealityId={selectedRealityId}
+        onSelectReality={setSelectedRealityId}
+        inspectorTab={inspectorTab}
+        onInspectorTab={setInspectorTab}
+        operation={activeOperation}
+        now={now}
+        pulseRealityId={pulseRealityId}
+        memoryIntegrity={memoryIntegrity}
+        anchorResults={run.proofResults}
+        finalDiff={run.finalDiff}
+        revealCode={revealCode}
+        onToggleCode={() => setRevealCode((current) => !current)}
+      />
 
     </main>
   );
@@ -758,6 +654,9 @@ export function MissionComposer() {
       <div className="mission-shell">
         <nav className="mission-nav">
           <a href="/"><ArrowLeft size={15} /> Canonical demo</a>
+          <button type="button" onClick={() => setSnapshot(null)}>
+            <GitBranch size={14} /> New Mission
+          </button>
           <span><BrainCircuit size={14} /> {runtime.model.toUpperCase()} / CODEX SDK {runtime.sdkVersion}</span>
         </nav>
         <MissionRunView
@@ -777,7 +676,7 @@ export function MissionComposer() {
     <div className="mission-shell">
       <nav className="mission-nav">
         <a href="/"><ArrowLeft size={15} /> Canonical demo</a>
-        <span><BrainCircuit size={14} /> {runtime?.model.toUpperCase() ?? "REAL CODEX REQUIRED"}</span>
+        <span><BrainCircuit size={14} /> {runtime?.model.toUpperCase() ?? "CHECKING RUNTIME"}</span>
       </nav>
       <main className="mission-composer">
         <header className="mission-composer-header">
@@ -793,7 +692,7 @@ export function MissionComposer() {
         </header>
 
         {error && <div className="mission-error"><XCircle size={16} /><span><b>Mission unavailable</b>{error}</span></div>}
-        {runtime?.mode !== "real" && (
+        {runtime && runtime.mode !== "real" && (
           <div className="mission-error">
             <SquareTerminal size={16} />
             <span><b>Real mode required</b>Run <code>npm run dev:real</code>. Forming a mission never starts Codex; only an explicit Reality action does.</span>

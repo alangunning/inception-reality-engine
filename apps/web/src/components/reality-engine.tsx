@@ -43,16 +43,23 @@ import {
   XCircle
 } from "lucide-react";
 import type {
+  AnchorResult,
   DreamProposal,
   MemoryIntegritySeal,
   Reality,
   RealityEvent,
+  RealityRunArchive,
+  RegressionResult,
   WakeReport
 } from "@inception/domain";
 import type { ActiveRealityOperation, DemoAction, DemoSnapshot } from "@inception/orchestrator";
 
 type LoadingState = "idle" | "acting" | "resetting";
-type InspectorTab = "world" | "constitution" | "runtime";
+export type InspectorTab = "world" | "constitution" | "runtime";
+export type PresentedRealityOperation = Pick<
+  ActiveRealityOperation,
+  "id" | "label" | "executor" | "realityId" | "startedAt"
+>;
 type EventFamily = "all" | "codex" | "dream" | "subject" | "evidence" | "memory" | "anchor" | "reality";
 type EventSort = "newest" | "oldest";
 type PresentedDemoSnapshot = DemoSnapshot & {
@@ -133,11 +140,19 @@ async function readApiResponse<T extends object>(response: Response, fallback: s
   return value as T;
 }
 
-const graphPositions: Record<number, { x: number; y: number }> = {
-  0: { x: 150, y: 185 },
-  1: { x: 500, y: 95 },
-  2: { x: 845, y: 205 }
-};
+function graphPosition(depth: number, maximumDepth: number): { x: number; y: number } {
+  if (maximumDepth <= 2) {
+    return [
+      { x: 150, y: 185 },
+      { x: 500, y: 95 },
+      { x: 845, y: 205 }
+    ][depth] ?? { x: 845, y: 205 };
+  }
+  return {
+    x: 110 + (780 * depth) / maximumDepth,
+    y: depth % 2 === 0 ? 205 : 95
+  };
+}
 
 const stages = [
   { label: "Inspect", endPhase: 1 },
@@ -249,7 +264,7 @@ function eventFamily(event: RealityEvent): Exclude<EventFamily, "all"> {
   return "reality";
 }
 
-function replayRealities(realities: Reality[], events: RealityEvent[], timelineIndex: number | null): Reality[] {
+export function replayRealities(realities: Reality[], events: RealityEvent[], timelineIndex: number | null): Reality[] {
   if (timelineIndex === null || !events.length) return realities;
   const visibleEvents = events.slice(0, timelineIndex + 1);
   const cutoff = new Date(visibleEvents.at(-1)?.occurredAt ?? 0).getTime();
@@ -336,7 +351,7 @@ function isTimelineMilestone(event: RealityEvent): boolean {
   return event.type !== "codex.progress" && event.type !== "anchor.started";
 }
 
-function SectionHeading({ icon, eyebrow, title, meta }: {
+export function SectionHeading({ icon, eyebrow, title, meta }: {
   icon: ReactNode;
   eyebrow: string;
   title: string;
@@ -354,11 +369,11 @@ function SectionHeading({ icon, eyebrow, title, meta }: {
   );
 }
 
-function EmptyState({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+export function EmptyState({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return <div className="empty-state">{icon}<span>{children}</span></div>;
 }
 
-function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
+export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
   realities: Reality[];
   locusId: string | null;
   selectedId: string | null;
@@ -366,19 +381,26 @@ function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
   onSelect: (id: string) => void;
 }) {
   const collapsed = realities.length === 1 && realities[0]?.status === "stabilised";
+  const maximumDepth = Math.max(2, ...realities.map((reality) => reality.depth));
   return (
     <div className={`reality-map ${collapsed ? "is-collapsed" : ""}`} data-testid="reality-graph">
       <div className="map-grid" aria-hidden="true" />
-      <div className="depth-rail depth-rail-0"><span>LEVEL 0</span><b>Waking</b></div>
-      <div className="depth-rail depth-rail-1"><span>LEVEL 1</span><b>Dream</b></div>
-      <div className="depth-rail depth-rail-2"><span>LEVEL 2</span><b>Nested dream</b></div>
+      {Array.from({ length: maximumDepth + 1 }, (_, depth) => (
+        <div
+          className={`depth-rail depth-rail-${depth}`}
+          style={{ left: `${graphPosition(depth, maximumDepth).x / 10}%` }}
+          key={depth}
+        >
+          <span>LEVEL {depth}</span>
+          <b>{depth === 0 ? "Waking" : depth === 1 ? "Dream" : "Nested dream"}</b>
+        </div>
+      ))}
       <svg className="map-links" viewBox="0 0 1000 320" preserveAspectRatio="none" aria-hidden="true">
         {realities.map((reality) => {
           const parent = realities.find((candidate) => candidate.id === reality.parentId);
           if (!parent) return null;
-          const from = graphPositions[parent.depth];
-          const to = graphPositions[reality.depth];
-          if (!from || !to) return null;
+          const from = graphPosition(parent.depth, maximumDepth);
+          const to = graphPosition(reality.depth, maximumDepth);
           const returned = reality.status === "kicked";
           return (
             <g key={`${parent.id}-${reality.id}`}>
@@ -401,7 +423,7 @@ function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
       </svg>
 
       {realities.map((reality) => {
-        const position = graphPositions[reality.depth] ?? graphPositions[2]!;
+        const position = graphPosition(reality.depth, maximumDepth);
         const selected = reality.id === selectedId;
         const locus = reality.id === locusId;
         return (
@@ -434,11 +456,11 @@ function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
   );
 }
 
-function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
+export function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
   reality: Reality;
   locus: boolean;
   tab: InspectorTab;
-  operation: ActiveRealityOperation | null;
+  operation: PresentedRealityOperation | null;
   now: number;
   onTab: (tab: InspectorTab) => void;
 }) {
@@ -562,7 +584,7 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
   );
 }
 
-function MemoryReport({
+export function MemoryReport({
   reality,
   report,
   seal
@@ -616,8 +638,8 @@ function MemoryReport({
   );
 }
 
-function OperationMonitor({ operation, realities, events, now }: {
-  operation: ActiveRealityOperation;
+export function OperationMonitor({ operation, realities, events, now }: {
+  operation: PresentedRealityOperation;
   realities: Reality[];
   events: RealityEvent[];
   now: number;
@@ -699,7 +721,7 @@ function OperationMonitor({ operation, realities, events, now }: {
   );
 }
 
-function EventFeed({ events, realities, now }: { events: RealityEvent[]; realities: Reality[]; now: number }) {
+export function EventFeed({ events, realities, now }: { events: RealityEvent[]; realities: Reality[]; now: number }) {
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<EventFamily>("all");
   const [sort, setSort] = useState<EventSort>("newest");
@@ -807,10 +829,11 @@ function EventFeed({ events, realities, now }: { events: RealityEvent[]; realiti
   );
 }
 
-function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
+function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged }: {
   open: boolean;
   onClose: () => void;
   onFullReset: (snapshot: PresentedDemoSnapshot) => void;
+  onLoadArchive: (archive: RealityRunArchive) => void;
   onStateChanged: () => Promise<void>;
 }) {
   const [processes, setProcesses] = useState<CodexProcess[]>([]);
@@ -818,7 +841,7 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
   const [currentLog, setCurrentLog] = useState<RunLogSummary | null>(null);
   const [archivedLogs, setArchivedLogs] = useState<RunLogSummary[]>([]);
   const [codexMode, setCodexMode] = useState<"mock" | "real">("mock");
-  const [busy, setBusy] = useState<"idle" | "stopping" | "resetting">("idle");
+  const [busy, setBusy] = useState<"idle" | "stopping" | "resetting" | "loading-archive">("idle");
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const loadProcesses = useCallback(async () => {
@@ -888,6 +911,29 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
       if (!response.ok || !body.snapshot) throw new Error(body.error ?? "Could not fully reset the Reality Engine.");
       onFullReset(body.snapshot);
       setProcesses([]);
+      onClose();
+    } catch (cause) {
+      setAdminError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("idle");
+    }
+  };
+
+  const loadArchive = async (archive: RunLogSummary) => {
+    setBusy("loading-archive");
+    setAdminError(null);
+    try {
+      const response = await fetch(`/api/admin/history?id=${encodeURIComponent(archive.id)}`, {
+        cache: "no-store"
+      });
+      const body = await readApiResponse<{
+        run?: RealityRunArchive;
+        error?: string;
+      }>(response, "Could not open the saved Reality timeline.");
+      if (!response.ok || !body.run) {
+        throw new Error(body.error ?? "Could not open the saved Reality timeline.");
+      }
+      onLoadArchive(body.run);
       onClose();
     } catch (cause) {
       setAdminError(cause instanceof Error ? cause.message : String(cause));
@@ -978,12 +1024,27 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
           </a>
           {archivedLogs.length > 0 && (
             <div className="archive-list">
-              {archivedLogs.slice(0, 3).map((archive) => (
-                <a href={`/api/admin/history?id=${encodeURIComponent(archive.id)}&download=1`} download key={archive.id}>
-                  <span>Phase {archive.phase} / {archive.eventCount} events</span>
-                  <small>{new Date(archive.archivedAt).toLocaleString()}</small>
-                  <Download size={13} />
-                </a>
+              {archivedLogs.slice(0, 5).map((archive) => (
+                <article key={archive.id}>
+                  <button
+                    type="button"
+                    onClick={() => void loadArchive(archive)}
+                    disabled={busy !== "idle"}
+                    aria-label={`Open saved password-reset timeline from ${new Date(archive.archivedAt).toLocaleString()}`}
+                  >
+                    <History size={13} />
+                    <span>Phase {archive.phase} / {archive.eventCount} events</span>
+                    <small>{new Date(archive.archivedAt).toLocaleString()}</small>
+                  </button>
+                  <a
+                    href={`/api/admin/history?id=${encodeURIComponent(archive.id)}&download=1`}
+                    download
+                    aria-label={`Download saved run ${archive.id}`}
+                    title="Download safe run log"
+                  >
+                    <Download size={13} />
+                  </a>
+                </article>
               ))}
             </div>
           )}
@@ -1005,7 +1066,7 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
   );
 }
 
-function RealityTimeline({ events, index, onChange }: {
+export function RealityTimeline({ events, index, onChange }: {
   events: RealityEvent[];
   index: number | null;
   onChange: (index: number | null) => void;
@@ -1093,7 +1154,7 @@ function DreamGate({ proposal, owner, onCancel, onConfirm }: {
 
 function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset }: {
   snapshot: PresentedDemoSnapshot;
-  operation: ActiveRealityOperation | null;
+  operation: PresentedRealityOperation | null;
   loading: LoadingState;
   replaying: boolean;
   onAction: (action: DemoAction) => void;
@@ -1110,6 +1171,18 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
   const runtimeLabel = runsCodex
     ? snapshot.runtime.codexMode === "real" ? "STARTS REAL CODEX CLI IN THE ACTIVE WORKTREE" : "RUNS REHEARSED CODEX RUNTIME"
     : "ORCHESTRATED REALITY ACTION";
+  const primaryCommand = (() => {
+    switch (next?.id) {
+      case "inspect": return "Run Codex audit";
+      case "enter_subjects": return "Enter Subjects";
+      case "discover_abuse": return "Run Codex investigation";
+      case "synthesise": return "Synthesise memories";
+      case "run_anchors": return "Run anchor tests";
+      case "repair": return "Repair proof";
+      case "stabilise": return "Stabilise Reality";
+      default: return next ? "Advance Reality" : "Reality stabilised";
+    }
+  })();
 
   return (
     <div className={`action-dock ${complete ? "is-complete" : ""}`} data-testid="action-dock">
@@ -1137,12 +1210,289 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
         onClick={() => next && onAction(next.id)}
         disabled={busy || !isStandard}
       >
-        {operation ? <><span className="button-spinner" />{operation.label}</> : loading !== "idle" ? (
+        {operation ? <><span className="button-spinner" />{operation.executor === "codex" ? "Codex working" : "Operation active"}</> : loading !== "idle" ? (
           <><span className="button-spinner" />Entering operation</>
         ) : (
-          <>{next ? <Play size={16} /> : <CheckCircle2 size={16} />}{isStandard ? next.label : next ? "Advance Reality" : "Reality stabilised"}</>
+          <>{next ? <Play size={16} /> : <CheckCircle2 size={16} />}{primaryCommand}</>
         )}
       </button>
+    </div>
+  );
+}
+
+export function RealityWorkspace({
+  realities,
+  sourceRealities = realities,
+  events,
+  activeRealityId,
+  selectedRealityId,
+  onSelectReality,
+  inspectorTab,
+  onInspectorTab,
+  operation,
+  now,
+  pulseRealityId = null,
+  graphRealities = realities,
+  memoryIntegrity = [],
+  anchorResults = [],
+  regressionResult,
+  finalDiff = "",
+  revealCode,
+  onToggleCode
+}: {
+  realities: Reality[];
+  sourceRealities?: Reality[];
+  events: RealityEvent[];
+  activeRealityId: string;
+  selectedRealityId: string | null;
+  onSelectReality(id: string): void;
+  inspectorTab: InspectorTab;
+  onInspectorTab(tab: InspectorTab): void;
+  operation: PresentedRealityOperation | null;
+  now: number;
+  pulseRealityId?: string | null;
+  graphRealities?: Reality[];
+  memoryIntegrity?: MemoryIntegritySeal[];
+  anchorResults?: AnchorResult[];
+  regressionResult?: RegressionResult;
+  finalDiff?: string;
+  revealCode: boolean;
+  onToggleCode(): void;
+}) {
+  const selectedReality = realities.find((reality) => reality.id === selectedRealityId)
+    ?? realities.find((reality) => reality.id === activeRealityId)
+    ?? realities[0];
+  if (!selectedReality) return null;
+
+  const root = realities.find((reality) => reality.depth === 0);
+  const proposals = realities.flatMap((reality) =>
+    reality.proposals.map((proposal) => ({ ...proposal, owner: reality.name }))
+  );
+  const memories = realities.flatMap((reality) =>
+    reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []
+  );
+  const initialBelief = root?.beliefs.find((belief) => belief.origin === "initial")
+    ?? root?.beliefs[0];
+  const finalBelief = root?.beliefs.at(-1);
+  const displayedAnchors: Array<{
+    anchorId: string;
+    name: string;
+    status: "passed" | "failed" | "pending";
+    command?: string;
+    durationMs?: number;
+  }> = anchorResults.length
+    ? anchorResults
+    : root?.anchors.map((anchor) => ({
+        anchorId: anchor.id,
+        name: anchor.name,
+        status: anchor.status === "failed" ? "failed" as const : "pending" as const
+      })) ?? [];
+
+  return (
+    <div data-testid="reality-workspace">
+      <section className="topology-workspace">
+        <div className="map-section">
+          <SectionHeading
+            icon={<Network size={18} />}
+            eyebrow="REALITY TOPOLOGY"
+            title="Counterfactual world graph"
+            meta={<span className="locus-key"><Radio size={11} /> LOCUS: {sourceRealities.find((entry) => entry.id === activeRealityId)?.name}</span>}
+          />
+          <RealityGraph
+            realities={graphRealities}
+            locusId={activeRealityId}
+            selectedId={selectedReality.id}
+            pulseId={pulseRealityId}
+            onSelect={onSelectReality}
+          />
+          <div className="map-footer">
+            <span><i className="key-waking" /> Waking Reality</span>
+            <span><i className="key-dream" /> Dream</span>
+            <span><i className="key-memory" /> Memory path</span>
+            <small>Select a world to inspect its own thread, worktree, evidence, and contract.</small>
+          </div>
+        </div>
+        <WorldInspector
+          reality={selectedReality}
+          locus={selectedReality.id === activeRealityId}
+          tab={inspectorTab}
+          operation={operation}
+          now={now}
+          onTab={onInspectorTab}
+        />
+      </section>
+
+      <section className="world-ledger">
+        <div className="ledger-column">
+          <SectionHeading
+            icon={<Search size={18} />}
+            eyebrow="UNCERTAINTY LEDGER"
+            title="Dream proposals"
+            meta={<span className="count-label">{proposals.filter((proposal) => proposal.status !== "resolved").length} unresolved</span>}
+          />
+          <div className="proposal-list">
+            {proposals.length ? proposals.map((proposal) => (
+              <article className={`proposal-row proposal-${proposal.status}`} key={proposal.id}>
+                <span className="proposal-status"><CircleDot size={14} />{proposal.status}</span>
+                <div>
+                  <small>{proposal.owner} / {proposal.title}</small>
+                  <h3>{proposal.uncertainty}</h3>
+                  <p>{proposal.rationale}</p>
+                  <span className="proposal-metadata">
+                    <b>estimate: {Math.round((proposal.impactProbability ?? 0.5) * 100)}% impact</b>
+                    <b>estimate: {(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</b>
+                    <b>estimate: {proposal.costClass ?? "unscored"} cost</b>
+                  </span>
+                </div>
+                <ChevronRight size={16} />
+              </article>
+            )) : <EmptyState icon={<MoonStar size={19} />}>No uncertainty has been made concrete.</EmptyState>}
+          </div>
+        </div>
+
+        <div className="ledger-column">
+          <SectionHeading
+            icon={<UsersRound size={18} />}
+            eyebrow={`SUBJECTS / ${selectedReality.name}`}
+            title="Bounded investigations"
+            meta={<span className="count-label">{selectedReality.subjects.length} subjects</span>}
+          />
+          <div className="subject-list">
+            {selectedReality.subjects.length ? selectedReality.subjects.map((subject) => (
+              <article className="subject-row" key={subject.id}>
+                <span className="subject-initial">{subject.name[0]}</span>
+                <div><h3>{subject.name}<small>{subject.role}</small></h3><p>{subject.findings[0] ?? subject.mission}</p></div>
+                <span className={`subject-state subject-${subject.status}`}>{subject.status}</span>
+              </article>
+            )) : <EmptyState icon={<UsersRound size={19} />}>No Subjects have entered this Reality.</EmptyState>}
+          </div>
+        </div>
+
+        <div className="ledger-column">
+          <SectionHeading
+            icon={<FlaskConical size={18} />}
+            eyebrow={`EVIDENCE / ${selectedReality.name}`}
+            title="Experienced facts"
+            meta={<span className="count-label">{selectedReality.evidence.length} items</span>}
+          />
+          <div className="evidence-list">
+            {selectedReality.evidence.length ? selectedReality.evidence.slice().reverse().map((evidence) => {
+              const wakeSource = evidence.source.startsWith("wake-report:")
+                ? evidence.source.slice("wake-report:".length)
+                : null;
+              const sourceReality = wakeSource
+                ? sourceRealities.find((reality) => reality.id === wakeSource || reality.name === wakeSource)
+                : null;
+              const title = evidence.title.startsWith("Memory inherited from ")
+                ? `Memory returned from ${sourceReality?.name ?? "child Reality"}`
+                : evidence.title;
+              return (
+                <article className="evidence-row" key={evidence.id}>
+                  <span className={`evidence-icon evidence-${evidence.kind}`}>
+                    {evidence.kind === "test" ? <TestTube2 size={15} /> : evidence.kind === "code" ? <Code2 size={15} /> : <CircleDot size={15} />}
+                  </span>
+                  <div>
+                    <small>{evidence.kind} / {evidence.provenance ?? "observed"} / {evidence.source}</small>
+                    <h3>{title}</h3><p>{evidence.summary}</p>
+                  </div>
+                </article>
+              );
+            }) : <EmptyState icon={<FlaskConical size={19} />}>No decisive evidence exists in this world yet.</EmptyState>}
+          </div>
+        </div>
+      </section>
+
+      <section className="memory-workspace">
+        <SectionHeading
+          icon={<BrainCircuit size={18} />}
+          eyebrow="MEMORIES"
+          title="Belief transformation"
+          meta={<span className="validated-count"><ShieldCheck size={13} />{memories.length} validated reports</span>}
+        />
+        <div className="belief-strip">
+          <div>
+            <span>INITIAL BELIEF / MODEL-REPORTED {Math.round((initialBelief?.confidence ?? 0) * 100)}%</span>
+            <p>{initialBelief?.statement ?? "No initial belief recorded."}</p>
+          </div>
+          <span className="belief-route"><i /><ArrowRight size={18} /><i /></span>
+          <div>
+            <span>CURRENT WAKING BELIEF / MODEL-REPORTED {Math.round((finalBelief?.confidence ?? 0) * 100)}%</span>
+            <p>{finalBelief?.statement ?? "Awaiting returned memory."}</p>
+          </div>
+        </div>
+        <div className="memory-list">
+          {memories.length
+            ? memories.slice().reverse().map(({ reality, report }) => (
+                <MemoryReport
+                  reality={reality}
+                  report={report}
+                  seal={memoryIntegrity.find((entry) => entry.realityId === reality.id)}
+                  key={reality.id}
+                />
+              ))
+            : <EmptyState icon={<ArrowUpFromLine size={19} />}>Kick a Dream to return a validated Wake Report.</EmptyState>}
+        </div>
+      </section>
+
+      <section className="proof-workspace">
+        <div className="proof-column anchor-proof">
+          <SectionHeading
+            icon={<LockKeyhole size={18} />}
+            eyebrow="REALITY ANCHORS"
+            title="Parent-owned invariants"
+            meta={<span className="count-label">{displayedAnchors.length} anchors</span>}
+          />
+          <div className="anchor-list">
+            {displayedAnchors.map((anchor) => (
+              <article className={`anchor-row anchor-${anchor.status}`} key={anchor.anchorId}>
+                <span>{anchor.status === "passed" ? <Check size={15} /> : anchor.status === "failed" ? <X size={15} /> : <LockKeyhole size={14} />}</span>
+                <div>
+                  <h3>{anchor.name}</h3>
+                  <p>{anchor.status === "passed" ? "Immutable requirement survived synthesis." : anchor.status === "failed" ? "Waking implementation violated this anchor." : "Hidden from child mutation; awaiting synthesis."}</p>
+                  {anchor.command && <small>{anchor.command} / {anchor.durationMs}ms</small>}
+                </div>
+              </article>
+            ))}
+            {regressionResult && (
+              <article className={`anchor-row anchor-${regressionResult.status}`} data-testid="regression-proof">
+                <span>{regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
+                <div>
+                  <h3>Inherited regression suite</h3>
+                  <p>{regressionResult.status === "passed"
+                    ? `${regressionResult.testFiles.length} test artefacts agree with the waking implementation.`
+                    : "A returned or discovered test still contradicts the waking implementation."}</p>
+                  <small>{regressionResult.command} / {regressionResult.durationMs}ms</small>
+                </div>
+              </article>
+            )}
+          </div>
+        </div>
+        <div className="proof-column event-proof">
+          <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
+          <EventFeed events={events} realities={realities} now={now} />
+        </div>
+      </section>
+
+      {finalDiff && (
+        <section className="diff-workspace">
+          <SectionHeading
+            icon={<FileDiff size={18} />}
+            eyebrow="WAKING IMPLEMENTATION"
+            title="Final Git diff"
+            meta={(
+              <span className="diff-actions">
+                <span className="diff-meta"><GitBranch size={13} />{root?.branchName}</span>
+                <button type="button" onClick={onToggleCode} data-testid="reveal-code">
+                  <Eye size={13} /> {revealCode ? "Hide code" : "Reveal code"}
+                </button>
+              </span>
+            )}
+          />
+          {revealCode
+            ? <pre>{finalDiff}</pre>
+            : <EmptyState icon={<FileDiff size={19} />}>The implementation is preserved behind the returned knowledge. Reveal it when the proof matters.</EmptyState>}
+        </section>
+      )}
     </div>
   );
 }
@@ -1161,6 +1511,10 @@ export function RealityEngine() {
   const [collapsedDreams, setCollapsedDreams] = useState(false);
   const [revealCode, setRevealCode] = useState(false);
   const [pendingDreamAction, setPendingDreamAction] = useState<DemoAction | null>(null);
+  const [loadedArchive, setLoadedArchive] = useState<{
+    id: string;
+    archivedAt: string;
+  } | null>(null);
 
   const loadSnapshot = useCallback(async (preserveError = false) => {
     const response = await fetch("/api/demo", { cache: "no-store" });
@@ -1175,6 +1529,7 @@ export function RealityEngine() {
   }, []);
 
   useEffect(() => {
+    if (loadedArchive) return;
     loadSnapshot().catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
     const source = new EventSource("/api/events");
     source.onmessage = (message) => {
@@ -1194,7 +1549,46 @@ export function RealityEngine() {
       }
     };
     return () => source.close();
-  }, [loadSnapshot]);
+  }, [loadSnapshot, loadedArchive]);
+
+  const openArchive = (archive: RealityRunArchive) => {
+    const activeReality = archive.realities.find(
+      (reality) => reality.id === archive.session.activeRealityId
+    ) ?? archive.realities.find((reality) => reality.depth === 0) ?? null;
+    setSnapshot((current) => ({
+      session: archive.session,
+      realities: archive.realities,
+      events: archive.events,
+      activeReality,
+      operation: null,
+      nextAction: null,
+      runtime: current?.runtime ?? {
+        codexMode: "mock",
+        persistence: "sqlite-fallback",
+        model: "gpt-5.6",
+        sdkVersion: "unknown"
+      }
+    }));
+    setLoadedArchive({ id: archive.id, archivedAt: archive.archivedAt });
+    setSelectedRealityId(activeReality?.id ?? null);
+    setInspectorTab("world");
+    setLocalOperation(null);
+    setTimelineIndex(null);
+    setCollapsedDreams(false);
+    setRevealCode(false);
+    setError(null);
+  };
+
+  const returnToLive = async () => {
+    setLoadedArchive(null);
+    setTimelineIndex(null);
+    setCollapsedDreams(false);
+    setRevealCode(false);
+    setSelectedRealityId(null);
+    await loadSnapshot().catch((cause) => {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    });
+  };
 
   const act = async (action: DemoAction) => {
     const next = snapshot?.nextAction;
@@ -1275,16 +1669,10 @@ export function RealityEngine() {
     ?? replayedRealities[0]
     ?? null;
   const root = replayedRealities.find((reality) => reality.depth === 0) ?? null;
-  const allProposals = useMemo(
-    () => replayedRealities.flatMap((reality) => reality.proposals.map((proposal) => ({ ...proposal, owner: reality.name }))),
-    [replayedRealities]
-  );
   const memories = useMemo(
     () => replayedRealities.flatMap((reality) => reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []),
     [replayedRealities]
   );
-  const initialBelief = root?.beliefs.find((belief) => belief.origin === "initial") ?? root?.beliefs[0];
-  const finalBelief = root?.beliefs.at(-1);
   const activeOperation = snapshot?.operation ?? localOperation;
   const passedAnchorCount = snapshot?.session.anchorResults.filter((anchor) => anchor.status === "passed").length ?? 0;
   const graphRealities = collapsedDreams && root ? [root] : replayedRealities;
@@ -1347,7 +1735,11 @@ export function RealityEngine() {
       <section className="phase-header" data-testid="phase-header">
         <div>
           <span className="eyebrow">
-            {timelineIndex === null ? "DETERMINISTIC SCENARIO / PASSWORD RESET" : "TIMELINE REPLAY / VALIDATED MEMORY"}
+            {loadedArchive
+              ? "SAVED SCENARIO / PASSWORD RESET"
+              : timelineIndex === null
+                ? "DETERMINISTIC SCENARIO / PASSWORD RESET"
+                : "TIMELINE REPLAY / VALIDATED MEMORY"}
           </span>
           <h1>{phaseTitle(displayedPhase)}</h1>
         </div>
@@ -1366,6 +1758,19 @@ export function RealityEngine() {
           })}
         </ol>
       </section>
+
+      {loadedArchive && (
+        <section className="archive-view-banner" data-testid="archive-view-banner">
+          <History size={17} />
+          <span>
+            <b>Saved Reality timeline</b>
+            Read-only validated memory archived {new Date(loadedArchive.archivedAt).toLocaleString()}.
+          </span>
+          <button type="button" onClick={() => void returnToLive()}>
+            <Radio size={14} /> Return to live Reality
+          </button>
+        </section>
+      )}
 
       {error && <div className="error-banner"><XCircle size={17} /><span><b>Reality fracture</b>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error"><X size={15} /></button></div>}
 
@@ -1419,228 +1824,33 @@ export function RealityEngine() {
 
       <RealityTimeline events={snapshot.events} index={timelineIndex} onChange={setTimelineIndex} />
 
-      <section className="topology-workspace">
-        <div className="map-section">
-          <SectionHeading
-            icon={<Network size={18} />}
-            eyebrow="REALITY TOPOLOGY"
-            title="Counterfactual world graph"
-            meta={<span className="locus-key"><Radio size={11} /> LOCUS: {snapshot.activeReality?.name}</span>}
-          />
-          <RealityGraph
-            realities={graphRealities}
-            locusId={snapshot.session.activeRealityId}
-            selectedId={selectedReality.id}
-            pulseId={pulseRealityId}
-            onSelect={setSelectedRealityId}
-          />
-          <div className="map-footer">
-            <span><i className="key-waking" /> Waking Reality</span>
-            <span><i className="key-dream" /> Dream</span>
-            <span><i className="key-memory" /> Memory path</span>
-            <small>Select a world to inspect its own thread, worktree, evidence, and contract.</small>
-          </div>
-        </div>
-        <WorldInspector
-          reality={selectedReality}
-          locus={selectedReality.id === snapshot.session.activeRealityId}
-          tab={inspectorTab}
-          operation={activeOperation}
-          now={now}
-          onTab={setInspectorTab}
-        />
-      </section>
-
-      <section className="world-ledger">
-        <div className="ledger-column">
-          <SectionHeading
-            icon={<Search size={18} />}
-            eyebrow="UNCERTAINTY LEDGER"
-            title="Dream proposals"
-            meta={<span className="count-label">{allProposals.filter((proposal) => proposal.status !== "resolved").length} unresolved</span>}
-          />
-          <div className="proposal-list">
-            {allProposals.length ? allProposals.map((proposal) => (
-              <article className={`proposal-row proposal-${proposal.status}`} key={proposal.id}>
-                <span className="proposal-status"><CircleDot size={14} />{proposal.status}</span>
-                <div>
-                  <small>{proposal.owner} / {proposal.title}</small>
-                  <h3>{proposal.uncertainty}</h3>
-                  <p>{proposal.rationale}</p>
-                  <span className="proposal-metadata">
-                    <b>estimate: {Math.round((proposal.impactProbability ?? 0.5) * 100)}% impact</b>
-                    <b>estimate: {(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</b>
-                    <b>estimate: {proposal.costClass ?? "unscored"} cost</b>
-                  </span>
-                </div>
-                <ChevronRight size={16} />
-              </article>
-            )) : <EmptyState icon={<MoonStar size={19} />}>No uncertainty has been made concrete.</EmptyState>}
-          </div>
-        </div>
-
-        <div className="ledger-column">
-          <SectionHeading
-            icon={<UsersRound size={18} />}
-            eyebrow={`SUBJECTS / ${selectedReality.name}`}
-            title="Bounded investigations"
-            meta={<span className="count-label">{selectedReality.subjects.length} subjects</span>}
-          />
-          <div className="subject-list">
-            {selectedReality.subjects.length ? selectedReality.subjects.map((subject) => (
-              <article className="subject-row" key={subject.id}>
-                <span className="subject-initial">{subject.name[0]}</span>
-                <div><h3>{subject.name}<small>{subject.role}</small></h3><p>{subject.findings[0] ?? subject.mission}</p></div>
-                <span className={`subject-state subject-${subject.status}`}>{subject.status}</span>
-              </article>
-            )) : <EmptyState icon={<UsersRound size={19} />}>No Subjects have entered this Reality.</EmptyState>}
-          </div>
-        </div>
-
-        <div className="ledger-column">
-          <SectionHeading
-            icon={<FlaskConical size={18} />}
-            eyebrow={`EVIDENCE / ${selectedReality.name}`}
-            title="Experienced facts"
-            meta={<span className="count-label">{selectedReality.evidence.length} items</span>}
-          />
-          <div className="evidence-list">
-            {selectedReality.evidence.length ? selectedReality.evidence.slice().reverse().map((evidence) => {
-              const wakeSource = evidence.source.startsWith("wake-report:")
-                ? evidence.source.slice("wake-report:".length)
-                : null;
-              const sourceReality = wakeSource
-                ? snapshot.realities.find((reality) => reality.id === wakeSource || reality.name === wakeSource)
-                : null;
-              const title = evidence.title.startsWith("Memory inherited from ")
-                ? `Memory returned from ${sourceReality?.name ?? "child Reality"}`
-                : evidence.title;
-              return (
-                <article className="evidence-row" key={evidence.id}>
-                  <span className={`evidence-icon evidence-${evidence.kind}`}>
-                    {evidence.kind === "test" ? <TestTube2 size={15} /> : evidence.kind === "code" ? <Code2 size={15} /> : <CircleDot size={15} />}
-                  </span>
-                  <div>
-                    <small>{evidence.kind} / {evidence.provenance ?? "observed"} / {evidence.source}</small>
-                    <h3>{title}</h3><p>{evidence.summary}</p>
-                  </div>
-                </article>
-              );
-            }) : <EmptyState icon={<FlaskConical size={19} />}>No decisive evidence exists in this world yet.</EmptyState>}
-          </div>
-        </div>
-      </section>
-
-      <section className="memory-workspace">
-        <SectionHeading
-          icon={<BrainCircuit size={18} />}
-          eyebrow="MEMORIES"
-          title="Belief transformation"
-          meta={<span className="validated-count"><ShieldCheck size={13} />{memories.length} validated reports</span>}
-        />
-        <div className="belief-strip">
-          <div>
-            <span>INITIAL BELIEF / MODEL-REPORTED {Math.round((initialBelief?.confidence ?? 0) * 100)}%</span>
-            <p>{initialBelief?.statement ?? "No initial belief recorded."}</p>
-          </div>
-          <span className="belief-route"><i /><ArrowRight size={18} /><i /></span>
-          <div>
-            <span>CURRENT WAKING BELIEF / MODEL-REPORTED {Math.round((finalBelief?.confidence ?? 0) * 100)}%</span>
-            <p>{finalBelief?.statement ?? "Awaiting returned memory."}</p>
-          </div>
-        </div>
-        <div className="memory-list">
-          {memories.length
-            ? memories.slice().reverse().map(({ reality, report }) => (
-                <MemoryReport
-                  reality={reality}
-                  report={report}
-                  seal={snapshot.session.memoryIntegrity.find((entry) =>
-                    entry.realityId === reality.id
-                  )}
-                  key={reality.id}
-                />
-              ))
-            : <EmptyState icon={<ArrowUpFromLine size={19} />}>Kick a Dream to return a validated Wake Report.</EmptyState>}
-        </div>
-      </section>
-
-      <section className="proof-workspace">
-        <div className="proof-column anchor-proof">
-          <SectionHeading
-            icon={<LockKeyhole size={18} />}
-            eyebrow="REALITY ANCHORS"
-            title="Parent-owned invariants"
-            meta={<span className="count-label">{snapshot.session.anchorResults.length || root?.anchors.length || 0} anchors</span>}
-          />
-          <div className="anchor-list">
-            {(snapshot.session.anchorResults.length
-              ? snapshot.session.anchorResults
-              : root?.anchors.map((anchor) => ({
-                  anchorId: anchor.id,
-                  name: anchor.name,
-                  status: anchor.status === "failed" ? "failed" as const : "pending" as const,
-                  output: ""
-                })) ?? []
-            ).map((anchor) => (
-              <article className={`anchor-row anchor-${anchor.status}`} key={anchor.anchorId}>
-                <span>{anchor.status === "passed" ? <Check size={15} /> : anchor.status === "failed" ? <X size={15} /> : <LockKeyhole size={14} />}</span>
-                <div>
-                  <h3>{anchor.name}</h3>
-                  <p>{anchor.status === "passed" ? "Immutable requirement survived synthesis." : anchor.status === "failed" ? "Waking implementation violated this anchor." : "Hidden from child mutation; awaiting synthesis."}</p>
-                  {"command" in anchor && anchor.command && <small>{anchor.command} / {anchor.durationMs}ms</small>}
-                </div>
-              </article>
-            ))}
-            {snapshot.session.regressionResult && (
-              <article className={`anchor-row anchor-${snapshot.session.regressionResult.status}`} data-testid="regression-proof">
-                <span>{snapshot.session.regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
-                <div>
-                  <h3>Inherited regression suite</h3>
-                  <p>
-                    {snapshot.session.regressionResult.status === "passed"
-                      ? `${snapshot.session.regressionResult.testFiles.length} test artefacts agree with the waking implementation.`
-                      : "A returned or discovered test still contradicts the waking implementation."}
-                  </p>
-                  <small>{snapshot.session.regressionResult.command} / {snapshot.session.regressionResult.durationMs}ms</small>
-                </div>
-              </article>
-            )}
-          </div>
-        </div>
-
-        <div className="proof-column event-proof">
-          <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
-          <EventFeed events={visibleEvents} realities={replayedRealities} now={now} />
-        </div>
-      </section>
-
-      {snapshot.session.finalDiff && (
-        <section className="diff-workspace">
-          <SectionHeading
-            icon={<FileDiff size={18} />}
-            eyebrow="WAKING IMPLEMENTATION"
-            title="Final Git diff"
-            meta={(
-              <span className="diff-actions">
-                <span className="diff-meta"><GitBranch size={13} />{root?.branchName}</span>
-                <button type="button" onClick={() => setRevealCode((current) => !current)} data-testid="reveal-code">
-                  <Eye size={13} /> {revealCode ? "Hide code" : "Reveal code"}
-                </button>
-              </span>
-            )}
-          />
-          {revealCode
-            ? <pre>{snapshot.session.finalDiff}</pre>
-            : <EmptyState icon={<FileDiff size={19} />}>The implementation is preserved behind the returned knowledge. Reveal it when the proof matters.</EmptyState>}
-        </section>
-      )}
+      <RealityWorkspace
+        realities={replayedRealities}
+        sourceRealities={snapshot.realities}
+        events={visibleEvents}
+        activeRealityId={snapshot.session.activeRealityId ?? root?.id ?? ""}
+        selectedRealityId={selectedReality.id}
+        onSelectReality={setSelectedRealityId}
+        inspectorTab={inspectorTab}
+        onInspectorTab={setInspectorTab}
+        operation={activeOperation}
+        now={now}
+        pulseRealityId={pulseRealityId}
+        graphRealities={graphRealities}
+        memoryIntegrity={snapshot.session.memoryIntegrity}
+        anchorResults={snapshot.session.anchorResults}
+        regressionResult={snapshot.session.regressionResult}
+        finalDiff={snapshot.session.finalDiff}
+        revealCode={revealCode}
+        onToggleCode={() => setRevealCode((current) => !current)}
+      />
 
       <AdminDrawer
         open={adminOpen}
         onClose={() => setAdminOpen(false)}
         onFullReset={(cleanSnapshot) => {
           setSnapshot(cleanSnapshot);
+          setLoadedArchive(null);
           setSelectedRealityId(cleanSnapshot.session.activeRealityId);
           setInspectorTab("world");
           setLocalOperation(null);
@@ -1649,6 +1859,7 @@ export function RealityEngine() {
           setCollapsedDreams(false);
           setRevealCode(false);
         }}
+        onLoadArchive={openArchive}
         onStateChanged={loadSnapshot}
       />
 
@@ -1665,14 +1876,16 @@ export function RealityEngine() {
         />
       )}
 
-      <ActionDock
-        snapshot={snapshot}
-        operation={activeOperation}
-        loading={loading}
-        replaying={timelineIndex !== null}
-        onAction={requestAction}
-        onReset={reset}
-      />
+      {!loadedArchive && (
+        <ActionDock
+          snapshot={snapshot}
+          operation={activeOperation}
+          loading={loading}
+          replaying={timelineIndex !== null}
+          onAction={requestAction}
+          onReset={reset}
+        />
+      )}
     </main>
   );
 }

@@ -68,7 +68,7 @@ npm run codex:check
 npm run dev:real
 ```
 
-The SDK-spawned CLI uses `${CODEX_HOME:-~/.codex}/auth.json`. Every judge or contributor uses their own local Codex login; no credential is committed or copied into this project.
+The SDK-spawned CLI reuses `${CODEX_HOME:-~/.codex}/auth.json` and existing session state through an ignored, project-owned Codex home. Personal `config.toml`, plugins, and MCP servers are not inherited, so an unrelated MCP login cannot break a Reality and persisted Reality thread IDs can still resume. Every judge or contributor uses their own local Codex login; no credential content is committed, persisted, or emitted.
 
 API key alternative:
 
@@ -79,6 +79,8 @@ npm run dev:real
 ```
 
 Real Reality threads default to **GPT-5.6** with high reasoning, unrestricted writes inside their Reality worktree, network access, and live web search. `INCEPTION_CODEX_MODEL` is an explicit compatibility override.
+
+Set `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` only when a Mission intentionally needs personal Codex plugins or MCP servers. Those integrations must be authenticated and can then affect Codex startup. `INCEPTION_CODEX_RUNTIME_HOME` optionally relocates the isolated home.
 
 The real adapter:
 
@@ -113,6 +115,8 @@ An optional sealed intervention can assign one native Codex Subject as a bounded
 
 Forming the waking Reality creates isolated Git state but makes no Codex call. Subsequent explicit actions can generate multiple nested Dreams, return integrity-sealed memories upward, synthesise the waking implementation, run proofs, repair failures, and stabilise.
 
+Saved Missions reopen from the composer with the same topology, Reality inspector, uncertainty, Subject, evidence, memory, proof, event, timeline, and diff surfaces as the canonical scenario. They remain actionable unless already stabilised or fractured.
+
 ## Product Experience
 
 - central Reality tree with visible Dream depth;
@@ -124,7 +128,8 @@ Forming the waking Reality creates isolated Git state but makes no Codex call. S
 - timeline replay for demo compression and post-analysis;
 - Memories comparison, immutable proof status, and final Git diff;
 - Reality Totem checks, source/report digests, descendant seals, and automatic memory quarantine;
-- separate Admin view for SDK operations, OS processes, safe logs, stop, archive, reset, and cleanup.
+- separate Admin view for SDK operations, OS processes, safe logs, stop, archive, reset, and cleanup;
+- read-only reopening of archived password-reset timelines without replacing or mutating the live Reality.
 
 No raw chain-of-thought or raw model response is displayed or persisted.
 
@@ -164,7 +169,7 @@ npm run test:e2e
 npm run verify
 ```
 
-Playwright uses production rendering, a dedicated SQLite database, mock mode, and a dedicated worktree namespace. It covers desktop/mobile visual baselines, no-usage idle state, refresh during operations, event controls, timeline replay, nested Dreams, time dilation, Memories, proof, reset, and final diff.
+Playwright uses production rendering, a dedicated SQLite database, mock mode, and a dedicated worktree namespace. It covers desktop/mobile visual baselines, no-usage idle state, refresh during operations, event controls, timeline replay, nested Dreams, time dilation, Memories, proof, reset, final diff, saved Mission reopening, and archived password-reset timeline navigation.
 
 ## Codex Collaboration
 

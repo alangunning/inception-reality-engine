@@ -323,7 +323,8 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
 
   await expect(page.getByRole("heading", { name: "A waking world, one untested belief" })).toBeVisible();
   await expectNext(page, "Ask Codex to audit and improve password-reset security");
-  await expect(page.getByTestId("primary-action")).toContainText("Ask Codex");
+  await expect(page.getByTestId("primary-action")).toHaveText(/Run Codex audit/);
+  await expect(page.getByTestId("primary-action")).not.toContainText("password-reset security");
   await expect(page.getByTestId("action-dock")).toContainText("REHEARSED CODEX RUNTIME");
   await expect(page.getByTestId("reset-run")).toHaveText(/Full reset/);
   await expect(page.getByTestId("topbar-status").locator("a, button")).toHaveCount(0);
@@ -348,10 +349,80 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
     element.scrollWidth <= element.clientWidth
   );
   expect(dockFits).toBe(true);
+  const dockLayout = await page.getByTestId("action-dock").evaluate((element) => {
+    const progress = element.querySelector<HTMLElement>(".dock-progress");
+    const primary = element.querySelector<HTMLElement>(".primary-command");
+    const context = progress?.querySelector<HTMLElement>("strong");
+    return {
+      viewport: window.innerWidth,
+      progressWidth: progress?.getBoundingClientRect().width ?? 0,
+      primaryWidth: primary?.getBoundingClientRect().width ?? 0,
+      primaryHeight: primary?.getBoundingClientRect().height ?? 0,
+      contextFits: context ? context.scrollWidth <= context.clientWidth : false
+    };
+  });
+  expect(dockLayout.contextFits).toBe(true);
+  expect(dockLayout.primaryHeight).toBeLessThanOrEqual(44);
+  if (dockLayout.viewport > 760) {
+    expect(dockLayout.progressWidth).toBeGreaterThan(dockLayout.primaryWidth * 2);
+  }
 
   await expect(page).toHaveScreenshot("initial-idle.png", {
     fullPage: true
   });
+});
+
+test("saved password-reset runs open as read-only timelines and return to live state", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Archive navigation needs one browser target.");
+  const liveResponse = await page.request.get("/api/demo");
+  const live = await liveResponse.json();
+  const archivedAt = "2026-07-18T16:45:00.000Z";
+  const archive = {
+    id: "archive-password-reset",
+    session: live.session,
+    realities: live.realities,
+    events: live.events,
+    archivedAt
+  };
+  const summary = {
+    id: archive.id,
+    phase: archive.session.phase,
+    startedAt: archive.session.createdAt,
+    archivedAt,
+    realityCount: archive.realities.length,
+    eventCount: archive.events.length,
+    commandCount: 0,
+    failedCommandCount: 0,
+    recoveredAfterFailure: false,
+    failureKinds: {}
+  };
+  await page.route("**/api/admin/history**", (route) => {
+    const url = new URL(route.request().url());
+    if (url.searchParams.get("id") === archive.id) {
+      return route.fulfill({ json: { run: archive, summary } });
+    }
+    return route.fulfill({
+      json: {
+        current: { ...summary, id: "current" },
+        archives: [summary]
+      }
+    });
+  });
+
+  await page.goto("/");
+  await page.getByTestId("admin-trigger").click();
+  await page.getByRole("button", { name: /Open saved password-reset timeline/ }).click();
+
+  await expect(page.getByTestId("archive-view-banner")).toContainText("Saved Reality timeline");
+  await expect(page.getByTestId("phase-header")).toContainText("SAVED SCENARIO / PASSWORD RESET");
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(archive.realities.length);
+  await expect(page.getByTestId("reality-timeline")).toBeVisible();
+  await expect(page.getByTestId("action-dock")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Return to live Reality" }).click();
+  await expect(page.getByTestId("archive-view-banner")).toHaveCount(0);
+  await expect(page.getByTestId("phase-header")).toContainText("DETERMINISTIC SCENARIO / PASSWORD RESET");
+  await expect(page.getByTestId("action-dock")).toBeVisible();
 });
 
 test("live operation survives refresh and returns timestamped, filterable events", async ({ page }, testInfo) => {
@@ -364,6 +435,7 @@ test("live operation survives refresh and returns timestamped, filterable events
   await expect(page.getByTestId("operation-monitor")).toContainText(/Ask Codex to audit and improve password-reset security/i);
   await expect(page.getByTestId("operation-monitor")).toContainText(/\d+ SDK tools/);
   await expect(page.getByTestId("primary-action")).toBeDisabled();
+  await expect(page.getByTestId("primary-action")).toHaveText(/Codex working/);
 
   await page.reload();
   await expect(page.getByTestId("operation-monitor")).toBeVisible();
@@ -408,8 +480,10 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expectNext(page, "Create Dream: Under coordinated attack");
   await confirmDream(page);
   await expectNext(page, "Enter attacker, investigator, and test engineer into Under coordinated attack");
+  await expect(page.getByTestId("primary-action")).toHaveText(/Enter Subjects/);
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Ask Codex to investigate coordinated password-reset abuse");
+  await expect(page.getByTestId("primary-action")).toHaveText(/Run Codex investigation/);
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Create nested Dream: Rotating IP swarm");
   await confirmDream(page);
@@ -418,10 +492,13 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expectNext(page, "Kick Under coordinated attack: return validated memory");
   await page.getByTestId("kick-action").click();
   await expectNext(page, "Synthesise returned memories into the Waking Reality implementation");
+  await expect(page.getByTestId("primary-action")).toHaveText(/Synthesise memories/);
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Run 3 parent-owned requirements");
+  await expect(page.getByTestId("primary-action")).toHaveText(/Run anchor tests/);
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Stabilise Waking Reality");
+  await expect(page.getByTestId("primary-action")).toHaveText(/Stabilise Reality/);
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Reality stabilised");
 
@@ -458,6 +535,30 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   });
 });
 
+test("Mission Composer does not show a false real-mode warning while runtime data loads", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The loading-state regression needs one browser target.");
+  await page.route("**/api/missions/targets", (route) => route.fulfill({
+    json: { targets: [] }
+  }));
+  await page.route("**/api/missions", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.fulfill({
+      json: {
+        runs: [],
+        runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
+        enabled: true
+      }
+    });
+  });
+
+  await page.goto("/missions/new");
+  await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
+  await expect(page.locator(".mission-nav")).toContainText("CHECKING RUNTIME");
+  await expect(page.getByText("Real mode required")).toHaveCount(0);
+  await expect(page.locator(".mission-nav")).toContainText("GPT-5.6");
+  await expect(page.getByText("Real mode required")).toHaveCount(0);
+});
+
 test("Mission Composer exposes general nested Reality and native Subject evidence", async ({ page }) => {
   const fixture = missionSnapshotFixture();
   expect("memoryIntegrity" in fixture.run).toBe(false);
@@ -470,6 +571,12 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
     contentType: "text/event-stream",
     body: "data: {\"type\":\"connected\"}\n\n"
   }));
+  await page.route("**/api/missions/mission-1", (route) => route.fulfill({
+    json: {
+      snapshot: fixture,
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }
+    }
+  }));
   await page.route("**/api/missions", async (route) => {
     if (route.request().method() === "POST") {
       missionPosts += 1;
@@ -478,7 +585,14 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
     }
     await route.fulfill({
       json: {
-        runs: [],
+        runs: [{
+          id: fixture.run.id,
+          name: fixture.run.definition.name,
+          scope: fixture.run.definition.scope,
+          status: fixture.run.status,
+          realityCount: fixture.run.realities.length,
+          updatedAt: fixture.run.updatedAt
+        }],
         runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
         enabled: true
       }
@@ -509,15 +623,21 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.locator(".mission-form")).toContainText("NO CODEX USAGE ON CREATE");
   await expect(page.getByTestId("training-target")).toContainText("VAmPI");
   await expect(page.getByTestId("training-target")).toContainText("OWASP CATALOGUE");
-  await expect(page.getByLabel("Reality name")).toHaveValue("VAmPI Authorization Breach");
-  await expect(page.getByLabel("Mission")).toHaveValue(/penetration-test VAmPI/i);
+  await expect(page.getByLabel("Reality name")).toHaveValue("VAmPI Authorization Review");
+  await expect(page.getByLabel("Mission")).toHaveValue(/authorized defensive source-code and local-test review/i);
   await expect(page.getByLabel("Scope")).toHaveValue(/Flask API authorization/i);
   await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/valid token prevents/i);
-  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/authorized for local security training/i);
+  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/authorized for defensive local security training/i);
   await expect(page.getByLabel("Local Git repository")).toHaveValue("");
   await expect(page.getByLabel(/Arm one bounded chaos-engineer intervention/)).not.toBeChecked();
   await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
   expect(targetPosts).toBe(0);
+
+  await page.locator(".mission-history").getByRole("button", { name: /VAmPI Authorization Breach/ }).click();
+  await expect(page.getByTestId("reality-workspace")).toBeVisible();
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(2);
+  await page.getByRole("button", { name: "New Mission" }).click();
+  await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
 
   await page.getByRole("button", { name: "Prepare VAmPI locally" }).click();
   await expect(page.getByLabel("Local Git repository")).toHaveValue("/tmp/example");
@@ -532,14 +652,18 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.getByRole("button", { name: "Form waking Reality" }).click();
   expect(missionPosts).toBe(1);
 
-  await expect(page.getByTestId("mission-reality-tree").locator(".mission-node")).toHaveCount(2);
-  await expect(page.locator(".mission-locus")).toContainText("Cross-user book secret");
-  await expect(page.locator(".mission-subjects article")).toHaveCount(3);
-  await expect(page.locator(".mission-subjects")).toContainText("Codex thread");
-  await expect(page.locator(".mission-event-list")).toContainText("Subject completed bounded investigation");
+  await expect(page.getByTestId("reality-workspace")).toBeVisible();
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(2);
+  await expect(page.locator(".locus-key")).toContainText("Cross-user book secret");
+  await expect(page.locator(".subject-list .subject-row")).toHaveCount(3);
+  await page.getByRole("tab", { name: "runtime" }).click();
+  await expect(page.locator(".runtime-list")).toContainText("Codex thread");
+  await expect(page.getByTestId("event-feed")).toContainText("Subject completed bounded investigation");
   await expect(page.getByTestId("memory-integrity")).toContainText("Parent policy armed");
   await expect(page.locator(".mission-action-dock")).toContainText("Kick Cross-user book secret");
-  await expect(page.locator(".mission-proof")).toContainText("UNVERIFIED");
+  await expect(page.locator(".mission-action-dock > button:not(.mission-delete)")).toHaveText(/Kick and return memory/);
+  await expect(page.locator(".mission-action-dock > button:not(.mission-delete)")).not.toContainText("Cross-user book secret");
+  await expect(page.locator(".anchor-list .anchor-pending")).toContainText("Authorization regression");
 
   const viewportFits = await page.evaluate(() =>
     document.documentElement.scrollWidth <= window.innerWidth

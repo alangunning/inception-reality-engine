@@ -13,7 +13,8 @@ Do not expose real mode directly to an untrusted network. The prototype's action
 - Codex-facing structured outputs are validated with Zod before persistence.
 - Raw reasoning and raw SDK responses are never persisted or rendered.
 - Safe event metadata is allowlisted and secret-shaped values are redacted.
-- OAuth files and API keys remain outside the repository.
+- CLI authentication remains at the user's Codex home and is linked into the ignored runtime home; credential contents never enter application persistence, events, or exports.
+- Personal Codex configuration, plugins, and MCP servers are isolated by default. `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` deliberately widens that trust boundary.
 - A child Reality cannot mutate parent-owned anchors.
 - Wake artefact paths must remain inside the Reality worktree.
 - Every admitted Wake Report must retain a matching SHA-256 report digest, source-state digest, source commit, parent anchor fingerprint, evidence/artefact checks, and verified descendant-seal chain.

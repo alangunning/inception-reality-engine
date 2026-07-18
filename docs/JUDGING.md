@@ -53,6 +53,8 @@ npm run dev:real
 
 Or set `CODEX_API_KEY`/`OPENAI_API_KEY` in an ignored `.env`. Real mode pins `gpt-5.6` unless `INCEPTION_CODEX_MODEL` is explicitly set. It grants Codex unrestricted access inside Reality-owned worktrees and enables network access.
 
+Reality Engine reuses the judge's CLI authentication while isolating personal Codex plugins and MCPs by default. This makes the evaluation reproducible even when the judge has unrelated integrations configured; `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` is an explicit opt-in for missions that need them.
+
 The **Mission Composer** link appears in real mode. Its default is a pinned VAmPI authorization-security mission. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit audit action. The optional sealed intervention is off by default for VAmPI because its published vulnerabilities already provide authorized adversarial evidence.
 
 ## What to Inspect

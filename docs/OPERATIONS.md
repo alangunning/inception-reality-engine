@@ -30,7 +30,9 @@ npm run codex:check
 npm run dev:real
 ```
 
-Alternatively set `CODEX_API_KEY` or `OPENAI_API_KEY` in `.env`. Credentials are never copied into the repository, database, events, Wake Reports, or exported run logs.
+The runtime links that auth file and existing CLI session state into `.inception/codex-home`, but does not inherit the user's `config.toml`, plugins, or MCP servers. This prevents an unrelated or expired MCP login from stopping `codex exec` before a Reality begins while allowing persisted Reality thread IDs to resume. Alternatively set `CODEX_API_KEY` or `OPENAI_API_KEY` in `.env`. Credential contents are never committed, persisted in application data, emitted as events, included in Wake Reports, or exported in run logs.
+
+For a Mission that deliberately depends on personal Codex integrations, set `INCEPTION_CODEX_INHERIT_USER_CONFIG=true`. Authenticate every enabled MCP first; its startup policy then applies to Reality executions.
 
 ## Usage Boundaries
 
@@ -57,7 +59,7 @@ Pinned training targets remain in `.inception/training-targets` as an ignored re
 
 ## Retrospective Logs
 
-The Admin drawer exports the current or archived run as JSON. Exports include:
+The Admin drawer exports the current or archived run as JSON. An archived password-reset run can also be opened in the full Reality Engine as a read-only timeline. While that snapshot is open, live SSE updates and mutation controls are suspended; **Return to live Reality** reloads current persisted state. Exports and reopened runs include:
 
 - Reality state and hierarchy;
 - safe timestamped events;
@@ -75,7 +77,9 @@ They exclude raw reasoning, unrestricted SDK event payloads, raw Subject message
 | --- | --- |
 | `INCEPTION_CODEX_MODE` | `mock` or `real` |
 | `INCEPTION_CODEX_MODEL` | Real-mode model override; default `gpt-5.6` |
-| `CODEX_HOME` | Non-standard Codex CLI home |
+| `INCEPTION_CODEX_RUNTIME_HOME` | Optional isolated runtime-home path; default `.inception/codex-home` |
+| `INCEPTION_CODEX_INHERIT_USER_CONFIG` | Opt in to personal Codex config, plugins, and MCPs; default `false` |
+| `CODEX_HOME` | Source home for non-standard Codex CLI authentication |
 | `CODEX_API_KEY` | Preferred explicit API credential |
 | `OPENAI_API_KEY` | Fallback API credential |
 | `DATABASE_URL` | SQLite URL |
