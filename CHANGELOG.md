@@ -11,4 +11,7 @@ Hackathon submission candidate.
 - Added validated Wake Reports, synthesis, immutable anchors, and comprehensive stabilisation proof.
 - Added Prisma/SQLite persistence, SSE, event replay, safe run export, Admin stop/reset, and worktree recovery.
 - Added real-mode Mission Composer for arbitrary local Git repositories.
+- Unified canonical and generalized Mission shells, including Admin controls and fixed action navigation.
+- Added clickable validated event records with bounded, redacted plan snapshots.
+- Reframed the curated VAmPI flow as a local documented-regression maintenance task.
 - Added Playwright visual coverage and isolated test worktrees.

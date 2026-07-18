@@ -8,14 +8,23 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
     const { id } = await context.params;
     const container = getRuntime();
-    return Response.json({
+    const body = {
       snapshot: await container.missionOrchestrator.snapshot(id),
       runtime: container.codexRuntime.info()
-    }, { headers: { "Cache-Control": "no-store" } });
+    };
+    const download = new URL(request.url).searchParams.get("download") === "1";
+    return Response.json(body, {
+      headers: {
+        "Cache-Control": "no-store",
+        ...(download ? {
+          "Content-Disposition": `attachment; filename="inception-mission-${id.replace(/[^a-z0-9-]/gi, "-")}.json"`
+        } : {})
+      }
+    });
   } catch (error) {
     return Response.json(
       { error: error instanceof Error ? error.message : "Could not load the mission." },

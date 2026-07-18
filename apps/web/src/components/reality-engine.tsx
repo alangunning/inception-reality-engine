@@ -81,6 +81,10 @@ interface SafeEventMetadata {
   exitCode?: number;
   completedItems?: number;
   totalItems?: number;
+  planSteps?: Array<{
+    text: string;
+    status: "pending" | "completed";
+  }>;
   inputTokens?: number;
   outputTokens?: number;
   reasoningTokens?: number;
@@ -120,6 +124,12 @@ interface RunLogSummary {
   failedCommandCount: number;
   recoveredAfterFailure: boolean;
   failureKinds: Record<string, number>;
+}
+
+export interface RealityPhaseStep {
+  label: string;
+  complete: boolean;
+  current: boolean;
 }
 
 async function readApiResponse<T extends object>(response: Response, fallback: string): Promise<T> {
@@ -371,6 +381,67 @@ export function SectionHeading({ icon, eyebrow, title, meta }: {
 
 export function EmptyState({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   return <div className="empty-state">{icon}<span>{children}</span></div>;
+}
+
+export function RealityTopbar({
+  codexMode,
+  model,
+  environment,
+  realityCount,
+  actions
+}: {
+  codexMode: "mock" | "real";
+  model: string;
+  environment: string;
+  realityCount: number;
+  actions: ReactNode;
+}) {
+  return (
+    <header className="topbar">
+      <div className="brand">
+        <div className="brand-symbol"><Layers3 size={22} /></div>
+        <div><strong>INCEPTION</strong><span>Reality Engine</span></div>
+      </div>
+      <div className="topbar-controls">
+        <div className="topbar-status" data-testid="topbar-status" role="status" aria-label="Reality Engine status">
+          <span className="stream-status"><Radio size={13} /> LIVE MEMORY STREAM</span>
+          <span><BrainCircuit size={13} /> {codexMode.toUpperCase()} CODEX / {model.toUpperCase()}</span>
+          <span><Layers3 size={13} /> {environment.toUpperCase()}</span>
+          <span><Network size={13} /> {realityCount} REALITIES</span>
+        </div>
+        <nav className="topbar-actions" data-testid="topbar-actions" aria-label="Reality Engine actions">
+          {actions}
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+export function RealityPhaseHeader({
+  eyebrow,
+  title,
+  steps
+}: {
+  eyebrow: string;
+  title: string;
+  steps: RealityPhaseStep[];
+}) {
+  return (
+    <section className="phase-header" data-testid="phase-header">
+      <div>
+        <span className="eyebrow">{eyebrow}</span>
+        <h1>{title}</h1>
+      </div>
+      <ol className="phase-track" aria-label="Reality progress">
+        {steps.map((step, index) => (
+          <li className={`${step.complete ? "is-complete" : ""} ${step.current ? "is-current" : ""}`} key={step.label}>
+            <span>{step.complete ? <Check size={12} /> : index + 1}</span>
+            <b>{step.label}</b>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
 }
 
 export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
@@ -725,6 +796,21 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<EventFamily>("all");
   const [sort, setSort] = useState<EventSort>("newest");
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null;
+  const selectedReality = selectedEvent
+    ? realities.find((reality) => reality.id === selectedEvent.realityId)
+    : null;
+
+  useEffect(() => {
+    if (!selectedEvent) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedEventId(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedEvent]);
+
   const filteredEvents = useMemo(() => {
     const normalisedQuery = query.trim().toLowerCase();
     return events
@@ -739,7 +825,8 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
           reality?.name,
           metadata.stage,
           metadata.status,
-          metadataDetail(metadata)
+          metadataDetail(metadata),
+          metadata.planSteps?.map((step) => step.text).join(" ")
         ].filter(Boolean).join(" ").toLowerCase().includes(normalisedQuery);
       })
       .sort((left, right) => {
@@ -799,7 +886,15 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
         const metadata = safeEventMetadata(event);
         const detail = metadataDetail(metadata);
         return (
-          <div className="event-row" data-testid="event-row" key={event.id}>
+          <button
+            type="button"
+            className={`event-row ${selectedEventId === event.id ? "is-selected" : ""}`}
+            data-testid="event-row"
+            key={event.id}
+            onClick={() => setSelectedEventId(event.id)}
+            aria-haspopup="dialog"
+            aria-label={`Inspect event: ${event.summary}`}
+          >
             <time dateTime={event.occurredAt}>
               <b>{formatClock(event.occurredAt)}</b>
               <small>{relativeAge(now, event.occurredAt)}</small>
@@ -819,22 +914,150 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
               {detail && <code>{detail}</code>}
               <small>{reality?.name ?? "Reality"}</small>
             </div>
-          </div>
+            <ChevronRight className="event-open" size={14} aria-hidden="true" />
+          </button>
         );
       })}
       {!renderedEvents.length && (
         <EmptyState icon={<Search size={18} />}>No Reality events match this view.</EmptyState>
       )}
+      {selectedEvent && (
+        <EventDetailDialog
+          event={selectedEvent}
+          reality={selectedReality ?? null}
+          now={now}
+          onClose={() => setSelectedEventId(null)}
+        />
+      )}
     </div>
   );
 }
 
-function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged }: {
+function EventDetailDialog({
+  event,
+  reality,
+  now,
+  onClose
+}: {
+  event: RealityEvent;
+  reality: Reality | null;
+  now: number;
+  onClose(): void;
+}) {
+  const metadata = safeEventMetadata(event);
+  const planSteps = metadata.planSteps ?? [];
+  const payloadEntries = Object.entries(event.payload)
+    .filter(([key]) => key !== "metadata");
+  const eventRecord = {
+    id: event.id,
+    type: event.type,
+    realityId: event.realityId,
+    dreamTime: event.dreamTime,
+    occurredAt: event.occurredAt,
+    payload: Object.fromEntries(payloadEntries),
+    metadata
+  };
+
+  return (
+    <div className="event-detail-overlay" role="presentation" onMouseDown={(click) => {
+      if (click.target === click.currentTarget) onClose();
+    }}>
+      <aside
+        className="event-detail-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="event-detail-title"
+        data-testid="event-detail"
+      >
+        <header>
+          <div>
+            <span className="eyebrow">VALIDATED REALITY EVENT</span>
+            <h2 id="event-detail-title">{metadata.stage ?? event.type.replace(".", " / ")}</h2>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close event details" title="Close">
+            <X size={17} />
+          </button>
+        </header>
+
+        <div className="event-detail-body">
+          <section className="event-detail-summary">
+            <span className={`event-mark event-${event.type.split(".")[0]}`} />
+            <div>
+              <small>{metadata.status ?? event.type}</small>
+              <strong>{event.summary}</strong>
+              {metadata.diagnostic && <p>{metadata.diagnostic}</p>}
+            </div>
+          </section>
+
+          <dl className="event-detail-facts">
+            <div><dt>REALITY</dt><dd>{reality?.name ?? "Unknown Reality"}</dd></div>
+            <div><dt>EXACT TIME</dt><dd>{new Date(event.occurredAt).toLocaleString()}</dd></div>
+            <div><dt>AGE</dt><dd>{relativeAge(now, event.occurredAt)}</dd></div>
+            <div><dt>DREAM TIME</dt><dd>{event.dreamTime} minutes</dd></div>
+            <div><dt>EVENT ID</dt><dd><code>{event.id}</code></dd></div>
+            <div><dt>REALITY ID</dt><dd><code>{event.realityId}</code></dd></div>
+          </dl>
+
+          {metadata.totalItems !== undefined && (
+            <section className="event-plan-snapshot" data-testid="event-plan-snapshot">
+              <header>
+                <span>PLAN AT THIS EVENT</span>
+                <b>{metadata.completedItems ?? 0} / {metadata.totalItems} COMPLETE</b>
+              </header>
+              {planSteps.length ? (
+                <ol>
+                  {planSteps.map((step, index) => (
+                    <li className={`plan-step-${step.status}`} key={`${step.text}-${index}`}>
+                      {step.status === "completed" ? <CheckCircle2 size={14} /> : <CircleDot size={14} />}
+                      <span>{step.text}</span>
+                      <b>{step.status}</b>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p>Step text was not retained by the earlier runtime. The validated completion counts remain available.</p>
+              )}
+              {metadata.totalItems > planSteps.length && planSteps.length > 0 && (
+                <small>{planSteps.length} of {metadata.totalItems} bounded plan steps retained.</small>
+              )}
+            </section>
+          )}
+
+          <section className="event-record">
+            <header>
+              <span>COMPLETE VALIDATED EVENT RECORD</span>
+              <b>NO RAW MODEL REASONING</b>
+            </header>
+            <pre>{JSON.stringify(eventRecord, null, 2)}</pre>
+          </section>
+        </div>
+      </aside>
+    </div>
+  );
+}
+
+export function AdminDrawer({
+  open,
+  onClose,
+  onFullReset,
+  onLoadArchive,
+  onStateChanged,
+  mission,
+  onMissionDeleted
+}: {
   open: boolean;
   onClose: () => void;
-  onFullReset: (snapshot: PresentedDemoSnapshot) => void;
-  onLoadArchive: (archive: RealityRunArchive) => void;
+  onFullReset?: (snapshot: PresentedDemoSnapshot) => void;
+  onLoadArchive?: (archive: RealityRunArchive) => void;
   onStateChanged: () => Promise<void>;
+  mission?: {
+    id: string;
+    name: string;
+    status: string;
+    eventCount: number;
+    realityCount: number;
+  };
+  onMissionDeleted?: () => void;
 }) {
   const [processes, setProcesses] = useState<CodexProcess[]>([]);
   const [sdkOperations, setSdkOperations] = useState<CodexSdkOperation[]>([]);
@@ -898,18 +1121,34 @@ function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged
     }
   };
 
-  const fullReset = async () => {
-    if (!window.confirm("Full reset stops active Codex CLI executions, archives the validated run log, deletes active Reality state, removes registered and orphaned worktrees, prunes Inception branches, and starts a clean waking Reality. Continue?")) return;
+  const cleanup = async () => {
+    const confirmed = mission
+      ? window.confirm(`Delete Mission "${mission.name}" and clean up every Mission-owned worktree and branch? Other saved Missions and the canonical scenario are not changed.`)
+      : window.confirm("Full reset stops active Codex CLI executions, archives the validated run log, deletes active Reality state, removes registered and orphaned worktrees, prunes Inception branches, and starts a clean waking Reality. Continue?");
+    if (!confirmed) return;
     setBusy("resetting");
     setAdminError(null);
     try {
+      if (mission) {
+        const response = await fetch(`/api/missions/${encodeURIComponent(mission.id)}`, {
+          method: "DELETE"
+        });
+        const body = await readApiResponse<{ error?: string }>(
+          response,
+          "Could not delete the Mission."
+        );
+        if (!response.ok) throw new Error(body.error ?? "Could not delete the Mission.");
+        onMissionDeleted?.();
+        onClose();
+        return;
+      }
       const response = await fetch("/api/admin/reset", { method: "POST" });
       const body = await readApiResponse<{
         snapshot?: PresentedDemoSnapshot;
         error?: string;
       }>(response, "Could not fully reset the Reality Engine.");
       if (!response.ok || !body.snapshot) throw new Error(body.error ?? "Could not fully reset the Reality Engine.");
-      onFullReset(body.snapshot);
+      onFullReset?.(body.snapshot);
       setProcesses([]);
       onClose();
     } catch (cause) {
@@ -933,7 +1172,7 @@ function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged
       if (!response.ok || !body.run) {
         throw new Error(body.error ?? "Could not open the saved Reality timeline.");
       }
-      onLoadArchive(body.run);
+      onLoadArchive?.(body.run);
       onClose();
     } catch (cause) {
       setAdminError(cause instanceof Error ? cause.message : String(cause));
@@ -1001,7 +1240,17 @@ function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged
             <span><History size={16} /> RETROSPECTIVE RUN LOG</span>
             <b>{archivedLogs.length} ARCHIVED</b>
           </div>
-          {currentLog && (
+          {mission && (
+            <div className="run-log-summary">
+              <div>
+                <span><b>{mission.eventCount}</b> Mission events</span>
+                <span><b>{mission.realityCount}</b> Realities</span>
+                <span><b>{mission.status}</b> state</span>
+              </div>
+              <small>The active Mission timeline is available in the shared Reality Events stream. Canonical archives remain available below for retrospective comparison.</small>
+            </div>
+          )}
+          {!mission && currentLog && (
             <div className="run-log-summary">
               <div>
                 <span><b>{currentLog.eventCount}</b> safe events</span>
@@ -1019,8 +1268,14 @@ function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged
               <small>Validated events only. Raw model reasoning and raw Codex command output are not retained.</small>
             </div>
           )}
-          <a className="admin-export" href="/api/admin/history?id=current&download=1" download>
-            <Download size={15} /> Export current safe run log
+          <a
+            className="admin-export"
+            href={mission
+              ? `/api/missions/${encodeURIComponent(mission.id)}?download=1`
+              : "/api/admin/history?id=current&download=1"}
+            download
+          >
+            <Download size={15} /> {mission ? "Export Mission safe run log" : "Export current safe run log"}
           </a>
           {archivedLogs.length > 0 && (
             <div className="archive-list">
@@ -1029,8 +1284,9 @@ function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged
                   <button
                     type="button"
                     onClick={() => void loadArchive(archive)}
-                    disabled={busy !== "idle"}
+                    disabled={busy !== "idle" || !onLoadArchive}
                     aria-label={`Open saved password-reset timeline from ${new Date(archive.archivedAt).toLocaleString()}`}
+                    title={onLoadArchive ? "Open saved canonical timeline" : "Return to the canonical scenario to open this timeline"}
                   >
                     <History size={13} />
                     <span>Phase {archive.phase} / {archive.eventCount} events</span>
@@ -1052,11 +1308,17 @@ function AdminDrawer({ open, onClose, onFullReset, onLoadArchive, onStateChanged
 
         <section className="admin-section admin-danger">
           <div className="admin-section-title">
-            <span><Trash2 size={16} /> FULL RESET</span>
+            <span><Trash2 size={16} /> {mission ? "DELETE MISSION" : "FULL RESET"}</span>
           </div>
-          <p>Stops Codex, archives safe telemetry, deletes active state, removes all Inception worktrees and branches, then forms one clean waking Reality.</p>
-          <button type="button" onClick={fullReset} disabled={busy !== "idle"}>
-            <Trash2 size={15} /> {busy === "resetting" ? "Resetting and cleaning" : "Full reset and cleanup"}
+          <p>
+            {mission
+              ? "Deletes this saved Mission and removes its isolated Reality worktrees and branches. Other Missions and the canonical scenario remain unchanged."
+              : "Stops Codex, archives safe telemetry, deletes active state, removes all Inception worktrees and branches, then forms one clean waking Reality."}
+          </p>
+          <button type="button" onClick={cleanup} disabled={busy !== "idle"}>
+            <Trash2 size={15} /> {busy === "resetting"
+              ? "Cleaning Reality state"
+              : mission ? "Delete Mission and cleanup" : "Full reset and cleanup"}
           </button>
         </section>
 
@@ -1706,19 +1968,13 @@ export function RealityEngine() {
 
   return (
     <main className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-symbol"><Layers3 size={22} /></div>
-          <div><strong>INCEPTION</strong><span>Reality Engine</span></div>
-        </div>
-        <div className="topbar-controls">
-          <div className="topbar-status" data-testid="topbar-status" role="status" aria-label="Reality Engine status">
-            <span className="stream-status"><Radio size={13} /> LIVE MEMORY STREAM</span>
-            <span><BrainCircuit size={13} /> {snapshot.runtime.codexMode.toUpperCase()} CODEX / {snapshot.runtime.model.toUpperCase()}</span>
-            <span><Layers3 size={13} /> {snapshot.runtime.persistence === "prisma" ? "PRISMA" : "PORTABLE SQLITE"}</span>
-            <span><Network size={13} /> {snapshot.realities.length} REALITIES</span>
-          </div>
-          <nav className="topbar-actions" data-testid="topbar-actions" aria-label="Reality Engine actions">
+      <RealityTopbar
+        codexMode={snapshot.runtime.codexMode}
+        model={snapshot.runtime.model}
+        environment={snapshot.runtime.persistence === "prisma" ? "PRISMA" : "PORTABLE SQLITE"}
+        realityCount={snapshot.realities.length}
+        actions={(
+          <>
             {snapshot.runtime.codexMode === "real" && (
               <a className="mission-link" href="/missions/new" title="Mission Composer" aria-label="Open Mission Composer">
                 <GitBranch size={13} />
@@ -1728,36 +1984,27 @@ export function RealityEngine() {
             <button type="button" className="admin-trigger" data-testid="admin-trigger" onClick={() => setAdminOpen(true)} title="Admin controls" aria-label="Open admin controls">
               <Settings size={15} />
             </button>
-          </nav>
-        </div>
-      </header>
+          </>
+        )}
+      />
 
-      <section className="phase-header" data-testid="phase-header">
-        <div>
-          <span className="eyebrow">
-            {loadedArchive
-              ? "SAVED SCENARIO / PASSWORD RESET"
-              : timelineIndex === null
-                ? "DETERMINISTIC SCENARIO / PASSWORD RESET"
-                : "TIMELINE REPLAY / VALIDATED MEMORY"}
-          </span>
-          <h1>{phaseTitle(displayedPhase)}</h1>
-        </div>
-        <ol className="phase-track" aria-label="Demo progress">
-          {stages.map((stage, index) => {
+      <RealityPhaseHeader
+        eyebrow={loadedArchive
+          ? "SAVED SCENARIO / PASSWORD RESET"
+          : timelineIndex === null
+            ? "DETERMINISTIC SCENARIO / PASSWORD RESET"
+            : "TIMELINE REPLAY / VALIDATED MEMORY"}
+        title={phaseTitle(displayedPhase)}
+        steps={stages.map((stage, index) => {
             const previousEnd = stages[index - 1]?.endPhase ?? 0;
-            const complete = displayedPhase >= stage.endPhase;
-            const current = displayedPhase > previousEnd && displayedPhase < stage.endPhase
-              || displayedPhase === 0 && index === 0;
-            return (
-              <li className={`${complete ? "is-complete" : ""} ${current ? "is-current" : ""}`} key={stage.label}>
-                <span>{complete ? <Check size={12} /> : index + 1}</span>
-                <b>{stage.label}</b>
-              </li>
-            );
+            return {
+              label: stage.label,
+              complete: displayedPhase >= stage.endPhase,
+              current: displayedPhase > previousEnd && displayedPhase < stage.endPhase
+                || displayedPhase === 0 && index === 0
+            };
           })}
-        </ol>
-      </section>
+      />
 
       {loadedArchive && (
         <section className="archive-view-banner" data-testid="archive-view-banner">

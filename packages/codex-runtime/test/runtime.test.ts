@@ -264,6 +264,37 @@ describe("Codex runtime", () => {
     });
   });
 
+  it("retains a bounded, redacted plan snapshot without raw reasoning", () => {
+    const event = toSafeCodexRuntimeEvent({
+      type: "item.updated",
+      item: {
+        type: "todo_list",
+        items: [
+          { text: "Inspect authorization decorators", completed: true },
+          { text: "Run tests with OPENAI_API_KEY=sk-example-secret", completed: true },
+          { text: "Return the smallest evidence-backed patch", completed: false }
+        ]
+      }
+    }, "Authorization Dream", "authorization review");
+
+    expect(event).toMatchObject({
+      type: "progress",
+      summary: "Plan updated: 2 of 3 steps complete.",
+      metadata: {
+        stage: "plan",
+        status: "updated",
+        completedItems: 2,
+        totalItems: 3,
+        planSteps: [
+          { text: "Inspect authorization decorators", status: "completed" },
+          { text: "Run tests with OPENAI_API_KEY=[REDACTED]", status: "completed" },
+          { text: "Return the smallest evidence-backed patch", status: "pending" }
+        ]
+      }
+    });
+    expect(JSON.stringify(event)).not.toContain("sk-example-secret");
+  });
+
   it("requires active Dream Subjects to run as direct Codex subagents", () => {
     const reality = RealityEntity.create({
       depth: 1,

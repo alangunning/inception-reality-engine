@@ -110,7 +110,7 @@ sequenceDiagram
   Note over O,C: No Codex call yet
   loop Until depth budget or uncertainty resolved
     Developer->>O: Explicit next action
-    O->>C: Inspect current Reality
+    O->>C: Review local source for the bounded maintenance task
     C-->>O: Evidence, belief changes, Dream proposal
     Developer->>O: Create Dream
     O->>G: Fork current Reality state

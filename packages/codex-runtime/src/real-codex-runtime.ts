@@ -330,7 +330,7 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
       tool?: unknown;
       query?: unknown;
       changes?: Array<{ path?: unknown; kind?: unknown }>;
-      items?: Array<{ completed?: unknown }>;
+      items?: Array<{ completed?: unknown; text?: unknown }>;
       message?: unknown;
       text?: unknown;
     };
@@ -464,6 +464,18 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
   if (item.type === "todo_list") {
     const totalItems = item.items?.length ?? 0;
     const completedItems = item.items?.filter((todo) => todo.completed === true).length ?? 0;
+    const planSteps = (item.items ?? [])
+      .map((todo) => {
+        const text = compact(todo.text, 160);
+        return text
+          ? {
+              text,
+              status: todo.completed === true ? "completed" as const : "pending" as const
+            }
+          : null;
+      })
+      .filter((step): step is { text: string; status: "completed" | "pending" } => Boolean(step))
+      .slice(0, 20);
     return CodexRuntimeEventSchema.parse({
       type: "progress",
       summary: `Plan updated: ${completedItems} of ${totalItems} steps complete.`,
@@ -471,7 +483,8 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
         stage: "plan",
         status,
         completedItems,
-        totalItems
+        totalItems,
+        planSteps
       }
     });
   }
@@ -548,7 +561,7 @@ export class RealCodexRuntime implements CodexRuntime {
 
   async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
     const scope = reality.constitution.scope ?? reality.name;
-    const operationLabel = `${scope} audit`;
+    const operationLabel = `${scope} source review`;
     const diagnosisRequired = (reality.constitution.runtimeLaws ?? []).some((law) =>
       law.includes("sealed adversarial intervention")
     );
@@ -557,7 +570,7 @@ export class RealCodexRuntime implements CodexRuntime {
 ${buildSubjectOrchestrationPrompt(reality)}
 
 TASK
-Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
+Inspect the local source for the defined repository-maintenance task covering ${scope}, then run decisive local tests inside this Reality. Do not contact a running service, external target, account, or network system. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
 ${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
 ${diagnosisRequired ? "This Reality contains a sealed adversarial intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
 Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, one high-value Dream proposal when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.`;

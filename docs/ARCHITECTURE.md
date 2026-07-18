@@ -142,7 +142,7 @@ Real mode is intentionally powerful. Its Codex thread options use `danger-full-a
 
 ## Data and Trust
 
-All Codex responses cross a Zod boundary before persistence. SDK events are projected into an allowlisted metadata schema; raw reasoning, raw Subject messages, raw agent messages, and unrestricted SDK payloads are discarded. Subject evidence is accepted only when native collaboration events prove both:
+All Codex responses cross a Zod boundary before persistence. SDK events are projected into an allowlisted metadata schema; raw reasoning, raw Subject messages, raw agent messages, and unrestricted SDK payloads are discarded. Plan events retain at most 20 compact, credential-redacted step labels and their completed/pending status, allowing the event inspector and exported history to reconstruct the operational plan at that exact milestone without retaining chain of thought. Subject evidence is accepted only when native collaboration events prove both:
 
 1. a `spawn_agent` completed for the exact `SUBJECT_ID`; and
 2. a terminal `wait` returned that child thread successfully.
@@ -189,7 +189,7 @@ This prevents test resets from deleting live worktrees. If a persisted Reality l
 
 Prisma is the production adapter and SQLite is the portable fallback. Both persist validated Reality state, event history, demo sessions, run archives, and Mission runs. The in-memory event bus carries the same validated `RealityEvent` objects over SSE.
 
-Canonical and generalized runs share the same presentation primitives: Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, memory reports, integrity seals, immutable proofs, event feed, and final diff. Saved Missions reopen as actionable Mission snapshots. Canonical run archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
+Canonical and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, memory reports, integrity seals, immutable proofs, inspectable event feed, and final diff. Saved Missions reopen as actionable Mission snapshots. Mission deletion is scoped to that Mission's worktrees and branches; the canonical Admin reset remains separately scoped. Canonical run archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
 
 ## Architecture Decisions
 

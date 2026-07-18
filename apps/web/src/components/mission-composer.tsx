@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
+  ArrowUpFromLine,
   BrainCircuit,
   CheckCircle2,
   ChevronRight,
@@ -16,6 +17,7 @@ import {
   MoonStar,
   Network,
   Play,
+  Settings,
   ShieldAlert,
   SquareTerminal,
   Trash2,
@@ -31,12 +33,16 @@ import type {
 } from "@inception/domain";
 import type { MissionAction, MissionSnapshot } from "@inception/orchestrator";
 import {
+  AdminDrawer,
   OperationMonitor,
+  RealityPhaseHeader,
   RealityTimeline,
+  RealityTopbar,
   RealityWorkspace,
   replayRealities,
   type InspectorTab,
-  type PresentedRealityOperation
+  type PresentedRealityOperation,
+  type RealityPhaseStep
 } from "./reality-engine";
 
 interface MissionSummary {
@@ -80,13 +86,13 @@ interface ComposerState {
 }
 
 const initialState: ComposerState = {
-  name: "VAmPI Authorization Review",
+  name: "VAmPI Ownership Regression",
   repositoryPath: "",
-  mission: "Perform an authorized defensive source-code and local-test review of VAmPI's documented book-secret and user-management authorization boundaries. Identify one known training defect using only the local source and bundled tests, return an executable regression test at tests/test_authorization_regression.py, and synthesise the smallest remediation that preserves the API contract.",
-  scope: "VAmPI Flask API authorization for users, books, and secret content",
-  premise: "A valid token prevents one ordinary user from reading or changing another user's private resources.",
-  constraints: "Work only inside the deliberately vulnerable local VAmPI clone.\nUse static source inspection and local unit or integration tests; do not contact a running service.\nDo not use real credentials, accounts, targets, or external systems.\nTreat every finding as defensive remediation evidence for the documented training application.\nPreserve the documented OpenAPI shape unless evidence requires a compatible correction.\nReturn reproducible test evidence without exposing hidden model reasoning.",
-  parentTruths: "This target is intentionally vulnerable and authorized for defensive local security training.\nPrivate book secrets require owner authorization.\nOnly administrators may delete users.\nEvery security conclusion must cite executable local-test or source evidence.",
+  mission: "Maintain the local VAmPI educational fixture. Using only its source and local tests, reproduce the documented book-ownership regression in tests/test_authorization_regression.py, correct the smallest implementation boundary, and preserve the existing API contract.",
+  scope: "VAmPI local ownership rules for book records and user deletion",
+  premise: "The current handlers enforce the documented owner and administrator invariants.",
+  constraints: "Work only inside the operator-provided local VAmPI educational fixture.\nPerform repository maintenance with static source inspection and local tests; do not start or contact a service.\nUse only synthetic test data and do not access credentials, accounts, external targets, or network systems.\nLimit changes to reproducing and correcting the documented local behavior.\nPreserve the documented OpenAPI shape unless a compatible correction requires otherwise.\nReturn reproducible test evidence without exposing hidden model reasoning.",
+  parentTruths: "This is an operator-owned local educational fixture with published defects.\nA book record is available only to its documented owner.\nOnly the administrator role may delete users.\nEvery conclusion must cite executable local-test or source evidence.",
   proofName: "Authorization regression",
   proofExecutable: "python3",
   proofArgs: "tests/test_authorization_regression.py",
@@ -107,18 +113,18 @@ const initialState: ComposerState = {
 const subjectCharters = [
   {
     name: "Ariadne",
-    role: "Authorization investigator",
-    mission: "Trace identity, ownership, and privilege checks from the API boundary to persisted data."
+    role: "Ownership contract investigator",
+    mission: "Trace documented owner and role checks from the local API handler to persisted test data."
   },
   {
     name: "Saito",
-    role: "Authorization boundary reviewer",
-    mission: "Compare authenticated endpoints with documented ownership requirements using only local source and tests; do not contact a running service."
+    role: "Access rule reviewer",
+    mission: "Compare local handlers with documented ownership requirements using only source and tests; do not contact a running service."
   },
   {
     name: "Eames",
-    role: "Security test engineer",
-    mission: "Turn the highest-impact finding into the smallest decisive executable regression test."
+    role: "Regression test engineer",
+    mission: "Turn the documented behavior mismatch into the smallest decisive executable local test."
   }
 ];
 
@@ -155,15 +161,6 @@ async function readJson<T extends object>(response: Response, fallback: string):
   return value as T;
 }
 
-function timeLabel(value: string): string {
-  return new Date(value).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false
-  });
-}
-
 function eventMetadata(event: RealityEvent): Record<string, unknown> {
   const metadata = event.payload.metadata;
   return metadata && typeof metadata === "object"
@@ -183,7 +180,7 @@ function statusLabel(status: MissionRun["status"]): string {
 
 function missionActionCommand(action: MissionAction | undefined): string {
   switch (action) {
-    case "inspect": return "Run Codex audit";
+    case "inspect": return "Run Codex review";
     case "intervene": return "Run intervention";
     case "create_dream": return "Create Dream";
     case "kick": return "Kick and return memory";
@@ -195,16 +192,122 @@ function missionActionCommand(action: MissionAction | undefined): string {
   }
 }
 
+function missionPhaseSteps(run: MissionRun): RealityPhaseStep[] {
+  const hasDream = run.realities.some((entry) => entry.depth > 0);
+  const hasInspection = hasDream
+    || run.realities.some((entry) => entry.proposals.length > 0)
+    || run.events.some((event) => event.type === "inspection.completed");
+  const hasMemory = run.memories.length > 0
+    || run.realities.some((entry) => entry.status === "kicked" || Boolean(entry.wakeReport));
+  const hasSynthesis = Boolean(run.finalDiff)
+    || run.events.some((event) => event.type === "synthesis.completed");
+  const hasProof = run.proofResults.length > 0
+    || run.events.some((event) => event.type === "verification.passed" || event.type === "verification.failed");
+  const progress = hasProof ? 5 : hasSynthesis ? 4 : hasMemory ? 3 : hasDream ? 2 : hasInspection ? 1 : 0;
+  const labels = ["Inspect", "Dream", "Wake", "Synthesis", "Proof"];
+  const stabilised = run.status === "stabilised";
+  return labels.map((label, index) => ({
+    label,
+    complete: stabilised || index < progress,
+    current: !stabilised && index === progress
+  }));
+}
+
+function MissionActionDock({
+  snapshot,
+  busy,
+  replaying,
+  phaseSteps,
+  onAction,
+  onRemove
+}: {
+  snapshot: MissionSnapshot;
+  busy: boolean;
+  replaying: boolean;
+  phaseSteps: RealityPhaseStep[];
+  onAction(action: MissionAction): void;
+  onRemove(): void;
+}) {
+  const next = snapshot.nextAction;
+  const blocked = busy || Boolean(snapshot.operation) || replaying;
+  const isDream = next?.kind === "dream";
+  const isKick = next?.kind === "kick";
+  const isStandard = Boolean(next && !isDream && !isKick);
+  const complete = snapshot.run.status === "stabilised" && !next;
+  const completedSteps = phaseSteps.filter((step) => step.complete).length;
+  const progress = Math.round((completedSteps / phaseSteps.length) * 100);
+  const runtimeLabel = next?.executor === "codex"
+    ? "STARTS CODEX IN THE ACTIVE REALITY WORKTREE"
+    : "ORCHESTRATED REALITY ACTION";
+
+  return (
+    <div className={`action-dock ${complete ? "is-complete" : ""}`} data-testid="mission-action-dock">
+      <div className="dock-progress">
+        <span><b>{completedSteps}</b> / {phaseSteps.length}</span>
+        <small>{replaying ? "REPLAY MODE / LIVE REALITY PAUSED" : `NEXT MOVE / ${runtimeLabel}`}</small>
+        <strong data-testid="next-move">
+          {replaying
+            ? "Return the timeline to Live to continue"
+            : snapshot.operation?.label ?? next?.label ?? "Reality stabilised"}
+        </strong>
+        <div><i style={{ width: `${progress}%` }} /></div>
+      </div>
+      <button
+        type="button"
+        className="reset-command"
+        onClick={onRemove}
+        disabled={blocked}
+        title="Delete this Mission and clean up its worktrees"
+      >
+        <Trash2 size={16} /> Delete Mission
+      </button>
+      <button
+        type="button"
+        className={`dream-command ${isDream ? "is-next" : ""}`}
+        onClick={() => next && onAction(next.id)}
+        disabled={blocked || !isDream}
+      >
+        <MoonStar size={17} /> Create Dream
+      </button>
+      <button
+        type="button"
+        className={`kick-command ${isKick ? "is-next" : ""}`}
+        onClick={() => next && onAction(next.id)}
+        disabled={blocked || !isKick}
+      >
+        <ArrowUpFromLine size={17} /> {isKick ? "Kick and return memory" : "Kick"}
+      </button>
+      <button
+        type="button"
+        className={`primary-command ${isStandard ? "is-next" : ""}`}
+        onClick={() => next && onAction(next.id)}
+        disabled={blocked || !isStandard}
+      >
+        {snapshot.operation || busy
+          ? <><span className="button-spinner" />{snapshot.operation ? "Codex working" : "Entering operation"}</>
+          : (
+            <>
+              {next ? <Play size={16} /> : <CheckCircle2 size={16} />}
+              {isStandard ? missionActionCommand(next?.id) : next ? "Advance Reality" : "Reality stabilised"}
+            </>
+          )}
+      </button>
+    </div>
+  );
+}
+
 function MissionRunView({
   snapshot,
   runtime,
   onReload,
-  onDeleted
+  onDeleted,
+  onNewMission
 }: {
   snapshot: MissionSnapshot;
   runtime: RuntimeInfo;
   onReload(snapshot: MissionSnapshot): void;
   onDeleted(): void;
+  onNewMission(): void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -214,6 +317,7 @@ function MissionRunView({
   const [revealCode, setRevealCode] = useState(false);
   const [pulseRealityId, setPulseRealityId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [adminOpen, setAdminOpen] = useState(false);
   const run = snapshot.run;
   const reality = snapshot.activeReality;
   // Browser state may outlive a schema migration during local development.
@@ -338,14 +442,46 @@ function MissionRunView({
       }
     : null;
   const replaying = timelineIndex !== null;
+  const phaseSteps = missionPhaseSteps(run);
   return (
-    <main className="mission-run">
-      <section className="mission-run-header">
-        <div>
-          <span className="eyebrow">MISSION / {statusLabel(run.status)}</span>
-          <h1>{run.definition.name}</h1>
-          <p>{run.definition.mission}</p>
-        </div>
+    <main className="app-shell mission-run">
+      <RealityTopbar
+        codexMode={runtime.mode}
+        model={runtime.model}
+        environment={`CODEX SDK ${runtime.sdkVersion}`}
+        realityCount={run.realities.length}
+        actions={(
+          <>
+            <a className="mission-link" href="/" title="Canonical scenario">
+              <ArrowLeft size={13} />
+              <span>CANONICAL SCENARIO</span>
+            </a>
+            <button type="button" className="mission-link" onClick={onNewMission} title="Form a new Mission">
+              <GitBranch size={13} />
+              <span>NEW MISSION</span>
+            </button>
+            <button
+              type="button"
+              className="admin-trigger"
+              data-testid="admin-trigger"
+              onClick={() => setAdminOpen(true)}
+              title="Admin controls"
+              aria-label="Open admin controls"
+            >
+              <Settings size={15} />
+            </button>
+          </>
+        )}
+      />
+
+      <RealityPhaseHeader
+        eyebrow={`GENERALIZED MISSION / ${statusLabel(run.status)}`}
+        title={run.definition.name}
+        steps={phaseSteps}
+      />
+
+      <section className="mission-context-band" data-testid="mission-context">
+        <p>{run.definition.mission}</p>
         <dl>
           <div><dt>MODEL</dt><dd>{runtime.model}</dd></div>
           <div><dt>TOKEN EVIDENCE</dt><dd>{usedTokens.toLocaleString()} / {run.definition.tokenBudget.toLocaleString()}</dd></div>
@@ -359,35 +495,6 @@ function MissionRunView({
           <span><b>Reality fracture</b>{error}</span>
         </div>
       )}
-
-      <div className="mission-action-dock">
-        <div>
-          <small>{replaying ? "TIMELINE REPLAY" : snapshot.operation ? "CODEX OPERATION" : "NEXT REALITY ACTION"}</small>
-          <strong>{replaying ? "Return the timeline to Live to continue" : snapshot.operation?.label ?? snapshot.nextAction?.label ?? "Reality stabilised"}</strong>
-          {snapshot.operation && <span><Clock3 size={13} /> Began at {timeLabel(snapshot.operation.startedAt)}</span>}
-        </div>
-        <button
-          type="button"
-          disabled={busy || Boolean(snapshot.operation) || !snapshot.nextAction || replaying}
-          onClick={() => snapshot.nextAction && void act(snapshot.nextAction.id)}
-        >
-          {snapshot.nextAction?.id === "create_dream"
-            ? <MoonStar size={17} />
-            : snapshot.nextAction?.id === "intervene"
-              ? <ShieldAlert size={17} />
-              : <Play size={17} />}
-          {replaying
-            ? "Replay active"
-            : snapshot.operation
-            ? "Operation active"
-            : busy
-              ? "Reality shifting"
-              : missionActionCommand(snapshot.nextAction?.id)}
-        </button>
-        <button type="button" className="mission-delete" onClick={remove} disabled={busy || Boolean(snapshot.operation) || replaying} title="Delete mission and clean up worktrees" aria-label="Delete mission and clean up worktrees">
-          <Trash2 size={16} />
-        </button>
-      </div>
 
       {activeOperation && (
         <OperationMonitor
@@ -463,6 +570,27 @@ function MissionRunView({
         onToggleCode={() => setRevealCode((current) => !current)}
       />
 
+      <AdminDrawer
+        open={adminOpen}
+        onClose={() => setAdminOpen(false)}
+        onStateChanged={load}
+        mission={{
+          id: run.id,
+          name: run.definition.name,
+          status: statusLabel(run.status),
+          eventCount: run.events.length,
+          realityCount: run.realities.length
+        }}
+        onMissionDeleted={onDeleted}
+      />
+      <MissionActionDock
+        snapshot={snapshot}
+        busy={busy}
+        replaying={replaying}
+        phaseSteps={phaseSteps}
+        onAction={(action) => void act(action)}
+        onRemove={() => void remove()}
+      />
     </main>
   );
 }
@@ -652,17 +780,11 @@ export function MissionComposer() {
   if (snapshot && runtime) {
     return (
       <div className="mission-shell">
-        <nav className="mission-nav">
-          <a href="/"><ArrowLeft size={15} /> Canonical demo</a>
-          <button type="button" onClick={() => setSnapshot(null)}>
-            <GitBranch size={14} /> New Mission
-          </button>
-          <span><BrainCircuit size={14} /> {runtime.model.toUpperCase()} / CODEX SDK {runtime.sdkVersion}</span>
-        </nav>
         <MissionRunView
           snapshot={snapshot}
           runtime={runtime}
           onReload={setSnapshot}
+          onNewMission={() => setSnapshot(null)}
           onDeleted={() => {
             setSnapshot(null);
             void loadIndex();

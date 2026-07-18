@@ -1232,7 +1232,7 @@ export class MissionOrchestrator {
         id: "inspect",
         kind: "advance",
         executor: "codex",
-        label: `Ask Codex to audit ${run.definition.scope} and surface the highest-value uncertainty`
+        label: `Ask Codex to review ${run.definition.scope} in local source and surface the highest-value uncertainty`
       };
     }
     if (!run.memories.length) {
@@ -1248,7 +1248,7 @@ export class MissionOrchestrator {
         id: "inspect",
         kind: "advance",
         executor: "codex",
-        label: `Ask Codex to deepen the ${run.definition.scope} audit`
+        label: `Ask Codex to deepen the local ${run.definition.scope} source review`
       };
     }
     if (run.proofResults.some((result) => result.status === "failed")) {

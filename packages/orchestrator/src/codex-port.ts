@@ -19,6 +19,10 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   exitCode: z.number().int().optional(),
   completedItems: z.number().int().nonnegative().optional(),
   totalItems: z.number().int().nonnegative().optional(),
+  planSteps: z.array(z.object({
+    text: z.string().min(1).max(160),
+    status: z.enum(["pending", "completed"])
+  }).strict()).max(20).optional(),
   inputTokens: z.number().int().nonnegative().optional(),
   outputTokens: z.number().int().nonnegative().optional(),
   reasoningTokens: z.number().int().nonnegative().optional(),

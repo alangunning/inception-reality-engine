@@ -41,6 +41,7 @@ For a Mission that deliberately depends on personal Codex integrations, set `INC
 - Buttons identify Codex-backed actions before usage begins.
 - The operation band reports runtime, elapsed wall time, safe milestones, commands, tools, files, and token evidence.
 - Mission token budgets stop new actions after observed SDK usage reaches the configured limit.
+- The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the deterministic canonical judge path remains fully runnable without a model call.
 
 ## Stop and Cleanup
 
@@ -59,11 +60,12 @@ Pinned training targets remain in `.inception/training-targets` as an ignored re
 
 ## Retrospective Logs
 
-The Admin drawer exports the current or archived run as JSON. An archived password-reset run can also be opened in the full Reality Engine as a read-only timeline. While that snapshot is open, live SSE updates and mutation controls are suspended; **Return to live Reality** reloads current persisted state. Exports and reopened runs include:
+The Admin drawer exports the active canonical run, active Mission, or archived run as JSON. An archived password-reset run can also be opened in the full Reality Engine as a read-only timeline. While that snapshot is open, live SSE updates and mutation controls are suspended; **Return to live Reality** reloads current persisted state. Exports and reopened runs include:
 
 - Reality state and hierarchy;
 - safe timestamped events;
 - command name, exit code, and classified diagnostic;
+- bounded credential-redacted plan steps and their status at each retained plan milestone;
 - file paths, tool names, token counts, and model binding;
 - Subject name, role, child thread ID, collaboration tool, and terminal state;
 - validation failures and recovery events;

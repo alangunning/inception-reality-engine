@@ -55,7 +55,9 @@ Or set `CODEX_API_KEY`/`OPENAI_API_KEY` in an ignored `.env`. Real mode pins `gp
 
 Reality Engine reuses the judge's CLI authentication while isolating personal Codex plugins and MCPs by default. This makes the evaluation reproducible even when the judge has unrelated integrations configured; `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` is an explicit opt-in for missions that need them.
 
-The **Mission Composer** link appears in real mode. Its default is a pinned VAmPI authorization-security mission. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit audit action. The optional sealed intervention is off by default for VAmPI because its published vulnerabilities already provide authorized adversarial evidence.
+The **Mission Composer** link appears in real mode. Its default is a pinned VAmPI repository-maintenance Mission for one documented ownership regression. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit local source-review action. The prompt prohibits running a service or contacting targets, accounts, credentials, or network systems. The optional sealed intervention is off by default for VAmPI because its published defects already provide authorized counterfactual evidence.
+
+Every saved Mission opens in the same product shell as the canonical scenario: branded live-status header, five-stage phase tracker, Admin runtime controls, fixed action dock, Reality topology, ledgers, timeline, Memories, proofs, event stream, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
 
 ## What to Inspect
 

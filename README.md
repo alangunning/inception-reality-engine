@@ -109,19 +109,19 @@ Define:
 - token and Dream-depth budgets;
 - bounded Subject charters.
 
-The default preset is [VAmPI](https://github.com/erev0s/VAmPI), a small deliberately vulnerable Flask API listed in the [OWASP CTF catalogue](https://ctf.owasp.org/). **Prepare VAmPI locally** is an explicit, no-Codex action that clones one pinned revision into `.inception/training-targets`; page load never clones, installs, starts, or sends traffic to the target. The security mission uses only an authorized local clone and synthetic data.
+The default preset is [VAmPI](https://github.com/erev0s/VAmPI), a small deliberately vulnerable Flask API listed in the [OWASP CTF catalogue](https://ctf.owasp.org/). **Prepare VAmPI locally** is an explicit, no-Codex action that clones one pinned revision into `.inception/training-targets`; page load never clones, installs, starts, or sends traffic to the target. The curated Mission is framed as maintenance of one documented ownership regression using only the local source, local tests, and synthetic data. It never requests a service, external target, account, credential, or network interaction.
 
 An optional sealed intervention can assign one native Codex Subject as a bounded chaos engineer. The operator owns its fault classes, allowed and protected paths, changed-file and patch limits, token/time budget, target depth, rollback commit, and reveal policy. The mutation is sealed before investigator Subjects enter. A partial or missed diagnosis quarantines the Wake Report automatically; an exact diagnosis allows it to join the descendant integrity chain.
 
 Forming the waking Reality creates isolated Git state but makes no Codex call. Subsequent explicit actions can generate multiple nested Dreams, return integrity-sealed memories upward, synthesise the waking implementation, run proofs, repair failures, and stabilise.
 
-Saved Missions reopen from the composer with the same topology, Reality inspector, uncertainty, Subject, evidence, memory, proof, event, timeline, and diff surfaces as the canonical scenario. They remain actionable unless already stabilised or fractured.
+Saved Missions reopen from the composer with the same branded header, phase tracker, Admin controls, action dock, topology, Reality inspector, uncertainty, Subject, evidence, memory, proof, event, timeline, and diff surfaces as the canonical scenario.
 
 ## Product Experience
 
 - central Reality tree with visible Dream depth;
 - current premise, constitution, world state, and simulated dream-time;
-- live, timestamped, sortable and filterable safe event stream;
+- live, timestamped, sortable and filterable safe event stream with clickable full event records and bounded plan snapshots;
 - explicit native Subject thread state;
 - evidence provenance and model-reported belief confidence;
 - refresh-stable operation monitor and usage counters;

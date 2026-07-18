@@ -145,7 +145,7 @@ function missionSnapshotFixture() {
     worktreePath: "/tmp/mission/dream",
     branchName: "inception-mission/dream"
   };
-  const events = subjects.flatMap((subject, index) => ([
+  const events: Array<Record<string, unknown>> = subjects.flatMap((subject, index) => ([
     {
       id: `subject-start-${index}`,
       realityId: dream.id,
@@ -189,6 +189,32 @@ function missionSnapshotFixture() {
       occurredAt
     }
   ]));
+  events.push({
+    id: "plan-update-1",
+    realityId: dream.id,
+    type: "codex.progress",
+    summary: "Plan updated: 2 of 5 steps complete.",
+    dreamTime: 18,
+    payload: {
+      missionId: "mission-1",
+      operationId: "operation-1",
+      action: "inspect",
+      metadata: {
+        stage: "plan",
+        status: "updated",
+        completedItems: 2,
+        totalItems: 5,
+        planSteps: [
+          { text: "Read the Reality constitution", status: "completed" },
+          { text: "Trace documented ownership checks", status: "completed" },
+          { text: "Write a local regression test", status: "pending" },
+          { text: "Run the focused test suite", status: "pending" },
+          { text: "Return evidence-backed uncertainty", status: "pending" }
+        ]
+      }
+    },
+    occurredAt
+  });
   return {
     run: {
       id: "mission-1",
@@ -623,11 +649,11 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.locator(".mission-form")).toContainText("NO CODEX USAGE ON CREATE");
   await expect(page.getByTestId("training-target")).toContainText("VAmPI");
   await expect(page.getByTestId("training-target")).toContainText("OWASP CATALOGUE");
-  await expect(page.getByLabel("Reality name")).toHaveValue("VAmPI Authorization Review");
-  await expect(page.getByLabel("Mission")).toHaveValue(/authorized defensive source-code and local-test review/i);
-  await expect(page.getByLabel("Scope")).toHaveValue(/Flask API authorization/i);
-  await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/valid token prevents/i);
-  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/authorized for defensive local security training/i);
+  await expect(page.getByLabel("Reality name")).toHaveValue("VAmPI Ownership Regression");
+  await expect(page.getByLabel("Mission")).toHaveValue(/maintain the local VAmPI educational fixture/i);
+  await expect(page.getByLabel("Scope")).toHaveValue(/local ownership rules/i);
+  await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/documented owner and administrator invariants/i);
+  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/operator-owned local educational fixture/i);
   await expect(page.getByLabel("Local Git repository")).toHaveValue("");
   await expect(page.getByLabel(/Arm one bounded chaos-engineer intervention/)).not.toBeChecked();
   await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
@@ -636,6 +662,16 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.locator(".mission-history").getByRole("button", { name: /VAmPI Authorization Breach/ }).click();
   await expect(page.getByTestId("reality-workspace")).toBeVisible();
   await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(2);
+  await expect(page.getByTestId("topbar-status")).toContainText("LIVE MEMORY STREAM");
+  await expect(page.getByTestId("topbar-status")).toContainText("GPT-5.6");
+  await expect(page.getByTestId("phase-header")).toContainText("VAmPI Authorization Breach");
+  await expect(page.getByTestId("mission-action-dock")).toBeVisible();
+  await page.getByTestId("admin-trigger").click();
+  await expect(page.getByTestId("admin-drawer")).toContainText("DELETE MISSION");
+  await expect(page.getByTestId("admin-drawer")).toContainText("Stop all Codex CLI");
+  await expect(page.getByTestId("admin-drawer").locator(".admin-export"))
+    .toHaveAttribute("href", "/api/missions/mission-1?download=1");
+  await page.getByRole("button", { name: "Close admin controls" }).click();
   await page.getByRole("button", { name: "New Mission" }).click();
   await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
 
@@ -659,18 +695,29 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.getByRole("tab", { name: "runtime" }).click();
   await expect(page.locator(".runtime-list")).toContainText("Codex thread");
   await expect(page.getByTestId("event-feed")).toContainText("Subject completed bounded investigation");
+  const planEvent = page.getByTestId("event-row").filter({ hasText: "Plan updated: 2 of 5 steps complete." });
+  await planEvent.click();
+  await expect(page.getByTestId("event-detail")).toContainText("PLAN AT THIS EVENT");
+  await expect(page.getByTestId("event-plan-snapshot")).toContainText("Read the Reality constitution");
+  await expect(page.getByTestId("event-plan-snapshot")).toContainText("Write a local regression test");
+  await expect(page.getByTestId("event-detail")).toContainText("plan-update-1");
+  await expect(page.getByTestId("event-detail")).toContainText("operation-1");
+  await expect(page).toHaveScreenshot("mission-event-detail.png");
+  await page.getByRole("button", { name: "Close event details" }).click();
   await expect(page.getByTestId("memory-integrity")).toContainText("Parent policy armed");
-  await expect(page.locator(".mission-action-dock")).toContainText("Kick Cross-user book secret");
-  await expect(page.locator(".mission-action-dock > button:not(.mission-delete)")).toHaveText(/Kick and return memory/);
-  await expect(page.locator(".mission-action-dock > button:not(.mission-delete)")).not.toContainText("Cross-user book secret");
+  await expect(page.getByTestId("mission-action-dock")).toContainText("Kick Cross-user book secret");
+  await expect(page.getByTestId("mission-action-dock").locator(".kick-command")).toHaveText(/Kick and return memory/);
+  await expect(page.getByTestId("mission-action-dock").locator(".kick-command")).not.toContainText("Cross-user book secret");
+  await expect(page.getByTestId("mission-action-dock").locator(".primary-command")).toHaveText("Advance Reality");
   await expect(page.locator(".anchor-list .anchor-pending")).toContainText("Authorization regression");
 
   const viewportFits = await page.evaluate(() =>
     document.documentElement.scrollWidth <= window.innerWidth
   );
   expect(viewportFits).toBe(true);
-  await expect(page).toHaveScreenshot("mission-composer-live.png", {
-    fullPage: true
+  await expect(page).toHaveScreenshot("mission-workspace-unified.png", {
+    fullPage: true,
+    maxDiffPixelRatio: 0
   });
   expect(pageErrors).toEqual([]);
 });
