@@ -24,7 +24,7 @@
 
 ## Codex-facing safety contract
 
-All Codex-facing output must be validated with Zod before persistence. A raw SDK response must never be written directly to SQLite, emitted through SSE, or rendered in the UI. Wake outputs must match `WakeReportSchema`. Invalid output is rejected and represented only as a concise validation event.
+All Codex-facing output must be validated with Zod before persistence. A raw SDK response must never be written directly to SQLite, emitted through SSE, or rendered in the UI. Inspections must match `InvestigationReportSchema`, Wake outputs must match `WakeReportSchema`, and synthesis must match `SynthesisReportSchema`. Invalid output is rejected and represented only as a concise validation event.
 
 ## Commands
 

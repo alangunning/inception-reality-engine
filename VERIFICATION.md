@@ -15,7 +15,7 @@ npm audit --omit=dev
 Results:
 
 - 5 Vitest files passed
-- 18 tests passed
+- 22 tests passed
 - strict TypeScript check passed
 - Next.js production build passed
 - all dynamic API routes built
@@ -32,8 +32,8 @@ The complete ten-action API sequence was executed against production code with r
 - Root-owned anchor ID preserved at both Dream depths
 - Nested rotating-IP test executed and failed as expected before synthesis
 - Two Zod-validated Wake Reports returned
-- 40 concise Reality events persisted
-- 12 validated Codex progress events persisted
+- 47 concise Reality events persisted
+- 31 state-changing events exposed as replayable timeline milestones
 - Enumeration-safe response anchor passed
 - Token expiry anchor passed
 - Rotating-IP resistance anchor passed
@@ -57,7 +57,7 @@ API-key mode accepts `CODEX_API_KEY` or `OPENAI_API_KEY` in the ignored local `.
 
 Playwright Chromium was installed and the app was exercised against a production Next.js server in isolated mock mode.
 
-- 4 browser tests passed; 2 duplicate long-flow mobile cases were intentionally skipped
+- 6 browser tests passed; 4 duplicate long-flow mobile cases were intentionally skipped
 - desktop idle-state screenshot baseline passed
 - mobile idle-state screenshot baseline passed at 393px width
 - no document or action-dock horizontal overflow
@@ -65,9 +65,13 @@ Playwright Chromium was installed and the app was exercised against a production
 - Admin process view confirmed no Codex execution before an action
 - active operation remained visible after browser refresh
 - live events exposed wall-clock timestamps, safe metadata, search, filtering, and sort controls
+- timeline replay remained renderable when its retained event window omitted the original creation event
+- replay reduced the full stream to meaningful milestones and disabled live actions until returning to Live
 - the reset confirmation could be dismissed without losing progress
 - the complete ten-action path reached three Realities, two memories, three passing anchors, and a final Git diff
+- the completed action dock returned to document flow without obscuring the inspector
 - final stabilised desktop screenshot baseline passed
+- Playwright and full verification used isolated Next output directories without disturbing a running real-mode app
 
 Run the same checks with:
 

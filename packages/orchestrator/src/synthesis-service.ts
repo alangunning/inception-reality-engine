@@ -14,16 +14,22 @@ export class SynthesisService {
           ? `Memory returned with ${report.artefacts[0].name}`
           : "Memory returned with validated invariants",
         summary: [...report.invariants, report.recommendation].join(" "),
-        source: `wake-report:${report.realityId}`
+        source: `wake-report:${report.realityId}`,
+        provenance: "inherited"
       });
       evidenceIds.push(memoryEvidence.id);
     }
 
     const currentBelief = parent.beliefs.at(-1);
+    const returnedChanges = reports.flatMap((report) => report.changedBeliefs);
+    const strongestChange = returnedChanges.reduce<(typeof returnedChanges)[number] | undefined>(
+      (strongest, change) => !strongest || change.confidence > strongest.confidence ? change : strongest,
+      undefined
+    );
     entity.addBelief({
       id: randomUUID(),
-      statement: "Password-reset abuse resistance requires layered IP, identifier, and global controls with enumeration-safe responses.",
-      confidence: 0.99,
+      statement: strongestChange?.to ?? reports.map((report) => report.recommendation).join(" "),
+      confidence: strongestChange?.confidence ?? 0.9,
       origin: "synthesised",
       supersedesBeliefId: currentBelief?.id,
       evidenceIds

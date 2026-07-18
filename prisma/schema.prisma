@@ -52,6 +52,7 @@ model DemoSessionRecord {
   activeRealityId   String?
   finalDiff          String
   anchorResultsJson  String
+  regressionResultJson String?
   createdAt          DateTime
   updatedAt          DateTime
 }

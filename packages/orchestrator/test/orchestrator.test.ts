@@ -1,8 +1,9 @@
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  CodexOutputValidationError,
   MockCodexRuntime,
   WakeReportValidationError,
   type CodexExecutionResult,
@@ -10,7 +11,7 @@ import {
   type CodexRuntimeEvent,
   type CodexWakeResult
 } from "@inception/codex-runtime";
-import type { Reality } from "@inception/domain";
+import type { Reality, RealityEvent } from "@inception/domain";
 import type { WorktreeDescriptor, WorktreeManager } from "@inception/worktree-manager";
 import {
   InMemoryRealityEventBus,
@@ -34,6 +35,15 @@ class FakeWorktreeManager implements WorktreeManager {
     const target = path.join(worktreePath, relativePath);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, content);
+  }
+  async readFile(worktreePath: string, relativePath: string): Promise<string> {
+    return readFile(path.join(worktreePath, relativePath), "utf8");
+  }
+  async listChangedFiles(): Promise<string[]> {
+    return [
+      "demo/password-reset/src/password-reset.ts",
+      "demo/password-reset/tests/rotating-ip.attack.spec.ts"
+    ];
   }
   async diff(): Promise<string> { return "diff --git a/password-reset.ts b/password-reset.ts\n+layered controls"; }
   async run(_worktreePath: string, _command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -80,6 +90,24 @@ class BlockingInspectRuntime extends MockCodexRuntime {
   }
 }
 
+class InvalidInspectionRuntime extends MockCodexRuntime {
+  override async inspect(): Promise<CodexExecutionResult> {
+    throw new CodexOutputValidationError("InvestigationReportSchema", [{
+      path: "evidence",
+      code: "invalid_type"
+    }]);
+  }
+}
+
+class FailingRegressionWorktreeManager extends FakeWorktreeManager {
+  override async run(worktreePath: string, command: string, args: string[]) {
+    if (args.includes("demo/password-reset/tests")) {
+      return { stdout: "1 inherited test failed", stderr: "", exitCode: 1 };
+    }
+    return super.run(worktreePath, command, args);
+  }
+}
+
 describe("RealityOrchestrator", () => {
   it("serialises concurrent first-load seeding into one waking Reality", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-seed-"));
@@ -98,6 +126,41 @@ describe("RealityOrchestrator", () => {
 
       expect(await repository.listRealities()).toHaveLength(1);
       expect((await repository.listEvents()).filter((event) => event.type === "reality.created")).toHaveLength(1);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the complete demo timeline after more than 80 runtime events", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-timeline-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const seeded = await orchestrator.snapshot();
+      const rootId = seeded.realities[0]!.id;
+      for (let index = 0; index < 90; index += 1) {
+        const event: RealityEvent = {
+          id: `progress-${index}`,
+          realityId: rootId,
+          type: "codex.progress",
+          summary: `Runtime event ${index}`,
+          dreamTime: 0,
+          payload: {},
+          occurredAt: new Date(Date.now() + index + 1).toISOString()
+        };
+        await repository.appendEvent(event);
+      }
+
+      const snapshot = await orchestrator.snapshot();
+      expect(snapshot.events).toHaveLength(91);
+      expect(snapshot.events[0]?.type).toBe("reality.created");
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -215,6 +278,71 @@ describe("RealityOrchestrator", () => {
       expect(validationEvent?.type).toBe("validation.rejected");
       expect(validationEvent?.payload).toEqual({ contract: "WakeReportSchema" });
       expect(JSON.stringify(validationEvent)).not.toContain("raw");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects invalid inspection output instead of substituting scripted evidence", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-inspection-validation-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new InvalidInspectionRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+
+      await expect(orchestrator.act("inspect")).rejects.toThrow(
+        "Investigation Report could not enter the Reality because validation failed"
+      );
+      const events = await repository.listEvents();
+      expect(events.at(-1)).toMatchObject({
+        type: "validation.rejected",
+        payload: {
+          contract: "InvestigationReportSchema",
+          issues: [{ path: "evidence", code: "invalid_type" }]
+        }
+      });
+      expect((await repository.listRealities())[0]?.evidence).toHaveLength(0);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("blocks stabilisation when a returned regression artefact still fails", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-proof-gate-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new FailingRegressionWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const actions: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream",
+        "wake_nested",
+        "wake_parent",
+        "synthesise",
+        "run_anchors"
+      ];
+      for (const action of actions) await orchestrator.act(action);
+
+      const fractured = await orchestrator.snapshot();
+      expect(fractured.session.regressionResult?.status).toBe("failed");
+      expect(fractured.nextAction?.id).toBe("repair");
+      expect(fractured.events.some((event) => event.type === "reality.fractured")).toBe(true);
+      await expect(orchestrator.act("stabilise")).rejects.toThrow("expected repair");
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

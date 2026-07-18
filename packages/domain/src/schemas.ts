@@ -16,7 +16,9 @@ export const RealityConstitutionSchema = z.object({
   premise: z.string().min(1),
   constraints: z.array(z.string()),
   wakeContract: z.array(z.string()),
-  parentTruths: z.array(z.string())
+  parentTruths: z.array(z.string()),
+  timeDilation: z.number().int().positive().optional(),
+  runtimeLaws: z.array(z.string()).optional()
 });
 
 export const WorldStateSchema = z.object({
@@ -56,6 +58,7 @@ export const EvidenceSchema = z.object({
   summary: z.string(),
   source: z.string(),
   artefactPath: z.string().optional(),
+  provenance: z.enum(["observed", "synthetic", "inherited", "model-reported"]).optional(),
   createdAt: z.string()
 });
 
@@ -66,7 +69,58 @@ export const DreamProposalSchema = z.object({
   premise: z.string(),
   uncertainty: z.string(),
   rationale: z.string(),
+  impactProbability: z.number().min(0).max(1).optional(),
+  expectedInsight: z.string().optional(),
+  estimatedTokens: z.number().int().nonnegative().optional(),
+  costClass: z.enum(["low", "medium", "high"]).optional(),
   status: z.enum(["open", "dreaming", "resolved"])
+});
+
+export const InvestigationEvidenceSchema = z.object({
+  kind: z.enum(["observation", "code", "test", "invariant", "decision"]),
+  title: z.string().min(1),
+  summary: z.string().min(1),
+  source: z.string().min(1),
+  artefactPath: z.string().nullable(),
+  synthetic: z.boolean()
+});
+
+export const SubjectReportSchema = z.object({
+  subjectId: z.string(),
+  name: z.string().min(1),
+  role: z.string().min(1),
+  findings: z.array(z.string().min(1)),
+  artefactPaths: z.array(z.string())
+});
+
+export const InvestigationBeliefChangeSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+  confidence: z.number().min(0).max(1),
+  evidenceTitles: z.array(z.string())
+});
+
+export const DreamProposalDraftSchema = z.object({
+  title: z.string().min(1),
+  premise: z.string().min(1),
+  uncertainty: z.string().min(1),
+  rationale: z.string().min(1),
+  impactProbability: z.number().min(0).max(1),
+  expectedInsight: z.string().min(1),
+  estimatedTokens: z.number().int().nonnegative(),
+  costClass: z.enum(["low", "medium", "high"])
+});
+
+export const InvestigationReportSchema = z.object({
+  realityId: z.string(),
+  summary: z.string().min(1),
+  evidence: z.array(InvestigationEvidenceSchema),
+  subjectReports: z.array(SubjectReportSchema),
+  changedBeliefs: z.array(InvestigationBeliefChangeSchema),
+  dreamProposal: DreamProposalDraftSchema.nullable(),
+  remainingUncertainty: z.array(z.string()),
+  changedFiles: z.array(z.string()),
+  generatedAt: z.string()
 });
 
 export const WakeArtefactSchema = z.object({
@@ -99,6 +153,16 @@ export const WakeReportSchema = z.object({
   generatedAt: z.string()
 });
 
+export const SynthesisReportSchema = z.object({
+  realityId: z.string(),
+  summary: z.string().min(1),
+  appliedMemories: z.array(z.string()),
+  changedFiles: z.array(z.string()),
+  retainedArtefacts: z.array(z.string()),
+  unresolved: z.array(z.string()),
+  generatedAt: z.string()
+});
+
 export const RealityAnchorSchema = z.object({
   id: z.string(),
   realityId: z.string(),
@@ -125,10 +189,15 @@ export const RealityEventTypeSchema = z.enum([
   "belief.changed",
   "kick.triggered",
   "memory.returned",
+  "artefact.returned",
   "synthesis.completed",
+  "verification.started",
+  "verification.passed",
+  "verification.failed",
   "anchor.started",
   "anchor.passed",
   "anchor.failed",
+  "reality.fractured",
   "reality.stabilised",
   "validation.rejected"
 ]);
@@ -175,12 +244,21 @@ export const AnchorResultSchema = z.object({
   durationMs: z.number().int().nonnegative().optional()
 });
 
+export const RegressionResultSchema = z.object({
+  status: z.enum(["passed", "failed"]),
+  output: z.string(),
+  command: z.string(),
+  durationMs: z.number().int().nonnegative(),
+  testFiles: z.array(z.string())
+});
+
 export const DemoSessionSchema = z.object({
   id: z.literal("singleton"),
   phase: z.number().int().nonnegative(),
   activeRealityId: z.string().nullable(),
   finalDiff: z.string(),
   anchorResults: z.array(AnchorResultSchema),
+  regressionResult: RegressionResultSchema.optional(),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -201,12 +279,19 @@ export type Subject = z.infer<typeof SubjectSchema>;
 export type Belief = z.infer<typeof BeliefSchema>;
 export type Evidence = z.infer<typeof EvidenceSchema>;
 export type DreamProposal = z.infer<typeof DreamProposalSchema>;
+export type InvestigationEvidence = z.infer<typeof InvestigationEvidenceSchema>;
+export type SubjectReport = z.infer<typeof SubjectReportSchema>;
+export type InvestigationBeliefChange = z.infer<typeof InvestigationBeliefChangeSchema>;
+export type DreamProposalDraft = z.infer<typeof DreamProposalDraftSchema>;
+export type InvestigationReport = z.infer<typeof InvestigationReportSchema>;
 export type WakeReport = z.infer<typeof WakeReportSchema>;
 export type WakeArtefact = z.infer<typeof WakeArtefactSchema>;
+export type SynthesisReport = z.infer<typeof SynthesisReportSchema>;
 export type RealityAnchor = z.infer<typeof RealityAnchorSchema>;
 export type RealityEvent = z.infer<typeof RealityEventSchema>;
 export type RealityEventType = z.infer<typeof RealityEventTypeSchema>;
 export type Reality = z.infer<typeof RealitySchema>;
 export type AnchorResult = z.infer<typeof AnchorResultSchema>;
+export type RegressionResult = z.infer<typeof RegressionResultSchema>;
 export type DemoSession = z.infer<typeof DemoSessionSchema>;
 export type RealityRunArchive = z.infer<typeof RealityRunArchiveSchema>;

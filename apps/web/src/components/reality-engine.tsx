@@ -15,6 +15,7 @@ import {
   Clock3,
   Code2,
   Download,
+  Eye,
   FileCode2,
   FileDiff,
   FlaskConical,
@@ -22,6 +23,7 @@ import {
   History,
   Layers3,
   LockKeyhole,
+  Minimize2,
   MoonStar,
   Network,
   Play,
@@ -33,12 +35,13 @@ import {
   ShieldCheck,
   SquareTerminal,
   TestTube2,
+  TimerReset,
   Trash2,
   UsersRound,
   X,
   XCircle
 } from "lucide-react";
-import type { Reality, RealityEvent, WakeReport } from "@inception/domain";
+import type { DreamProposal, Reality, RealityEvent, WakeReport } from "@inception/domain";
 import type { ActiveRealityOperation, DemoAction, DemoSnapshot } from "@inception/orchestrator";
 
 type LoadingState = "idle" | "acting" | "resetting";
@@ -86,6 +89,24 @@ interface RunLogSummary {
   failedCommandCount: number;
   recoveredAfterFailure: boolean;
   failureKinds: Record<string, number>;
+}
+
+async function readApiResponse<T extends object>(response: Response, fallback: string): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new Error(`${fallback} The server returned an empty HTTP ${response.status} response.`);
+  }
+
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error(`${fallback} The server returned an invalid HTTP ${response.status} response.`);
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${fallback} The server returned an invalid HTTP ${response.status} response.`);
+  }
+  return value as T;
 }
 
 const graphPositions: Record<number, { x: number; y: number }> = {
@@ -189,9 +210,96 @@ function eventFamily(event: RealityEvent): Exclude<EventFamily, "all"> {
   if (prefix === "dream") return "dream";
   if (prefix === "subject") return "subject";
   if (prefix === "evidence" || prefix === "belief" || prefix === "uncertainty") return "evidence";
-  if (prefix === "kick" || prefix === "memory" || prefix === "synthesis") return "memory";
-  if (prefix === "anchor" || prefix === "validation") return "anchor";
+  if (prefix === "kick" || prefix === "memory" || prefix === "artefact" || prefix === "synthesis") return "memory";
+  if (prefix === "anchor" || prefix === "validation" || prefix === "verification") return "anchor";
   return "reality";
+}
+
+function replayRealities(realities: Reality[], events: RealityEvent[], timelineIndex: number | null): Reality[] {
+  if (timelineIndex === null || !events.length) return realities;
+  const visibleEvents = events.slice(0, timelineIndex + 1);
+  const cutoff = new Date(visibleEvents.at(-1)?.occurredAt ?? 0).getTime();
+  const created = new Set(
+    visibleEvents
+      .filter((event) => event.type === "reality.created" || event.type === "dream.created")
+      .map((event) => event.realityId)
+  );
+  const subjectIds = new Set(
+    visibleEvents
+      .filter((event) => event.type === "subject.entered")
+      .map((event) => event.payload.subjectId)
+      .filter((id): id is string => typeof id === "string")
+  );
+  const surfacedProposals = new Set(
+    visibleEvents
+      .filter((event) => event.type === "uncertainty.discovered")
+      .map((event) => event.payload.proposal)
+      .filter((title): title is string => typeof title === "string")
+  );
+
+  return realities
+    .filter((reality) => created.has(reality.id) || new Date(reality.createdAt).getTime() <= cutoff)
+    .map((reality) => {
+      const realityEvents = visibleEvents.filter((event) => event.realityId === reality.id);
+      const lastEvent = realityEvents.at(-1);
+      const hasMemory = realityEvents.some((event) => event.type === "memory.returned");
+      const returnedSubjectIds = new Set(
+        realityEvents
+          .filter((event) => event.type === "subject.returned")
+          .map((event) => event.payload.subjectId)
+          .filter((id): id is string => typeof id === "string")
+      );
+      const status: Reality["status"] = realityEvents.some((event) => event.type === "reality.stabilised")
+        ? "stabilised"
+        : hasMemory
+          ? "kicked"
+          : realityEvents.some((event) => event.type === "kick.triggered")
+            ? "waking"
+            : reality.kind === "dream" || realityEvents.some((event) => event.type === "inspection.completed")
+              ? "exploring"
+              : "forming";
+      return {
+        ...reality,
+        status,
+        worldState: {
+          ...reality.worldState,
+          simulatedMinutes: lastEvent?.dreamTime ?? 0,
+          currentFocus: lastEvent?.summary ?? "Establishing the world",
+          summary: lastEvent?.summary ?? reality.premise,
+          status: statusLabel(status)
+        },
+        evidence: reality.evidence.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
+        beliefs: reality.beliefs.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
+        proposals: reality.proposals.filter((proposal) => surfacedProposals.has(proposal.title)),
+        subjects: reality.subjects
+          .filter((subject) => subjectIds.has(subject.id))
+          .map((subject) => ({
+            ...subject,
+            status: returnedSubjectIds.has(subject.id) ? "returned" as const : "entered" as const
+          })),
+        wakeReport: hasMemory ? reality.wakeReport : undefined
+      };
+    });
+}
+
+function replayPhase(events: RealityEvent[], realities: Reality[]): number {
+  let phase = 0;
+  for (const event of events) {
+    const depth = realities.find((reality) => reality.id === event.realityId)?.depth ?? 0;
+    if (event.type === "inspection.completed" || event.type === "uncertainty.discovered") phase = Math.max(phase, 1);
+    if (event.type === "dream.created") phase = Math.max(phase, depth >= 2 ? 5 : 2);
+    if (event.type === "subject.entered") phase = Math.max(phase, 3);
+    if ((event.type === "evidence.discovered" || event.type === "belief.changed") && depth === 1) phase = Math.max(phase, 4);
+    if (event.type === "memory.returned") phase = Math.max(phase, depth >= 2 ? 6 : 7);
+    if (event.type === "synthesis.completed") phase = Math.max(phase, 8);
+    if (event.type.startsWith("anchor.") || event.type.startsWith("verification.")) phase = Math.max(phase, 9);
+    if (event.type === "reality.stabilised") phase = 10;
+  }
+  return phase;
+}
+
+function isTimelineMilestone(event: RealityEvent): boolean {
+  return event.type !== "codex.progress" && event.type !== "anchor.started";
 }
 
 function SectionHeading({ icon, eyebrow, title, meta }: {
@@ -223,8 +331,9 @@ function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
   pulseId: string | null;
   onSelect: (id: string) => void;
 }) {
+  const collapsed = realities.length === 1 && realities[0]?.status === "stabilised";
   return (
-    <div className="reality-map" data-testid="reality-graph">
+    <div className={`reality-map ${collapsed ? "is-collapsed" : ""}`} data-testid="reality-graph">
       <div className="map-grid" aria-hidden="true" />
       <div className="depth-rail depth-rail-0"><span>LEVEL 0</span><b>Waking</b></div>
       <div className="depth-rail depth-rail-1"><span>LEVEL 1</span><b>Dream</b></div>
@@ -300,6 +409,14 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
   onTab: (tab: InspectorTab) => void;
 }) {
   const realityOperation = operation?.realityId === reality.id ? operation : null;
+  const latestBelief = reality.beliefs.at(-1);
+  const integrity = reality.anchors.some((anchor) => anchor.status === "failed")
+    ? 35
+    : reality.status === "stabilised"
+      ? 100
+      : 76;
+  const intentDrift = Math.min(100, reality.proposals.filter((proposal) => proposal.status === "open").length * 18);
+  const dreamBudget = reality.proposals.reduce((total, proposal) => total + (proposal.estimatedTokens ?? 0), 0);
   return (
     <aside className="world-inspector">
       <div className="inspector-title">
@@ -332,7 +449,7 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
           <div className="dream-clock" data-testid="simulated-world-time">
             <Clock3 size={18} />
             <span><small>SIMULATED WORLD-TIME</small><strong>{reality.worldState.simulatedMinutes}</strong></span>
-            <em>minutes</em>
+            <em>{reality.constitution.timeDilation ?? 1}x / minutes</em>
           </div>
           {realityOperation && (
             <div className="live-world-clock">
@@ -346,6 +463,19 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
             <div><dt>World state</dt><dd>{reality.worldState.summary}</dd></div>
             <div><dt>Implementation</dt><dd>{reality.worldState.implementationState}</dd></div>
           </dl>
+          <div className="reality-health" aria-label="Reality health">
+            <span className="health-heading"><TimerReset size={14} /> REALITY HEALTH</span>
+            {[
+              ["Integrity", integrity],
+              ["Confidence", Math.round((latestBelief?.confidence ?? 0) * 100)],
+              ["Intent drift", intentDrift]
+            ].map(([label, value]) => (
+              <div className="health-row" key={label}>
+                <span>{label}</span><i><b style={{ width: `${value}%` }} /></i><strong>{value}%</strong>
+              </div>
+            ))}
+            <small>Dream budget proposed: {dreamBudget.toLocaleString()} tokens</small>
+          </div>
         </div>
       )}
 
@@ -364,6 +494,14 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
               <p key={truth}><Check size={13} />{truth}</p>
             ))}
           </div>
+          {!!reality.constitution.runtimeLaws?.length && (
+            <div className="contract-group">
+              <span>WORLD-SPECIFIC LAWS / {reality.constitution.timeDilation ?? 1}x TIME</span>
+              {reality.constitution.runtimeLaws.map((law) => (
+                <p key={law}><CircleDot size={13} />{law}</p>
+              ))}
+            </div>
+          )}
           <div className="anchor-summary">
             <ShieldCheck size={17} />
             <span><strong>{reality.anchors.length} inherited anchors</strong><small>Parent-owned and immutable in this world</small></span>
@@ -614,7 +752,11 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
 
   const loadProcesses = useCallback(async () => {
     const response = await fetch("/api/admin/codex", { cache: "no-store" });
-    const body = await response.json() as { processes?: CodexProcess[]; codexMode?: "mock" | "real"; error?: string };
+    const body = await readApiResponse<{
+      processes?: CodexProcess[];
+      codexMode?: "mock" | "real";
+      error?: string;
+    }>(response, "Could not inspect Codex processes.");
     if (!response.ok) throw new Error(body.error ?? "Could not inspect Codex processes.");
     setProcesses(body.processes ?? []);
     setCodexMode(body.codexMode ?? "mock");
@@ -622,11 +764,11 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
 
   const loadHistory = useCallback(async () => {
     const response = await fetch("/api/admin/history", { cache: "no-store" });
-    const body = await response.json() as {
+    const body = await readApiResponse<{
       current?: RunLogSummary;
       archives?: RunLogSummary[];
       error?: string;
-    };
+    }>(response, "Could not load retrospective run logs.");
     if (!response.ok) throw new Error(body.error ?? "Could not load retrospective run logs.");
     setCurrentLog(body.current ?? null);
     setArchivedLogs(body.archives ?? []);
@@ -648,7 +790,7 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
     setAdminError(null);
     try {
       const response = await fetch("/api/admin/codex", { method: "DELETE" });
-      const body = await response.json() as { error?: string };
+      const body = await readApiResponse<{ error?: string }>(response, "Could not stop Codex processes.");
       if (!response.ok) throw new Error(body.error ?? "Could not stop Codex processes.");
       await loadProcesses();
       await onStateChanged();
@@ -665,7 +807,10 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
     setAdminError(null);
     try {
       const response = await fetch("/api/admin/reset", { method: "POST" });
-      const body = await response.json() as { snapshot?: PresentedDemoSnapshot; error?: string };
+      const body = await readApiResponse<{
+        snapshot?: PresentedDemoSnapshot;
+        error?: string;
+      }>(response, "Could not fully reset the Reality Engine.");
       if (!response.ok || !body.snapshot) throw new Error(body.error ?? "Could not fully reset the Reality Engine.");
       onFullReset(body.snapshot);
       setProcesses([]);
@@ -776,37 +921,127 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
   );
 }
 
-function ActionDock({ snapshot, operation, loading, onAction, onReset }: {
+function RealityTimeline({ events, index, onChange }: {
+  events: RealityEvent[];
+  index: number | null;
+  onChange: (index: number | null) => void;
+}) {
+  const milestoneIndexes = events.reduce<number[]>((indexes, event, eventIndex) => {
+    if (isTimelineMilestone(event)) indexes.push(eventIndex);
+    return indexes;
+  }, []);
+  const maximum = Math.max(0, milestoneIndexes.length - 1);
+  const firstLaterMilestone = index === null
+    ? -1
+    : milestoneIndexes.findIndex((eventIndex) => eventIndex > index);
+  const position = index === null || firstLaterMilestone === -1
+    ? maximum
+    : Math.max(0, firstLaterMilestone - 1);
+  const selectedIndex = milestoneIndexes[position] ?? 0;
+  const selected = events[selectedIndex];
+  return (
+    <section className={`reality-timeline ${index !== null ? "is-replaying" : ""}`} data-testid="reality-timeline">
+      <div>
+        <History size={16} />
+        <span>
+          <small>{index === null ? "LIVE REALITY TIMELINE" : "REPLAYING VALIDATED EXPERIENCE"}</small>
+          <strong>{selected?.summary ?? "Waking Reality formed"}</strong>
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={maximum}
+        value={position}
+        disabled={milestoneIndexes.length < 2}
+        onChange={(event) => onChange(milestoneIndexes[Number(event.target.value)] ?? 0)}
+        aria-label="Replay Reality timeline"
+      />
+      <span className="timeline-position">
+        {selected ? formatClock(selected.occurredAt) : "--:--:--"} / {position + 1} of {milestoneIndexes.length} milestones
+      </span>
+      <button type="button" onClick={() => onChange(null)} disabled={index === null}>
+        <Radio size={13} /> Live
+      </button>
+    </section>
+  );
+}
+
+function DreamGate({ proposal, owner, onCancel, onConfirm }: {
+  proposal: DreamProposal;
+  owner: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  return (
+    <div className="dream-gate-overlay" role="presentation" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onCancel();
+    }}>
+      <section className="dream-gate" role="dialog" aria-modal="true" aria-labelledby="dream-gate-title" data-testid="dream-gate">
+        <header>
+          <span><MoonStar size={16} /> DREAM PROPOSAL / {owner}</span>
+          <button type="button" onClick={onCancel} aria-label="Close Dream proposal"><X size={16} /></button>
+        </header>
+        <div className="dream-gate-premise">
+          <small>COUNTERFACTUAL PREMISE</small>
+          <h2 id="dream-gate-title">{proposal.title}</h2>
+          <p>{proposal.premise}</p>
+        </div>
+        <div className="dream-gate-decision">
+          <div><span>IMPACT PROBABILITY</span><strong>{Math.round((proposal.impactProbability ?? 0.5) * 100)}%</strong></div>
+          <div><span>ESTIMATED CODEX BUDGET</span><strong>{(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</strong></div>
+          <div><span>COST CLASS</span><strong>{proposal.costClass ?? "unscored"}</strong></div>
+        </div>
+        <div className="dream-gate-insight">
+          <span>EXPECTED INSIGHT</span>
+          <p>{proposal.expectedInsight ?? proposal.rationale}</p>
+        </div>
+        <footer>
+          <button type="button" onClick={onCancel}>Keep waking Reality</button>
+          <button type="button" className="confirm-dream" onClick={onConfirm}>
+            <MoonStar size={16} /> Confirm and create Dream
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
+function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset }: {
   snapshot: PresentedDemoSnapshot;
   operation: ActiveRealityOperation | null;
   loading: LoadingState;
+  replaying: boolean;
   onAction: (action: DemoAction) => void;
   onReset: () => void;
 }) {
   const next = snapshot.nextAction;
-  const busy = loading !== "idle" || operation !== null;
+  const busy = loading !== "idle" || operation !== null || replaying;
   const progress = snapshot.session.phase * 10;
   const isDream = next?.kind === "dream";
   const isKick = next?.kind === "kick";
   const isStandard = next && !isDream && !isKick;
+  const complete = snapshot.session.phase === 10 && !next;
   const runsCodex = (operation?.executor ?? next?.executor) === "codex";
   const runtimeLabel = runsCodex
     ? snapshot.runtime.codexMode === "real" ? "STARTS REAL CODEX CLI IN THE ACTIVE WORKTREE" : "RUNS REHEARSED CODEX RUNTIME"
     : "ORCHESTRATED REALITY ACTION";
 
   return (
-    <div className="action-dock" data-testid="action-dock">
+    <div className={`action-dock ${complete ? "is-complete" : ""}`} data-testid="action-dock">
       <div className="dock-progress">
         <span><b>{snapshot.session.phase}</b> / 10</span>
-        <small>NEXT MOVE / {runtimeLabel}</small>
-        <strong data-testid="next-move">{operation?.label ?? next?.label ?? "Reality stabilised"}</strong>
+        <small>{replaying ? "REPLAY MODE / LIVE REALITY PAUSED" : `NEXT MOVE / ${runtimeLabel}`}</small>
+        <strong data-testid="next-move">
+          {replaying ? "Return the timeline to Live to continue" : operation?.label ?? next?.label ?? "Reality stabilised"}
+        </strong>
         <div><i style={{ width: `${progress}%` }} /></div>
       </div>
       <button type="button" className="reset-command" data-testid="reset-run" onClick={onReset} disabled={busy} title="Full reset this run">
         <RotateCcw size={16} /> Full reset
       </button>
       <button type="button" className={`dream-command ${isDream ? "is-next" : ""}`} data-testid="dream-action" onClick={() => next && onAction(next.id)} disabled={busy || !isDream}>
-        <MoonStar size={17} /> {isDream ? next.id === "create_nested_dream" ? "Create nested Dream" : "Create attack Dream" : "Dream"}
+        <MoonStar size={17} /> {isDream ? next.label : "Dream"}
       </button>
       <button type="button" className={`kick-command ${isKick ? "is-next" : ""}`} data-testid="kick-action" onClick={() => next && onAction(next.id)} disabled={busy || !isKick}>
         <ArrowUpFromLine size={17} /> {isKick ? "Kick and return memory" : "Kick"}
@@ -838,10 +1073,17 @@ export function RealityEngine() {
   const [localOperation, setLocalOperation] = useState<ActiveRealityOperation | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [adminOpen, setAdminOpen] = useState(false);
+  const [timelineIndex, setTimelineIndex] = useState<number | null>(null);
+  const [collapsedDreams, setCollapsedDreams] = useState(false);
+  const [revealCode, setRevealCode] = useState(false);
+  const [pendingDreamAction, setPendingDreamAction] = useState<DemoAction | null>(null);
 
   const loadSnapshot = useCallback(async () => {
     const response = await fetch("/api/demo", { cache: "no-store" });
-    const body = await response.json() as PresentedDemoSnapshot & { error?: string };
+    const body = await readApiResponse<PresentedDemoSnapshot & { error?: string }>(
+      response,
+      "Could not enter the Reality Engine."
+    );
     if (!response.ok) throw new Error(body.error ?? "Could not enter the Reality Engine.");
     setSnapshot(body);
     setError(null);
@@ -888,11 +1130,15 @@ export function RealityEngine() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action })
       });
-      const body = await response.json() as PresentedDemoSnapshot & { error?: string };
+      const body = await readApiResponse<PresentedDemoSnapshot & { error?: string }>(
+        response,
+        "The Reality rejected that action."
+      );
       if (!response.ok) throw new Error(body.error ?? "The Reality rejected that action.");
       setSnapshot(body);
       setSelectedRealityId(body.session.activeRealityId);
       setInspectorTab("world");
+      setTimelineIndex(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -907,11 +1153,17 @@ export function RealityEngine() {
     setError(null);
     try {
       const response = await fetch("/api/demo/reset", { method: "POST" });
-      const body = await response.json() as PresentedDemoSnapshot & { error?: string };
+      const body = await readApiResponse<PresentedDemoSnapshot & { error?: string }>(
+        response,
+        "The Reality could not be reset."
+      );
       if (!response.ok) throw new Error(body.error ?? "The Reality could not be reset.");
       setSnapshot(body);
       setSelectedRealityId(body.session.activeRealityId);
       setInspectorTab("world");
+      setTimelineIndex(null);
+      setCollapsedDreams(false);
+      setRevealCode(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -919,22 +1171,45 @@ export function RealityEngine() {
     }
   };
 
-  const selectedReality = snapshot?.realities.find((reality) => reality.id === selectedRealityId)
-    ?? snapshot?.activeReality
+  const replayedRealities = useMemo(
+    () => snapshot ? replayRealities(snapshot.realities, snapshot.events, timelineIndex) : [],
+    [snapshot, timelineIndex]
+  );
+  const visibleEvents = useMemo(
+    () => snapshot
+      ? timelineIndex === null ? snapshot.events : snapshot.events.slice(0, timelineIndex + 1)
+      : [],
+    [snapshot, timelineIndex]
+  );
+  const displayedPhase = timelineIndex === null
+    ? snapshot?.session.phase ?? 0
+    : replayPhase(visibleEvents, snapshot?.realities ?? []);
+  const selectedReality = replayedRealities.find((reality) => reality.id === selectedRealityId)
+    ?? replayedRealities.find((reality) => reality.id === snapshot?.session.activeRealityId)
+    ?? replayedRealities[0]
     ?? null;
-  const root = snapshot?.realities.find((reality) => reality.depth === 0) ?? null;
+  const root = replayedRealities.find((reality) => reality.depth === 0) ?? null;
   const allProposals = useMemo(
-    () => snapshot?.realities.flatMap((reality) => reality.proposals.map((proposal) => ({ ...proposal, owner: reality.name }))) ?? [],
-    [snapshot]
+    () => replayedRealities.flatMap((reality) => reality.proposals.map((proposal) => ({ ...proposal, owner: reality.name }))),
+    [replayedRealities]
   );
   const memories = useMemo(
-    () => snapshot?.realities.flatMap((reality) => reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []) ?? [],
-    [snapshot]
+    () => replayedRealities.flatMap((reality) => reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []),
+    [replayedRealities]
   );
   const initialBelief = root?.beliefs.find((belief) => belief.origin === "initial") ?? root?.beliefs[0];
   const finalBelief = root?.beliefs.at(-1);
   const activeOperation = snapshot?.operation ?? localOperation;
   const passedAnchorCount = snapshot?.session.anchorResults.filter((anchor) => anchor.status === "passed").length ?? 0;
+  const graphRealities = collapsedDreams && root ? [root] : replayedRealities;
+  const pendingProposal = snapshot?.activeReality?.proposals.find((proposal) => proposal.status === "open") ?? null;
+  const requestAction = (action: DemoAction) => {
+    if (action === "create_attack_dream" || action === "create_nested_dream") {
+      setPendingDreamAction(action);
+      return;
+    }
+    void act(action);
+  };
 
   useEffect(() => {
     setNow(Date.now());
@@ -975,15 +1250,17 @@ export function RealityEngine() {
 
       <section className="phase-header" data-testid="phase-header">
         <div>
-          <span className="eyebrow">DETERMINISTIC SCENARIO / PASSWORD RESET</span>
-          <h1>{phaseTitle(snapshot.session.phase)}</h1>
+          <span className="eyebrow">
+            {timelineIndex === null ? "DETERMINISTIC SCENARIO / PASSWORD RESET" : "TIMELINE REPLAY / VALIDATED MEMORY"}
+          </span>
+          <h1>{phaseTitle(displayedPhase)}</h1>
         </div>
         <ol className="phase-track" aria-label="Demo progress">
           {stages.map((stage, index) => {
             const previousEnd = stages[index - 1]?.endPhase ?? 0;
-            const complete = snapshot.session.phase >= stage.endPhase;
-            const current = snapshot.session.phase > previousEnd && snapshot.session.phase < stage.endPhase
-              || snapshot.session.phase === 0 && index === 0;
+            const complete = displayedPhase >= stage.endPhase;
+            const current = displayedPhase > previousEnd && displayedPhase < stage.endPhase
+              || displayedPhase === 0 && index === 0;
             return (
               <li className={`${complete ? "is-complete" : ""} ${current ? "is-current" : ""}`} key={stage.label}>
                 <span>{complete ? <Check size={12} /> : index + 1}</span>
@@ -1021,6 +1298,17 @@ export function RealityEngine() {
             <LockKeyhole size={15} />
             <span><b>Production boundary</b> Move counters to an atomic shared store and calibrate thresholds from operational telemetry.</span>
           </p>
+          <div className="outcome-actions">
+            <button type="button" onClick={() => {
+              setCollapsedDreams((current) => !current);
+              if (!collapsedDreams && root) setSelectedRealityId(root.id);
+            }} data-testid="collapse-dreams">
+              <Minimize2 size={15} /> {collapsedDreams ? "Reveal lived Realities" : "Collapse Dreams into waking Reality"}
+            </button>
+            <span title={memories.flatMap(({ report }) => report.invariants).join(" / ")}>
+              <BrainCircuit size={14} /> {memories.reduce((total, memory) => total + memory.report.invariants.length, 0)} inherited truths
+            </span>
+          </div>
         </section>
       )}
 
@@ -1033,6 +1321,8 @@ export function RealityEngine() {
         />
       )}
 
+      <RealityTimeline events={snapshot.events} index={timelineIndex} onChange={setTimelineIndex} />
+
       <section className="topology-workspace">
         <div className="map-section">
           <SectionHeading
@@ -1042,7 +1332,7 @@ export function RealityEngine() {
             meta={<span className="locus-key"><Radio size={11} /> LOCUS: {snapshot.activeReality?.name}</span>}
           />
           <RealityGraph
-            realities={snapshot.realities}
+            realities={graphRealities}
             locusId={snapshot.session.activeRealityId}
             selectedId={selectedReality.id}
             pulseId={pulseRealityId}
@@ -1077,7 +1367,16 @@ export function RealityEngine() {
             {allProposals.length ? allProposals.map((proposal) => (
               <article className={`proposal-row proposal-${proposal.status}`} key={proposal.id}>
                 <span className="proposal-status"><CircleDot size={14} />{proposal.status}</span>
-                <div><small>{proposal.owner} / {proposal.title}</small><h3>{proposal.uncertainty}</h3><p>{proposal.rationale}</p></div>
+                <div>
+                  <small>{proposal.owner} / {proposal.title}</small>
+                  <h3>{proposal.uncertainty}</h3>
+                  <p>{proposal.rationale}</p>
+                  <span className="proposal-metadata">
+                    <b>{Math.round((proposal.impactProbability ?? 0.5) * 100)}% impact</b>
+                    <b>{(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</b>
+                    <b>{proposal.costClass ?? "unscored"} cost</b>
+                  </span>
+                </div>
                 <ChevronRight size={16} />
               </article>
             )) : <EmptyState icon={<MoonStar size={19} />}>No uncertainty has been made concrete.</EmptyState>}
@@ -1125,7 +1424,10 @@ export function RealityEngine() {
                   <span className={`evidence-icon evidence-${evidence.kind}`}>
                     {evidence.kind === "test" ? <TestTube2 size={15} /> : evidence.kind === "code" ? <Code2 size={15} /> : <CircleDot size={15} />}
                   </span>
-                  <div><small>{evidence.kind} / {evidence.source}</small><h3>{title}</h3><p>{evidence.summary}</p></div>
+                  <div>
+                    <small>{evidence.kind} / {evidence.provenance ?? "observed"} / {evidence.source}</small>
+                    <h3>{title}</h3><p>{evidence.summary}</p>
+                  </div>
                 </article>
               );
             }) : <EmptyState icon={<FlaskConical size={19} />}>No decisive evidence exists in this world yet.</EmptyState>}
@@ -1185,12 +1487,26 @@ export function RealityEngine() {
                 </div>
               </article>
             ))}
+            {snapshot.session.regressionResult && (
+              <article className={`anchor-row anchor-${snapshot.session.regressionResult.status}`} data-testid="regression-proof">
+                <span>{snapshot.session.regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
+                <div>
+                  <h3>Inherited regression suite</h3>
+                  <p>
+                    {snapshot.session.regressionResult.status === "passed"
+                      ? `${snapshot.session.regressionResult.testFiles.length} test artefacts agree with the waking implementation.`
+                      : "A returned or discovered test still contradicts the waking implementation."}
+                  </p>
+                  <small>{snapshot.session.regressionResult.command} / {snapshot.session.regressionResult.durationMs}ms</small>
+                </div>
+              </article>
+            )}
           </div>
         </div>
 
         <div className="proof-column event-proof">
           <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
-          <EventFeed events={snapshot.events} realities={snapshot.realities} now={now} />
+          <EventFeed events={visibleEvents} realities={replayedRealities} now={now} />
         </div>
       </section>
 
@@ -1200,9 +1516,18 @@ export function RealityEngine() {
             icon={<FileDiff size={18} />}
             eyebrow="WAKING IMPLEMENTATION"
             title="Final Git diff"
-            meta={<span className="diff-meta"><GitBranch size={13} />{root?.branchName}</span>}
+            meta={(
+              <span className="diff-actions">
+                <span className="diff-meta"><GitBranch size={13} />{root?.branchName}</span>
+                <button type="button" onClick={() => setRevealCode((current) => !current)} data-testid="reveal-code">
+                  <Eye size={13} /> {revealCode ? "Hide code" : "Reveal code"}
+                </button>
+              </span>
+            )}
           />
-          <pre>{snapshot.session.finalDiff}</pre>
+          {revealCode
+            ? <pre>{snapshot.session.finalDiff}</pre>
+            : <EmptyState icon={<FileDiff size={19} />}>The implementation is preserved behind the returned knowledge. Reveal it when the proof matters.</EmptyState>}
         </section>
       )}
 
@@ -1215,11 +1540,34 @@ export function RealityEngine() {
           setInspectorTab("world");
           setLocalOperation(null);
           setLoading("idle");
+          setTimelineIndex(null);
+          setCollapsedDreams(false);
+          setRevealCode(false);
         }}
         onStateChanged={loadSnapshot}
       />
 
-      <ActionDock snapshot={snapshot} operation={activeOperation} loading={loading} onAction={act} onReset={reset} />
+      {pendingDreamAction && pendingProposal && (
+        <DreamGate
+          proposal={pendingProposal}
+          owner={snapshot.activeReality?.name ?? "Current Reality"}
+          onCancel={() => setPendingDreamAction(null)}
+          onConfirm={() => {
+            const action = pendingDreamAction;
+            setPendingDreamAction(null);
+            void act(action);
+          }}
+        />
+      )}
+
+      <ActionDock
+        snapshot={snapshot}
+        operation={activeOperation}
+        loading={loading}
+        replaying={timelineIndex !== null}
+        onAction={requestAction}
+        onReset={reset}
+      />
     </main>
   );
 }

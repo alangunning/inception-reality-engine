@@ -29,7 +29,7 @@ Show the uncertainty card: whether per-IP rate limiting prevents abuse.
 
 Say: “The agent does not immediately commit to a fix. It proposes a counterfactual world capable of changing a belief.”
 
-Click **Create attack Dream**.
+Click **Create Dream: Under coordinated attack**, review its impact probability, expected insight, and estimated Codex budget, then confirm the Dream.
 
 ### 3. Populate the Dream with bounded Subjects
 
@@ -47,7 +47,7 @@ Show the returned evidence:
 
 ### 4. Descend one level deeper
 
-Click **Create nested Dream**.
+Click **Create nested Dream: Rotating IP swarm**, review the narrower proposal, then confirm the nested Dream.
 
 Say: “The remaining uncertainty is narrow enough for a nested Dream: one identifier, a new IP on every request.”
 
@@ -63,7 +63,7 @@ Show its consolidated invariants and changed belief. Point out that parent-owned
 
 ### 6. Synthesis and proof
 
-Click **Synthesise returned memories into waking code**.
+Click **Synthesise returned memories into the Waking Reality implementation**.
 
 Show the layered implementation: generic response, per-IP limit, identifier-level limit, and global circuit breaker.
 
@@ -79,7 +79,9 @@ Click **Stabilise Waking Reality**.
 
 ### 7. Close on the differentiator
 
-Show the full Reality tree, Memories panel, inherited evidence, and final Git diff.
+Show the full Reality tree, Memories panel, inherited evidence, and proof results. Click **Reveal code** only when discussing the final Git diff.
+
+Drag the Reality Timeline through its narrative milestones to recap the complete run without replaying wall-clock Codex time. Detailed command, file, tool, and test events remain available in the filterable event stream. Return the timeline to **Live** before performing another Reality action.
 
 Say: “Inception lets Codex explore assumptions in isolated software worlds, then wake with validated evidence that changes the implementation in the waking Reality.”
 

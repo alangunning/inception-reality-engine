@@ -15,8 +15,9 @@ The built-in scenario explores an incomplete password-reset feature:
 5. They discover account enumeration and distributed abuse.
 6. A nested **Rotating IP swarm** Dream creates a failing attack test.
 7. Memories return through two validated Wake Reports.
-8. The waking Reality synthesises the lesson, patches the fixture, and runs immutable anchor tests.
-9. The UI reveals the Reality tree, inherited knowledge, anchor results, and final Git diff.
+8. The waking Reality promotes returned artefacts and synthesises the lesson into its implementation.
+9. Immutable anchors and the complete inherited regression suite must agree before stabilisation.
+10. The UI can replay the safe event history, collapse the Dreams into one waking Reality, and reveal the final Git diff.
 
 ## Fast setup
 
@@ -70,7 +71,13 @@ CODEX_API_KEY="your-key"
 
 `OPENAI_API_KEY` is also accepted when `CODEX_API_KEY` is unset. Then run `npm run dev:real`. The ignored `.env` never enters Git.
 
-The real adapter uses one `@openai/codex-sdk` thread per Reality, persists its thread ID, resumes that thread on later interactions, sets the Reality worktree as `workingDirectory`, streams concise Zod-validated events, and requests a schema-constrained Wake Report. Real mode enables Codex multi-agent collaboration with up to six direct Subjects. When a Dream contains Subject charters, Codex is explicitly required to spawn those bounded investigations, run them concurrently when possible, wait for every return, and allow delegated jobs up to one hour. Every Codex-facing output is validated before persistence.
+The real adapter uses one `@openai/codex-sdk` thread per Reality, persists its thread ID, resumes that thread on later interactions, and sets the Reality worktree as `workingDirectory`. Inspection, Subject findings, Wake Reports, and synthesis all use dedicated Zod contracts with exact Reality identities. Invalid output becomes one concise validation event and is never substituted with scripted findings.
+
+Real mode enables Codex multi-agent collaboration with up to six direct Subjects. When a Dream contains Subject charters, Codex is explicitly required to spawn those bounded investigations, run them concurrently when possible, wait for every return, and allow delegated jobs up to one hour. Every active Subject must return through a validated identity-bound report before its findings can enter the Reality.
+
+Each child worktree inherits its parent's current tracked edits, deletions, and untracked evidence without sharing subsequent mutations. Reality-local constitution and immutable-anchor manifests live under `.inception` inside each worktree. Returned Wake artefacts are promoted into the waking worktree before Codex synthesis, and the final diff includes untracked files.
+
+Mock mode uses the same validated contracts and isolation flow, then applies a deterministic synthesis fixture. Real mode asks the waking Reality's persisted Codex thread to perform synthesis and repair with full worktree permissions; it is not reduced to read-only behavior.
 
 ### Runtime administration
 
@@ -87,7 +94,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The suite covers desktop and mobile visual baselines, idle usage safety, exact action naming, refresh during an active operation, live timestamps and event filtering, reset confirmation, isolated Admin controls, the complete nested-Dream path, anchors, memories, and the final diff.
+The suite covers desktop and mobile visual baselines, idle usage safety, exact action naming, refresh during an active operation, live timestamps and event filtering, timeline replay, Dream cost confirmation, reset confirmation, isolated Admin controls, the complete nested-Dream path, time dilation, memories, comprehensive proof, Dream collapse, and explicit code reveal.
 
 ## Monorepo
 
@@ -113,5 +120,8 @@ npm run demo:reset
 
 - Raw chain-of-thought is never displayed or persisted.
 - Parent-owned Reality Anchors are immutable inside Dreams.
+- A child Reality inherits the exact parent filesystem state that existed when the Dream was created.
+- Synthetic evidence is labelled and Codex may propose a Dream but cannot create one itself.
+- Reality stabilisation is blocked until immutable anchors and every returned regression artefact pass.
 - The canonical mocked sequence is designed to complete reliably in under three minutes.
 - Use **Memory returned** and **Reality stabilised** rather than transport or workflow terminology.

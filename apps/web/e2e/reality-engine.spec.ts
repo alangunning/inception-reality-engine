@@ -9,8 +9,70 @@ async function expectNext(page: Page, label: string): Promise<void> {
   await expect(page.getByTestId("next-move")).toHaveText(label, { timeout: 12_000 });
 }
 
+async function confirmDream(page: Page): Promise<void> {
+  await page.getByTestId("dream-action").click();
+  const gate = page.getByTestId("dream-gate");
+  await expect(gate).toBeVisible();
+  await expect(gate).toContainText("IMPACT PROBABILITY");
+  await expect(gate).toContainText("ESTIMATED CODEX BUDGET");
+  await expect(gate).toContainText("EXPECTED INSIGHT");
+  await gate.getByRole("button", { name: "Confirm and create Dream" }).click();
+}
+
 test.beforeEach(async ({ page }) => {
   await resetRun(page);
+});
+
+test("an empty API failure is reported without a browser JSON exception", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Response decoding behavior needs one browser target.");
+  await page.route("**/api/demo", (route) => route.fulfill({
+    status: 500,
+    contentType: "text/plain",
+    body: ""
+  }));
+
+  await page.goto("/");
+
+  const loading = page.locator(".loading-screen");
+  await expect(loading).toContainText("The server returned an empty HTTP 500 response.");
+  await expect(loading).not.toContainText("Unexpected end of JSON input");
+});
+
+test("timeline replay survives a retained window without the creation event", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Replay reconstruction needs one browser target.");
+  const response = await page.request.get("/api/demo");
+  const snapshot = await response.json();
+  const root = snapshot.realities[0];
+  const retainedAt = new Date(new Date(root.createdAt).getTime() + 60_000).toISOString();
+  snapshot.events = [
+    {
+      id: "retained-inspection",
+      realityId: root.id,
+      type: "inspection.completed",
+      summary: "Retained inspection milestone.",
+      dreamTime: 12,
+      payload: {},
+      occurredAt: retainedAt
+    },
+    {
+      id: "retained-uncertainty",
+      realityId: root.id,
+      type: "uncertainty.discovered",
+      summary: "Retained uncertainty milestone.",
+      dreamTime: 12,
+      payload: {},
+      occurredAt: new Date(new Date(retainedAt).getTime() + 1_000).toISOString()
+    }
+  ];
+  await page.route("**/api/demo", (route) => route.fulfill({ json: snapshot }));
+  await page.goto("/");
+
+  const timeline = page.getByTestId("reality-timeline");
+  await timeline.locator('input[type="range"]').fill("0");
+  await expect(timeline).toContainText("REPLAYING VALIDATED EXPERIENCE");
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(1);
+  await expect(page.getByRole("heading", { name: "Uncertainty made explicit" })).toBeVisible();
+  await expect(page.locator(".loading-screen")).toHaveCount(0);
 });
 
 test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ page }) => {
@@ -23,6 +85,7 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   await expect(page.getByTestId("reset-run")).toHaveText(/Full reset/);
   await expect(page.getByTestId("operation-monitor")).toHaveCount(0);
   await expect(page.getByTestId("simulated-world-time")).toContainText("0");
+  await expect(page.getByTestId("reality-timeline")).toContainText("LIVE REALITY TIMELINE");
 
   await page.getByTestId("admin-trigger").click();
   await expect(page.getByTestId("admin-drawer")).toBeVisible();
@@ -65,8 +128,17 @@ test("live operation survives refresh and returns timestamped, filterable events
   await expectNext(page, "Create Dream: Under coordinated attack");
   await expect(page.getByTestId("operation-monitor")).toHaveCount(0);
   await expect(page.getByTestId("dream-action")).toBeEnabled();
-  await expect(page.getByTestId("dream-action")).toHaveText(/Create attack Dream/);
+  await expect(page.getByTestId("dream-action")).toHaveText(/Create Dream: Under coordinated attack/);
   await expect(page.getByTestId("simulated-world-time")).toContainText("12");
+
+  const timeline = page.getByTestId("reality-timeline");
+  await timeline.locator('input[type="range"]').fill("0");
+  await expect(timeline).toContainText("REPLAYING VALIDATED EXPERIENCE");
+  await expect(page.getByTestId("next-move")).toHaveText("Return the timeline to Live to continue");
+  await expect(page.getByTestId("dream-action")).toBeDisabled();
+  await timeline.getByRole("button", { name: "Live" }).click();
+  await expect(timeline).toContainText("LIVE REALITY TIMELINE");
+  await expect(page.getByTestId("dream-action")).toBeEnabled();
 
   const feed = page.getByTestId("event-feed");
   await feed.locator("select").selectOption("codex");
@@ -89,13 +161,13 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
 
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Create Dream: Under coordinated attack");
-  await page.getByTestId("dream-action").click();
+  await confirmDream(page);
   await expectNext(page, "Enter attacker, investigator, and test engineer into Under coordinated attack");
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Ask Codex to investigate coordinated password-reset abuse");
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Create nested Dream: Rotating IP swarm");
-  await page.getByTestId("dream-action").click();
+  await confirmDream(page);
   await expectNext(page, "Kick Rotating IP swarm: return validated memory");
   await page.getByTestId("kick-action").click();
   await expectNext(page, "Kick Under coordinated attack: return validated memory");
@@ -109,13 +181,30 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expectNext(page, "Reality stabilised");
 
   await expect(page.locator(".reality-node")).toHaveCount(3);
-  await expect(page.locator(".anchor-passed")).toHaveCount(3);
+  await expect(page.locator('.anchor-list .anchor-passed:not([data-testid="regression-proof"])')).toHaveCount(3);
+  await expect(page.getByTestId("regression-proof")).toContainText("Inherited regression suite");
   await expect(page.locator(".memory-report")).toHaveCount(2);
   await expect(page.locator(".diff-workspace")).toBeVisible();
+  await expect(page.locator(".diff-workspace pre")).toHaveCount(0);
+  await page.getByTestId("reveal-code").click();
+  await expect(page.locator(".diff-workspace pre")).toBeVisible();
   await expect(page.getByTestId("outcome-summary")).toContainText("Password reset now survives rotating-source abuse");
   await expect(page.getByTestId("outcome-summary")).toContainText("3 of 3 immutable requirements passed");
   await expect(page.getByTestId("outcome-summary")).toContainText("Move counters to an atomic shared store");
-  await expect(page.getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
+  await expect(page.getByTestId("event-feed").getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
+  await page.getByTestId("collapse-dreams").click();
+  await expect(page.locator(".reality-node")).toHaveCount(1);
+  await expect(page.getByTestId("outcome-summary")).toContainText("inherited truths");
+  const dockObscuresInspector = await page.evaluate(() => {
+    const dock = document.querySelector('[data-testid="action-dock"]')?.getBoundingClientRect();
+    const inspector = document.querySelector(".world-inspector")?.getBoundingClientRect();
+    if (!dock || !inspector) return true;
+    return dock.left < inspector.right
+      && dock.right > inspector.left
+      && dock.top < inspector.bottom
+      && dock.bottom > inspector.top;
+  });
+  expect(dockObscuresInspector).toBe(false);
 
   await expect(page).toHaveScreenshot("reality-stabilised.png", {
     fullPage: true

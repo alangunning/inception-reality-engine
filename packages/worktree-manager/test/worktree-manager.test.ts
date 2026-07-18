@@ -19,13 +19,26 @@ describe("GitWorktreeManager", () => {
       const manager = new GitWorktreeManager(repo);
       const descriptor = await manager.create("dream-one");
       await manager.writeFile(descriptor.path, "seed.txt", "dream\n");
+      await manager.writeFile(descriptor.path, "evidence/failing.spec.ts", "parent evidence\n");
 
       expect(await readFile(path.join(repo, "seed.txt"), "utf8")).toBe("waking\n");
       expect(await readFile(path.join(descriptor.path, "seed.txt"), "utf8")).toBe("dream\n");
       expect(await manager.diff(descriptor.path, "seed.txt")).toContain("+dream");
+      expect(await manager.diff(descriptor.path, "evidence")).toContain("+parent evidence");
+
+      const nested = await manager.create("nested-dream", "HEAD", descriptor.path);
+      expect(await readFile(path.join(nested.path, "seed.txt"), "utf8")).toBe("dream\n");
+      expect(await readFile(path.join(nested.path, "evidence/failing.spec.ts"), "utf8")).toBe("parent evidence\n");
+      await manager.writeFile(nested.path, "seed.txt", "nested\n");
+      expect(await readFile(path.join(descriptor.path, "seed.txt"), "utf8")).toBe("dream\n");
+      expect(await manager.listChangedFiles(nested.path)).toEqual([
+        "evidence/failing.spec.ts",
+        "seed.txt"
+      ]);
       await expect(manager.writeFile(descriptor.path, "../outside.txt", "escape\n")).rejects.toThrow(
         "Worktree file path must remain inside the Reality."
       );
+      await manager.remove(nested);
       await manager.remove(descriptor);
 
       const orphan = await manager.create("orphaned-dream");

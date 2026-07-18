@@ -1,11 +1,22 @@
 import { Codex, type Thread, type ThreadOptions } from "@openai/codex-sdk";
-import { WakeReportSchema, buildDreamPrompt, type Reality } from "@inception/domain";
+import {
+  InvestigationReportSchema,
+  SynthesisReportSchema,
+  WakeReportSchema,
+  buildDreamPrompt,
+  type InvestigationReport,
+  type Reality,
+  type SynthesisReport,
+  type WakeReport
+} from "@inception/domain";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
+  CodexOutputValidationError,
   CodexRuntimeEventSchema,
   type CodexExecutionResult,
   type CodexRuntime,
   type CodexRuntimeEvent,
+  type CodexSynthesisResult,
   type CodexWakeResult
 } from "./types";
 import { WakeReportParser, WakeReportValidationError } from "./wake-report-parser";
@@ -38,6 +49,30 @@ function compactCommand(value: unknown, maximum: number): string | undefined {
 
 function integer(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
+}
+
+function parseStructuredJson<T>(
+  raw: string,
+  contract: "InvestigationReportSchema" | "SynthesisReportSchema",
+  parse: (value: unknown) => { success: true; data: T } | { success: false; error: { issues: Array<{ path: PropertyKey[]; code: string }> } }
+): T {
+  let value: unknown;
+  try {
+    value = JSON.parse(raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+  } catch {
+    throw new CodexOutputValidationError(contract, [{ path: "$", code: "invalid_json" }]);
+  }
+  const result = parse(value);
+  if (!result.success) {
+    throw new CodexOutputValidationError(
+      contract,
+      result.error.issues.map((issue) => ({
+        path: issue.path.length ? issue.path.join(".") : "$",
+        code: issue.code
+      }))
+    );
+  }
+  return result.data;
 }
 
 interface CommandFailure {
@@ -334,22 +369,50 @@ export class RealCodexRuntime implements CodexRuntime {
 ${buildSubjectOrchestrationPrompt(reality)}
 
 TASK
-Audit and improve ${scope}. Report only concise evidence, artefacts, decisions, and uncertainties.`;
-    const streamed = await thread.runStreamed(prompt);
+Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise. Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, one high-value Dream proposal when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.`;
+    const outputSchema = zodToJsonSchema(InvestigationReportSchema, {
+      target: "openAi",
+      $refStrategy: "none"
+    }) as Record<string, unknown>;
+    const streamed = await thread.runStreamed(prompt, { outputSchema });
     const events: CodexRuntimeEvent[] = [];
+    let finalResponse = "";
 
     for await (const rawEvent of streamed.events) {
+      const raw = rawEvent as {
+        type?: string;
+        item?: { type?: string; text?: unknown };
+      };
+      if (
+        raw.type === "item.completed"
+        && raw.item?.type === "agent_message"
+        && typeof raw.item.text === "string"
+      ) {
+        finalResponse = raw.item.text;
+      }
       const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, operationLabel);
       if (event) {
         events.push(event);
         await onEvent?.(event);
       }
     }
+    const report = parseStructuredJson<InvestigationReport>(
+      finalResponse,
+      "InvestigationReportSchema",
+      (value) => InvestigationReportSchema.safeParse(value)
+    );
+    if (report.realityId !== reality.id) {
+      throw new CodexOutputValidationError("InvestigationReportSchema", [{
+        path: "realityId",
+        code: "identity_mismatch"
+      }]);
+    }
 
     return {
       threadId: this.requireThreadId(thread),
       events,
-      summary: events.at(-1)?.summary ?? "Codex inspection completed inside the Reality worktree."
+      summary: report.summary,
+      report
     };
   }
 
@@ -398,6 +461,79 @@ Audit and improve ${scope}. Report only concise evidence, artefacts, decisions, 
       threadId: this.requireThreadId(thread),
       report,
       events
+    };
+  }
+
+  async synthesise(
+    reality: Reality,
+    reports: WakeReport[],
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
+    repairContext?: string
+  ): Promise<CodexSynthesisResult> {
+    const thread = this.threadFor(reality);
+    const outputSchema = zodToJsonSchema(SynthesisReportSchema, {
+      target: "openAi",
+      $refStrategy: "none"
+    }) as Record<string, unknown>;
+    const memory = JSON.stringify(reports, null, 2);
+    const prompt = `${buildDreamPrompt(reality)}
+
+RETURNED MEMORIES
+${memory}
+
+SYNTHESIS TASK
+Apply the validated, generalisable memories to the waking implementation in this worktree. Preserve immutable anchors and public API semantics. Retain or strengthen every returned test artefact, run the complete password-reset test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
+${repairContext ? `\nREPAIR CONTEXT\n${repairContext}\nRepair the proof failure and rerun the complete suite.` : ""}
+Return only the structured synthesis report after the implementation and tests are complete. Set realityId exactly to "${reality.id}", list every applied memory Reality ID, changed file, retained artefact, and unresolved risk.`;
+    const streamed = await thread.runStreamed(prompt, { outputSchema });
+    const events: CodexRuntimeEvent[] = [];
+    let finalResponse = "";
+
+    for await (const rawEvent of streamed.events) {
+      const raw = rawEvent as {
+        type?: string;
+        item?: { type?: string; text?: unknown };
+      };
+      if (
+        raw.type === "item.completed"
+        && raw.item?.type === "agent_message"
+        && typeof raw.item.text === "string"
+      ) {
+        finalResponse = raw.item.text;
+      }
+      const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, repairContext ? "Reality repair" : "Memory synthesis");
+      if (event) {
+        events.push(event);
+        await onEvent?.(event);
+      }
+    }
+
+    const report = parseStructuredJson<SynthesisReport>(
+      finalResponse,
+      "SynthesisReportSchema",
+      (value) => SynthesisReportSchema.safeParse(value)
+    );
+    if (report.realityId !== reality.id) {
+      throw new CodexOutputValidationError("SynthesisReportSchema", [{
+        path: "realityId",
+        code: "identity_mismatch"
+      }]);
+    }
+    const missingMemory = reports.find((memoryReport) =>
+      !report.appliedMemories.includes(memoryReport.realityId)
+    );
+    if (missingMemory) {
+      throw new CodexOutputValidationError("SynthesisReportSchema", [{
+        path: "appliedMemories",
+        code: "missing_returned_memory"
+      }]);
+    }
+
+    return {
+      threadId: this.requireThreadId(thread),
+      events,
+      report,
+      applied: true
     };
   }
 

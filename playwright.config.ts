@@ -33,6 +33,7 @@ export default defineConfig({
       INCEPTION_PERSISTENCE: "sqlite",
       INCEPTION_REPO_ROOT: repoRoot,
       INCEPTION_MOCK_DELAY_MS: "2400",
+      NEXT_DIST_DIR: ".next-playwright",
       NEXT_TELEMETRY_DISABLED: "1"
     }
   },

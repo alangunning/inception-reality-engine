@@ -1,4 +1,4 @@
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import {
   DemoSessionSchema,
   RealityEventSchema,
@@ -12,6 +12,7 @@ import {
 import type { RealityRepository } from "./ports";
 
 type Row = Record<string, unknown>;
+const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
 
 function parseJson<T>(value: unknown): T {
   return JSON.parse(String(value)) as T;
@@ -22,7 +23,7 @@ function iso(value: unknown): string {
 }
 
 export class SqliteRealityRepository implements RealityRepository {
-  private readonly db: DatabaseSync;
+  private readonly db: DatabaseSyncType;
 
   constructor(filename: string) {
     this.db = new DatabaseSync(filename);
@@ -75,6 +76,7 @@ export class SqliteRealityRepository implements RealityRepository {
         activeRealityId TEXT,
         finalDiff TEXT NOT NULL,
         anchorResultsJson TEXT NOT NULL,
+        regressionResultJson TEXT,
         createdAt DATETIME NOT NULL,
         updatedAt DATETIME NOT NULL
       );
@@ -87,6 +89,10 @@ export class SqliteRealityRepository implements RealityRepository {
       CREATE INDEX IF NOT EXISTS RealityRunArchiveRecord_archivedAt_idx
         ON RealityRunArchiveRecord(archivedAt);
     `);
+    const sessionColumns = this.db.prepare("PRAGMA table_info(DemoSessionRecord)").all() as Array<{ name: string }>;
+    if (!sessionColumns.some((column) => column.name === "regressionResultJson")) {
+      this.db.exec("ALTER TABLE DemoSessionRecord ADD COLUMN regressionResultJson TEXT;");
+    }
   }
 
   async saveReality(reality: Reality): Promise<void> {
@@ -190,13 +196,14 @@ export class SqliteRealityRepository implements RealityRepository {
   async saveSession(session: DemoSession): Promise<void> {
     this.db.prepare(`
       INSERT INTO DemoSessionRecord
-      (id, phase, activeRealityId, finalDiff, anchorResultsJson, createdAt, updatedAt)
-      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @createdAt, @updatedAt)
+      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, createdAt, updatedAt)
+      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @createdAt, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         phase=excluded.phase,
         activeRealityId=excluded.activeRealityId,
         finalDiff=excluded.finalDiff,
         anchorResultsJson=excluded.anchorResultsJson,
+        regressionResultJson=excluded.regressionResultJson,
         createdAt=excluded.createdAt,
         updatedAt=excluded.updatedAt
     `).run({
@@ -205,6 +212,7 @@ export class SqliteRealityRepository implements RealityRepository {
       activeRealityId: session.activeRealityId ?? null,
       finalDiff: session.finalDiff,
       anchorResultsJson: JSON.stringify(session.anchorResults),
+      regressionResultJson: session.regressionResult ? JSON.stringify(session.regressionResult) : null,
       createdAt: session.createdAt,
       updatedAt: session.updatedAt
     });
@@ -218,6 +226,7 @@ export class SqliteRealityRepository implements RealityRepository {
       activeRealityId: row.activeRealityId ?? null,
       finalDiff: row.finalDiff,
       anchorResults: parseJson(row.anchorResultsJson),
+      regressionResult: row.regressionResultJson ? parseJson(row.regressionResultJson) : undefined,
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt)
     }) : null;

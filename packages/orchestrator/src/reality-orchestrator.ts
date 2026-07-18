@@ -5,18 +5,23 @@ import {
   RealityRunArchiveSchema,
   type AnchorResult,
   type DemoSession,
+  type InvestigationReport,
   type Reality,
   type RealityEvent,
   type RealityEventType,
-  type RealityRunArchive
+  type RealityRunArchive,
+  type WakeReport
 } from "@inception/domain";
 import {
+  CodexOutputValidationError,
+  type CodexExecutionResult,
   type CodexRuntime,
   type CodexRuntimeEvent,
+  type CodexSynthesisResult,
   type CodexWakeResult,
   WakeReportValidationError
 } from "./codex-port";
-import type { WorktreeManager } from "@inception/worktree-manager";
+import type { WorktreeManagerPort } from "./worktree-port";
 import { ROTATING_IP_TEST, SECURE_PASSWORD_RESET_IMPLEMENTATION } from "./demo-fixture";
 import type { RealityEventBus, RealityRepository } from "./ports";
 import { SynthesisService } from "./synthesis-service";
@@ -31,6 +36,7 @@ export type DemoAction =
   | "wake_parent"
   | "synthesise"
   | "run_anchors"
+  | "repair"
   | "stabilise";
 
 export interface ActiveRealityOperation {
@@ -81,8 +87,6 @@ const ACTION_PLAN: Record<number, ActionDefinition> = {
 };
 
 const ROOT_NAME = "Waking Reality";
-const ATTACK_DREAM_NAME = "Under coordinated attack";
-const ROTATING_DREAM_NAME = "Rotating IP swarm";
 
 export class RealityOrchestrator {
   private operation: Promise<void> = Promise.resolve();
@@ -93,7 +97,7 @@ export class RealityOrchestrator {
     private readonly repository: RealityRepository,
     private readonly eventBus: RealityEventBus,
     private readonly codexRuntime: CodexRuntime,
-    private readonly worktrees: WorktreeManager,
+    private readonly worktrees: WorktreeManagerPort,
     private readonly synthesis: SynthesisService,
     private readonly repoRoot: string
   ) {}
@@ -129,6 +133,11 @@ export class RealityOrchestrator {
           parentTruths: [
             "Reset tokens expire after fifteen minutes.",
             "The public API shape must remain stable."
+          ],
+          timeDilation: 1,
+          runtimeLaws: [
+            "Production behavior must be supported by executable repository evidence.",
+            "A failed proof prevents Reality stabilisation."
           ]
         },
         initialBeliefs: [{
@@ -176,6 +185,7 @@ export class RealityOrchestrator {
       const descriptor = await this.worktrees.create(root.snapshot().id, "HEAD");
       root.bindRuntime(`unbound:${root.snapshot().id}`, descriptor.path, descriptor.branchName);
       const reality = root.snapshot();
+      await this.materialiseRealityContext(reality);
       await this.repository.saveReality(reality);
 
       const timestamp = new Date().toISOString();
@@ -202,7 +212,7 @@ export class RealityOrchestrator {
     const [session, realities, events] = await Promise.all([
       this.repository.getSession(),
       this.repository.listRealities(),
-      this.repository.listEvents()
+      this.repository.listEvents(500)
     ]);
     if (!session) throw new Error("Demo session is missing.");
     const activeReality = realities.find((reality) => reality.id === session.activeRealityId) ?? null;
@@ -212,7 +222,7 @@ export class RealityOrchestrator {
       events,
       activeReality,
       operation: this.activeOperation ? { ...this.activeOperation } : null,
-      nextAction: this.activeOperation ? null : this.describeAction(session.phase, activeReality)
+      nextAction: this.activeOperation ? null : this.describeAction(session, activeReality)
     };
   }
 
@@ -220,8 +230,7 @@ export class RealityOrchestrator {
     const run = this.operation.then(async () => {
       await this.ensureSeeded();
       const session = await this.requireSession();
-      const definition = ACTION_PLAN[session.phase];
-      const expected = definition?.id;
+      const expected = this.expectedAction(session);
       if (action !== expected) {
         throw new Error(`Action ${action} is not valid in phase ${session.phase}; expected ${expected ?? "none"}.`);
       }
@@ -232,7 +241,7 @@ export class RealityOrchestrator {
       if (!activeReality) {
         throw new Error("The active Reality could not be found.");
       }
-      const nextAction = this.describeAction(session.phase, activeReality);
+      const nextAction = this.describeAction(session, activeReality);
       if (!nextAction) {
         throw new Error(`No Reality action exists for phase ${session.phase}.`);
       }
@@ -257,6 +266,7 @@ export class RealityOrchestrator {
           case "wake_parent": await this.wakeAttackDream(session); break;
           case "synthesise": await this.synthesiseMemories(session); break;
           case "run_anchors": await this.runAnchors(session); break;
+          case "repair": await this.repairReality(session); break;
           case "stabilise": await this.stabilise(session); break;
         }
       } finally {
@@ -300,46 +310,42 @@ export class RealityOrchestrator {
 
   private async inspectRoot(session: DemoSession): Promise<void> {
     const root = await this.requireNamedReality(ROOT_NAME);
-    const runtimeResult = await this.codexRuntime.inspect(
-      {
-        ...root,
-        codexThreadId: root.codexThreadId?.startsWith("unbound:") ? undefined : root.codexThreadId
-      },
-      async (event) => this.emitCodexEvent(root, event)
-    );
+    const runtimeResult = await this.requestInspection(root);
+    if (!runtimeResult.report.dreamProposal) {
+      await this.rejectContract(root, "InvestigationReportSchema", "dreamProposal", "required_uncertainty");
+    }
     const entity = RealityEntity.hydrate(root);
     entity.bindRuntime(runtimeResult.threadId, root.worktreePath!, root.branchName!);
-    const codeEvidence = entity.addEvidence({
-      id: randomUUID(),
-      kind: "code",
-      title: "IP-only throttle",
-      summary: "The implementation counts requests by source IP but has no identifier-level or global safety budget.",
-      source: "demo/password-reset/src/password-reset.ts",
-      artefactPath: "demo/password-reset/src/password-reset.ts"
-    });
-    entity.addProposal({
-      id: randomUUID(),
-      title: ATTACK_DREAM_NAME,
-      premise: "Assume an attacker coordinates requests across accounts and source addresses.",
-      uncertainty: "Does per-IP rate limiting actually prevent abuse?",
-      rationale: "The implementation has only been evaluated in a single-source world.",
-      status: "open"
-    });
+    const applied = this.applyInvestigationReport(entity, runtimeResult.report, false);
     entity
       .setStatus("exploring", "Reality inspecting implementation")
-      .setImplementationState("Per-IP limiter; account-specific responses; no identifier cooldown")
+      .setImplementationState(runtimeResult.report.summary)
       .advanceTime(12, "Testing the initial abuse model", runtimeResult.summary);
     const updated = entity.snapshot();
     await this.repository.saveReality(updated);
     await this.emit(updated, "codex.thread.bound", "Codex thread bound to the waking Reality worktree.", { threadId: runtimeResult.threadId });
-    await this.emit(updated, "inspection.completed", "Password-reset boundary inspected; one defensive layer is visible.", { evidenceId: codeEvidence.id });
-    await this.emit(updated, "uncertainty.discovered", "Uncertainty surfaced: can distributed sources bypass per-IP protection?", { proposal: ATTACK_DREAM_NAME });
+    await this.emit(updated, "inspection.completed", runtimeResult.report.summary, {
+      evidenceIds: applied.evidenceIds,
+      changedFiles: runtimeResult.report.changedFiles
+    });
+    for (const evidence of updated.evidence.filter((entry) => applied.evidenceIds.includes(entry.id))) {
+      await this.emit(updated, "evidence.discovered", `Evidence discovered: ${evidence.title}.`, {
+        evidenceId: evidence.id,
+        provenance: evidence.provenance ?? "model-reported"
+      });
+    }
+    await this.emit(
+      updated,
+      "uncertainty.discovered",
+      `Uncertainty surfaced: ${runtimeResult.report.dreamProposal!.uncertainty}`,
+      { proposal: runtimeResult.report.dreamProposal!.title }
+    );
     await this.advanceSession(session, 1, updated.id);
   }
 
   private async createAttackDream(session: DemoSession): Promise<void> {
     const root = await this.requireNamedReality(ROOT_NAME);
-    const proposal = root.proposals.find((entry) => entry.title === ATTACK_DREAM_NAME);
+    const proposal = root.proposals.find((entry) => entry.status === "open");
     if (!proposal) throw new Error("Attack Dream proposal missing.");
     const rootEntity = RealityEntity.hydrate(root).updateProposal(proposal.id, "dreaming");
 
@@ -347,7 +353,7 @@ export class RealityOrchestrator {
       parentId: root.id,
       depth: 1,
       kind: "dream",
-      name: ATTACK_DREAM_NAME,
+      name: proposal.title,
       premise: proposal.premise,
       constitution: {
         mission: "Break the current password-reset abuse assumptions using bounded adversarial investigation.",
@@ -355,7 +361,12 @@ export class RealityOrchestrator {
         premise: proposal.premise,
         constraints: root.constitution.constraints,
         wakeContract: root.constitution.wakeContract,
-        parentTruths: [...root.constitution.parentTruths, "Per-IP throttling exists in the parent implementation."]
+        parentTruths: [...root.constitution.parentTruths, "Per-IP throttling exists in the parent implementation."],
+        timeDilation: 12,
+        runtimeLaws: [
+          "Coordinated attackers may use independent accounts and network sources.",
+          "Subject claims require code, response, or executable test evidence."
+        ]
       },
       inheritedAnchors: root.anchors,
       initialBeliefs: [{
@@ -364,19 +375,29 @@ export class RealityOrchestrator {
         origin: "inherited"
       }]
     });
-    const descriptor = await this.worktrees.create(dream.snapshot().id, root.branchName ?? "HEAD");
+    const descriptor = await this.worktrees.create(
+      dream.snapshot().id,
+      root.branchName ?? "HEAD",
+      root.worktreePath
+    );
     dream.bindRuntime(`unbound:${dream.snapshot().id}`, descriptor.path, descriptor.branchName)
       .setStatus("exploring", "Dream entered")
       .advanceTime(3, "Establishing coordinated-attack conditions");
     const created = dream.snapshot();
+    await this.materialiseRealityContext(created);
     await this.repository.saveReality(rootEntity.snapshot());
     await this.repository.saveReality(created);
-    await this.emit(created, "dream.created", "Creating dream: Under coordinated attack.", { parentId: root.id, depth: 1 });
+    await this.emit(created, "dream.created", `Creating dream: ${created.name}.`, {
+      parentId: root.id,
+      depth: 1,
+      impactProbability: proposal.impactProbability,
+      estimatedTokens: proposal.estimatedTokens
+    });
     await this.advanceSession(session, 2, created.id);
   }
 
   private async enterSubjects(session: DemoSession): Promise<void> {
-    const dream = await this.requireNamedReality(ATTACK_DREAM_NAME);
+    const dream = await this.requireDreamAtDepth(1);
     const entity = RealityEntity.hydrate(dream);
     const subjects = [
       { id: randomUUID(), name: "Ariadne", role: "Attacker", mission: "Find observable differences and scalable abuse paths.", status: "entered" as const, findings: [] },
@@ -394,72 +415,51 @@ export class RealityOrchestrator {
   }
 
   private async discoverAbuse(session: DemoSession): Promise<void> {
-    const dream = await this.requireNamedReality(ATTACK_DREAM_NAME);
-    const runtimeResult = await this.codexRuntime.inspect(
-      {
-        ...dream,
-        codexThreadId: dream.codexThreadId?.startsWith("unbound:") ? undefined : dream.codexThreadId
-      },
-      async (event) => this.emitCodexEvent(dream, event)
-    );
+    const dream = await this.requireDreamAtDepth(1);
+    const runtimeResult = await this.requestInspection(dream);
+    if (!runtimeResult.report.dreamProposal) {
+      await this.rejectContract(dream, "InvestigationReportSchema", "dreamProposal", "required_uncertainty");
+    }
     const entity = RealityEntity.hydrate(dream);
     entity.bindRuntime(runtimeResult.threadId, dream.worktreePath!, dream.branchName!);
-    const [attacker, investigator, tester] = dream.subjects;
-    if (attacker) entity.returnSubject(attacker.id, ["Known and unknown accounts receive distinguishable responses."]);
-    if (investigator) entity.returnSubject(investigator.id, ["Counters are keyed only by IP; identifiers have no cooldown."]);
-    if (tester) entity.returnSubject(tester.id, ["A rotating-source test will decide whether the defence generalises."]);
-    const enumeration = entity.addEvidence({
-      id: randomUUID(),
-      kind: "observation",
-      title: "Account enumeration remains possible",
-      summary: "The incomplete service returns a distinct message when an account does not exist.",
-      source: "attacker-subject"
-    });
-    const distributed = entity.addEvidence({
-      id: randomUUID(),
-      kind: "code",
-      title: "Distributed abuse has no shared budget",
-      summary: "Requests from new IP addresses begin with fresh counters even when the same account is targeted.",
-      source: "investigator-subject"
-    });
-    entity.addBelief({
-      id: randomUUID(),
-      statement: "Per-IP throttling alone does not generalise to coordinated or distributed abuse.",
-      confidence: 0.93,
-      origin: "observed",
-      supersedesBeliefId: dream.beliefs.at(-1)?.id,
-      evidenceIds: [enumeration.id, distributed.id]
-    });
-    entity.addProposal({
-      id: randomUUID(),
-      title: ROTATING_DREAM_NAME,
-      premise: "Assume one attacker can rotate source IPs for every request against one identifier.",
-      uncertainty: "Can source rotation obtain effectively unlimited reset deliveries?",
-      rationale: "A nested world can isolate the distributed-address assumption and produce one decisive test.",
-      status: "open"
-    });
-    entity.advanceTime(16, "Selecting the decisive nested experiment", "Enumeration is proven; distributed abuse remains the central uncertainty.");
+    const applied = this.applyInvestigationReport(entity, runtimeResult.report, true);
+    entity.advanceTime(16, "Selecting the decisive nested experiment", runtimeResult.report.summary);
     const updated = entity.snapshot();
     await this.repository.saveReality(updated);
-    await this.emit(updated, "evidence.discovered", "Evidence discovered: account enumeration survives the current implementation.", { evidenceId: enumeration.id });
-    await this.emit(updated, "evidence.discovered", "Evidence discovered: IP counters do not share an identifier-level budget.", { evidenceId: distributed.id });
-    await this.emit(updated, "belief.changed", "Belief changed: one network boundary is not an abuse boundary.", { confidence: 0.93 });
-    for (const subject of updated.subjects) {
-      await this.emit(updated, "subject.returned", `Subject returned: ${subject.name}.`, { findings: subject.findings });
+    for (const evidence of updated.evidence.filter((entry) => applied.evidenceIds.includes(entry.id))) {
+      await this.emit(updated, "evidence.discovered", `Evidence discovered: ${evidence.title}.`, {
+        evidenceId: evidence.id,
+        provenance: evidence.provenance ?? "model-reported"
+      });
     }
+    for (const change of runtimeResult.report.changedBeliefs) {
+      await this.emit(updated, "belief.changed", `Belief changed: ${change.to}`, { confidence: change.confidence });
+    }
+    for (const subject of updated.subjects) {
+      await this.emit(updated, "subject.returned", `Subject returned: ${subject.name}.`, {
+        subjectId: subject.id,
+        findings: subject.findings
+      });
+    }
+    await this.emit(
+      updated,
+      "uncertainty.discovered",
+      `Uncertainty surfaced: ${runtimeResult.report.dreamProposal!.uncertainty}`,
+      { proposal: runtimeResult.report.dreamProposal!.title }
+    );
     await this.advanceSession(session, 4, updated.id);
   }
 
   private async createNestedDream(session: DemoSession): Promise<void> {
-    const parent = await this.requireNamedReality(ATTACK_DREAM_NAME);
-    const proposal = parent.proposals.find((entry) => entry.title === ROTATING_DREAM_NAME);
+    const parent = await this.requireDreamAtDepth(1);
+    const proposal = parent.proposals.find((entry) => entry.status === "open");
     if (!proposal) throw new Error("Rotating-IP proposal missing.");
     const parentEntity = RealityEntity.hydrate(parent).updateProposal(proposal.id, "dreaming");
     const nested = RealityEntity.create({
       parentId: parent.id,
       depth: 2,
       kind: "dream",
-      name: ROTATING_DREAM_NAME,
+      name: proposal.title,
       premise: proposal.premise,
       constitution: {
         mission: "Produce a deterministic rotating-IP attack artefact and wake immediately when the result is decisive.",
@@ -467,7 +467,12 @@ export class RealityOrchestrator {
         premise: proposal.premise,
         constraints: parent.constitution.constraints,
         wakeContract: parent.constitution.wakeContract,
-        parentTruths: [...parent.constitution.parentTruths, "The same identifier is targeted from independent addresses."]
+        parentTruths: [...parent.constitution.parentTruths, "The same identifier is targeted from independent addresses."],
+        timeDilation: 120,
+        runtimeLaws: [
+          "Every request may originate from a fresh source address.",
+          "Wake immediately after one deterministic test decides the premise."
+        ]
       },
       inheritedAnchors: parent.anchors,
       initialBeliefs: [{
@@ -476,7 +481,11 @@ export class RealityOrchestrator {
         origin: "inherited"
       }]
     });
-    const descriptor = await this.worktrees.create(nested.snapshot().id, parent.branchName ?? "HEAD");
+    const descriptor = await this.worktrees.create(
+      nested.snapshot().id,
+      parent.branchName ?? "HEAD",
+      parent.worktreePath
+    );
     nested.bindRuntime(`unbound:${nested.snapshot().id}`, descriptor.path, descriptor.branchName)
       .setStatus("exploring", "Nested Dream entered")
       .advanceTime(4, "Replaying one account across twelve addresses");
@@ -508,9 +517,15 @@ export class RealityOrchestrator {
       artefactPath: "demo/password-reset/tests/rotating-ip.attack.spec.ts"
     });
     const created = nested.snapshot();
+    await this.materialiseRealityContext(created);
     await this.repository.saveReality(parentEntity.snapshot());
     await this.repository.saveReality(created);
-    await this.emit(created, "dream.created", "Creating dream: Rotating IP swarm.", { parentId: parent.id, depth: 2 });
+    await this.emit(created, "dream.created", `Creating dream: ${created.name}.`, {
+      parentId: parent.id,
+      depth: 2,
+      impactProbability: proposal.impactProbability,
+      estimatedTokens: proposal.estimatedTokens
+    });
     await this.emit(created, "evidence.discovered", "Failing attack artefact proves source rotation bypasses the current limit.", {
       evidenceId: evidence.id,
       verdict: "failed-as-expected",
@@ -520,7 +535,7 @@ export class RealityOrchestrator {
   }
 
   private async wakeNestedDream(session: DemoSession): Promise<void> {
-    const nested = await this.requireNamedReality(ROTATING_DREAM_NAME);
+    const nested = await this.requireDreamAtDepth(2);
     const waking = RealityEntity.hydrate(nested).setStatus("waking", "Kick received").advanceTime(2, "Preparing structured memory");
     await this.repository.saveReality(waking.snapshot());
     await this.emit(waking.snapshot(), "kick.triggered", "Kick triggered: stop the rotating-IP Dream and return evidence.", {});
@@ -532,8 +547,8 @@ export class RealityOrchestrator {
     const returned = waking.snapshot();
     await this.repository.saveReality(returned);
 
-    const parent = await this.requireNamedReality(ATTACK_DREAM_NAME);
-    const proposal = parent.proposals.find((entry) => entry.title === ROTATING_DREAM_NAME);
+    const parent = await this.requireDreamAtDepth(1);
+    const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
     const parentEntity = RealityEntity.hydrate(parent);
     if (proposal) parentEntity.updateProposal(proposal.id, "resolved");
     parentEntity.addEvidence({
@@ -552,7 +567,7 @@ export class RealityOrchestrator {
   }
 
   private async wakeAttackDream(session: DemoSession): Promise<void> {
-    const dream = await this.requireNamedReality(ATTACK_DREAM_NAME);
+    const dream = await this.requireDreamAtDepth(1);
     const waking = RealityEntity.hydrate(dream).setStatus("waking", "Kick received").advanceTime(3, "Consolidating subject and nested memories");
     await this.repository.saveReality(waking.snapshot());
     await this.emit(waking.snapshot(), "kick.triggered", "Kick triggered: coordinated-attack Dream must return what generalises.", {});
@@ -565,7 +580,7 @@ export class RealityOrchestrator {
     await this.repository.saveReality(returned);
 
     const root = await this.requireNamedReality(ROOT_NAME);
-    const proposal = root.proposals.find((entry) => entry.title === ATTACK_DREAM_NAME);
+    const proposal = root.proposals.find((entry) => entry.status === "dreaming");
     const rootEntity = RealityEntity.hydrate(root);
     if (proposal) rootEntity.updateProposal(proposal.id, "resolved");
     rootEntity.addEvidence({
@@ -585,23 +600,31 @@ export class RealityOrchestrator {
   private async synthesiseMemories(session: DemoSession): Promise<void> {
     const [root, attack, nested] = await Promise.all([
       this.requireNamedReality(ROOT_NAME),
-      this.requireNamedReality(ATTACK_DREAM_NAME),
-      this.requireNamedReality(ROTATING_DREAM_NAME)
+      this.requireDreamAtDepth(1),
+      this.requireDreamAtDepth(2)
     ]);
     const reports = [nested.wakeReport, attack.wakeReport].filter((report): report is NonNullable<typeof report> => Boolean(report));
-    const synthesised = this.synthesis.synthesise(root, reports);
-    if (!synthesised.worktreePath) throw new Error("Waking Reality worktree missing.");
-    await this.worktrees.writeFile(synthesised.worktreePath, "demo/password-reset/src/password-reset.ts", SECURE_PASSWORD_RESET_IMPLEMENTATION);
-    await this.worktrees.writeFile(synthesised.worktreePath, "demo/password-reset/tests/rotating-ip.attack.spec.ts", ROTATING_IP_TEST);
-    await this.worktrees.run(synthesised.worktreePath, "git", ["add", "-N", "demo/password-reset/tests/rotating-ip.attack.spec.ts"]);
-    const diff = await this.worktrees.diff(synthesised.worktreePath, "demo/password-reset");
+    if (reports.length !== 2) throw new Error("Both Dream memories must return before synthesis.");
+    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+
+    await this.promoteWakeArtefacts(root, [nested, attack], reports);
+    const runtimeResult = await this.requestSynthesis(root, reports);
+    if (!runtimeResult.applied) {
+      await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/src/password-reset.ts", SECURE_PASSWORD_RESET_IMPLEMENTATION);
+      await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/tests/rotating-ip.attack.spec.ts", ROTATING_IP_TEST);
+    }
+    const runtimeRoot = RealityEntity.hydrate(root)
+      .bindRuntime(runtimeResult.threadId, root.worktreePath, root.branchName!)
+      .snapshot();
+    const synthesised = this.synthesis.synthesise(runtimeRoot, reports);
+    const changedFiles = await this.worktrees.listChangedFiles(root.worktreePath);
+    const diff = await this.worktrees.diff(root.worktreePath, "demo/password-reset");
     await this.repository.saveReality(synthesised);
-    await this.emit(synthesised, "synthesis.completed", "Returned memories changed the waking implementation and its abuse model.", {
+    await this.emit(synthesised, "synthesis.completed", runtimeResult.report.summary, {
       reports: reports.map((report) => report.realityId),
-      changedFiles: [
-        "demo/password-reset/src/password-reset.ts",
-        "demo/password-reset/tests/rotating-ip.attack.spec.ts"
-      ]
+      changedFiles,
+      retainedArtefacts: runtimeResult.report.retainedArtefacts,
+      unresolved: runtimeResult.report.unresolved
     });
     await this.advanceSession({ ...session, finalDiff: diff }, 8, synthesised.id, { finalDiff: diff });
   }
@@ -648,10 +671,47 @@ export class RealityOrchestrator {
       const result = anchorResults.find((entry) => entry.anchorId === anchor.id);
       return { ...anchor, status: result?.status ?? "failed", output: result?.output ?? "Anchor did not execute." };
     });
-    const allPassed = anchorResults.every((anchor) => anchor.status === "passed");
+    await this.emit(root, "verification.started", "Complete inherited regression suite entered the waking Reality.", {});
+    const verificationStartedAt = Date.now();
+    const verificationCommand = "vitest run demo/password-reset/tests";
+    const verification = await this.worktrees.run(root.worktreePath, process.execPath, [
+      vitestPath,
+      "run",
+      "demo/password-reset/tests",
+      "--config",
+      "demo/password-reset/vitest.config.ts"
+    ]);
+    const verificationOutput = [verification.stdout, verification.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim()
+      .split("\n")
+      .slice(-16)
+      .join("\n");
+    const changedFiles = await this.worktrees.listChangedFiles(root.worktreePath);
+    const regressionResult = {
+      status: verification.exitCode === 0 ? "passed" as const : "failed" as const,
+      output: verificationOutput,
+      command: verificationCommand,
+      durationMs: Date.now() - verificationStartedAt,
+      testFiles: [
+        "demo/password-reset/tests/anchors.spec.ts",
+        ...changedFiles.filter((file) => file.endsWith(".spec.ts"))
+      ].filter((file, index, files) => files.indexOf(file) === index)
+    };
+    const allPassed =
+      anchorResults.length === root.anchors.length
+      && anchorResults.every((anchor) => anchor.status === "passed")
+      && regressionResult.status === "passed";
     const updated = RealityEntity.hydrate(root)
       .replaceAnchors(anchors)
-      .advanceTime(9, "Verifying parent-owned invariants", allPassed ? "All immutable anchors passed." : "One or more anchors failed.")
+      .advanceTime(
+        9,
+        "Verifying parent-owned invariants and returned artefacts",
+        allPassed
+          ? "Immutable anchors and the complete inherited regression suite passed."
+          : "Reality proof failed; stabilisation is blocked until repair."
+      )
       .snapshot();
     await this.repository.saveReality(updated);
     for (const anchor of anchors) {
@@ -662,11 +722,38 @@ export class RealityOrchestrator {
         { anchorId: anchor.id, ownerRealityId: anchor.ownerRealityId }
       );
     }
-    await this.advanceSession({ ...session, anchorResults }, 9, updated.id, { anchorResults });
+    await this.emit(
+      updated,
+      regressionResult.status === "passed" ? "verification.passed" : "verification.failed",
+      regressionResult.status === "passed"
+        ? `Complete regression proof passed across ${regressionResult.testFiles.length} test artefacts.`
+        : "Complete regression proof failed; Reality cannot stabilise.",
+      {
+        command: regressionResult.command,
+        testFiles: regressionResult.testFiles,
+        durationMs: regressionResult.durationMs
+      }
+    );
+    if (!allPassed) {
+      await this.emit(updated, "reality.fractured", "Reality fracture: implementation, returned evidence, and proof do not yet agree.", {});
+    }
+    await this.advanceSession(
+      { ...session, anchorResults, regressionResult },
+      9,
+      updated.id,
+      { anchorResults, regressionResult }
+    );
   }
 
   private async stabilise(session: DemoSession): Promise<void> {
     const root = await this.requireNamedReality(ROOT_NAME);
+    const anchorsPassed =
+      session.anchorResults.length === root.anchors.length
+      && session.anchorResults.every((result) => result.status === "passed");
+    if (!anchorsPassed || session.regressionResult?.status !== "passed") {
+      await this.emit(root, "reality.fractured", "Reality cannot stabilise until every immutable anchor and regression proof passes.", {});
+      throw new Error("Reality cannot stabilise because its proof is incomplete or failing.");
+    }
     const updated = RealityEntity.hydrate(root)
       .setStatus("stabilised", "Reality stabilised")
       .setImplementationState("Layered controls verified by immutable anchors")
@@ -677,14 +764,116 @@ export class RealityOrchestrator {
     await this.advanceSession(session, 10, updated.id);
   }
 
+  private async repairReality(session: DemoSession): Promise<void> {
+    const root = await this.requireNamedReality(ROOT_NAME);
+    const dreams = await Promise.all([this.requireDreamAtDepth(2), this.requireDreamAtDepth(1)]);
+    const reports = dreams
+      .map((reality) => reality.wakeReport)
+      .filter((report): report is WakeReport => Boolean(report));
+    const context = [
+      ...session.anchorResults
+        .filter((result) => result.status === "failed")
+        .map((result) => `${result.name}: ${result.output}`),
+      session.regressionResult?.status === "failed" ? session.regressionResult.output : ""
+    ].filter(Boolean).join("\n\n");
+    const runtimeResult = await this.requestSynthesis(root, reports, context);
+    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    if (!runtimeResult.applied) {
+      await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/src/password-reset.ts", SECURE_PASSWORD_RESET_IMPLEMENTATION);
+    }
+    const updated = RealityEntity.hydrate(root)
+      .bindRuntime(runtimeResult.threadId, root.worktreePath, root.branchName!)
+      .setStatus("exploring", "Reality repair returned for proof")
+      .advanceTime(8, "Reconciling failed proof", runtimeResult.report.summary)
+      .snapshot();
+    const diff = await this.worktrees.diff(root.worktreePath, "demo/password-reset");
+    await this.repository.saveReality(updated);
+    await this.emit(updated, "synthesis.completed", `Repair returned: ${runtimeResult.report.summary}`, {
+      changedFiles: await this.worktrees.listChangedFiles(root.worktreePath),
+      repair: true
+    });
+    await this.advanceSession(
+      { ...session, finalDiff: diff, anchorResults: [], regressionResult: undefined },
+      8,
+      updated.id,
+      { finalDiff: diff, anchorResults: [], regressionResult: undefined }
+    );
+  }
+
   private async requireSession(): Promise<DemoSession> {
     const session = await this.repository.getSession();
     if (!session) throw new Error("Demo session missing.");
     return session;
   }
 
-  private describeAction(phase: number, reality: Reality | null): DemoNextAction | null {
-    const definition = ACTION_PLAN[phase];
+  private async materialiseRealityContext(reality: Reality): Promise<void> {
+    if (!reality.worktreePath) throw new Error(`Reality ${reality.id} has no worktree for its constitution.`);
+    const constraints = reality.constitution.constraints.map((entry) => `- ${entry}`).join("\n");
+    const truths = reality.constitution.parentTruths.map((entry) => `- ${entry}`).join("\n");
+    const laws = (reality.constitution.runtimeLaws ?? []).map((entry) => `- ${entry}`).join("\n");
+    await this.worktrees.writeFile(
+      reality.worktreePath,
+      ".inception/reality/REALITY.md",
+      `# ${reality.name}
+
+Reality ID: ${reality.id}
+Depth: ${reality.depth}
+Time dilation: ${reality.constitution.timeDilation ?? 1}x
+
+## Premise
+
+${reality.premise}
+
+## Mission
+
+${reality.constitution.mission}
+
+## Constraints
+
+${constraints}
+
+## Parent Truths
+
+${truths}
+
+## Runtime Laws
+
+${laws || "- No additional runtime laws."}
+`
+    );
+    await this.worktrees.writeFile(
+      reality.worktreePath,
+      ".inception/reality/AGENTS.override.md",
+      `# Reality Agent Contract
+
+- Operate only inside this worktree and this Reality's premise.
+- Parent-owned anchors are immutable.
+- Do not create child Dreams. Return a structured Dream proposal to the orchestrator.
+- Label hypothetical or simulated evidence as synthetic.
+- Use sub-agents only for bounded, independent investigations and wait for them to return.
+- Return evidence, artefacts, decisions, and validated summaries. Never expose hidden reasoning.
+`
+    );
+    await this.worktrees.writeFile(
+      reality.worktreePath,
+      ".inception/anchors/manifest.json",
+      `${JSON.stringify({
+        realityId: reality.id,
+        anchors: reality.anchors.map((anchor) => ({
+          id: anchor.id,
+          ownerRealityId: anchor.ownerRealityId,
+          name: anchor.hidden ? "Hidden parent-owned proof" : anchor.name,
+          immutable: true,
+          hidden: anchor.hidden
+        }))
+      }, null, 2)}\n`
+    );
+  }
+
+  private describeAction(session: DemoSession, reality: Reality | null): DemoNextAction | null {
+    const definition = session.phase === 9 && !this.proofPassed(session, reality)
+      ? { id: "repair", kind: "advance", executor: "codex", verb: "repair failed proof" } satisfies ActionDefinition
+      : ACTION_PLAN[session.phase];
     if (!definition || !reality) return null;
     const scope = reality.constitution.scope ?? reality.name;
     const openProposal = reality.proposals.find((proposal) => proposal.status === "open");
@@ -699,6 +888,7 @@ export class RealityOrchestrator {
         case "wake_parent": return reality.name;
         case "synthesise": return `${reality.name} implementation`;
         case "run_anchors": return `${reality.anchors.length} parent-owned requirements`;
+        case "repair": return `${reality.name} proof`;
         case "stabilise": return reality.name;
       }
     })();
@@ -713,10 +903,176 @@ export class RealityOrchestrator {
         case "wake_parent": return `Kick ${target}: ${definition.verb}`;
         case "synthesise": return `Synthesise returned memories into the ${target}`;
         case "run_anchors": return `Run ${target}`;
+        case "repair": return `Ask Codex to repair ${target}`;
         case "stabilise": return `Stabilise ${target}`;
       }
     })();
     return { ...definition, target, label };
+  }
+
+  private expectedAction(session: DemoSession): DemoAction | undefined {
+    if (session.phase === 9 && !this.proofPassed(session)) return "repair";
+    return ACTION_PLAN[session.phase]?.id;
+  }
+
+  private proofPassed(session: DemoSession, reality?: Reality | null): boolean {
+    const expectedAnchors = reality?.anchors.length ?? session.anchorResults.length;
+    return (
+      expectedAnchors > 0
+      && session.anchorResults.length === expectedAnchors
+      && session.anchorResults.every((result) => result.status === "passed")
+      && session.regressionResult?.status === "passed"
+    );
+  }
+
+  private async requestInspection(reality: Reality): Promise<CodexExecutionResult> {
+    try {
+      const result = await this.codexRuntime.inspect(
+        {
+          ...reality,
+          codexThreadId: reality.codexThreadId?.startsWith("unbound:")
+            ? undefined
+            : reality.codexThreadId
+        },
+        async (event) => this.emitCodexEvent(reality, event)
+      );
+      this.validateSubjectReports(reality, result.report);
+      return result;
+    } catch (error) {
+      if (error instanceof CodexOutputValidationError) {
+        await this.handleContractRejection(reality, error);
+      }
+      throw error;
+    }
+  }
+
+  private applyInvestigationReport(
+    entity: RealityEntity,
+    report: InvestigationReport,
+    returnSubjects: boolean
+  ): { evidenceIds: string[] } {
+    const evidenceByTitle = new Map<string, string>();
+    for (const reported of report.evidence) {
+      const evidence = entity.addEvidence({
+        id: randomUUID(),
+        kind: reported.kind,
+        title: reported.title,
+        summary: reported.summary,
+        source: reported.source,
+        artefactPath: reported.artefactPath ?? undefined,
+        provenance: reported.synthetic ? "synthetic" : "model-reported"
+      });
+      evidenceByTitle.set(reported.title, evidence.id);
+    }
+
+    if (returnSubjects) {
+      for (const subject of report.subjectReports) {
+        entity.returnSubject(subject.subjectId, subject.findings);
+      }
+    }
+
+    for (const change of report.changedBeliefs) {
+      const current = entity.snapshot().beliefs.at(-1);
+      entity.addBelief({
+        id: randomUUID(),
+        statement: change.to,
+        confidence: change.confidence,
+        origin: "observed",
+        supersedesBeliefId: current?.id,
+        evidenceIds: change.evidenceTitles
+          .map((title) => evidenceByTitle.get(title))
+          .filter((id): id is string => Boolean(id))
+      });
+    }
+
+    if (report.dreamProposal) {
+      entity.addProposal({
+        id: randomUUID(),
+        ...report.dreamProposal,
+        status: "open"
+      });
+    }
+    return { evidenceIds: [...evidenceByTitle.values()] };
+  }
+
+  private validateSubjectReports(reality: Reality, report: InvestigationReport): void {
+    const activeSubjects = reality.subjects.filter((subject) =>
+      subject.status === "entered" || subject.status === "investigating"
+    );
+    if (!activeSubjects.length && report.subjectReports.length === 0) return;
+    const mismatch = activeSubjects.find((subject) => {
+      const returned = report.subjectReports.find((entry) => entry.subjectId === subject.id);
+      return !returned || returned.name !== subject.name || returned.role !== subject.role;
+    });
+    const unexpected = report.subjectReports.find((entry) =>
+      !activeSubjects.some((subject) => subject.id === entry.subjectId)
+    );
+    if (mismatch || unexpected || report.subjectReports.length !== activeSubjects.length) {
+      throw new CodexOutputValidationError("InvestigationReportSchema", [{
+        path: "subjectReports",
+        code: "subject_identity_mismatch"
+      }]);
+    }
+  }
+
+  private async promoteWakeArtefacts(
+    root: Reality,
+    sourceRealities: Reality[],
+    reports: WakeReport[]
+  ): Promise<void> {
+    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    for (const report of reports) {
+      const source = sourceRealities.find((reality) => reality.id === report.realityId);
+      if (!source?.worktreePath) throw new Error(`Memory source Reality ${report.realityId} is missing its worktree.`);
+      for (const artefact of report.artefacts) {
+        if (path.isAbsolute(artefact.path) || artefact.path.split(/[\\/]/).includes("..")) {
+          await this.rejectContract(root, "WakeReportSchema", "artefacts.path", "path_outside_reality");
+        }
+        let content: string | undefined;
+        try {
+          content = await this.worktrees.readFile(source.worktreePath, artefact.path);
+        } catch {
+          content = artefact.content;
+        }
+        if (content === undefined && artefact.kind === "note") {
+          content = `${artefact.name}\n\n${artefact.summary}\n`;
+        }
+        if (content === undefined) {
+          await this.rejectContract(root, "WakeReportSchema", "artefacts.content", "missing_returned_artefact");
+        }
+        await this.worktrees.writeFile(root.worktreePath, artefact.path, content as string);
+        await this.emit(root, "artefact.returned", `Artefact returned: ${artefact.name}.`, {
+          sourceRealityId: source.id,
+          path: artefact.path,
+          kind: artefact.kind
+        });
+      }
+    }
+  }
+
+  private async requestSynthesis(
+    reality: Reality,
+    reports: WakeReport[],
+    repairContext?: string
+  ): Promise<CodexSynthesisResult> {
+    try {
+      return await this.codexRuntime.synthesise(
+        {
+          ...reality,
+          codexThreadId: reality.codexThreadId?.startsWith("unbound:")
+            ? undefined
+            : reality.codexThreadId
+        },
+        reports,
+        async (event) => this.emitCodexEvent(reality, event),
+        repairContext
+      );
+    } catch (error) {
+      if (error instanceof CodexOutputValidationError) {
+        await this.handleContractRejection(reality, error);
+      }
+      throw error;
+    }
   }
 
   private async requestWake(reality: Reality): Promise<CodexWakeResult> {
@@ -726,29 +1082,66 @@ export class RealityOrchestrator {
         async (event) => this.emitCodexEvent(reality, event)
       );
     } catch (error) {
-      if (error instanceof WakeReportValidationError) {
-        const issue = error.issues[0];
-        const issueSummary = issue ? `${issue.path} returned ${issue.code}` : "the structured fields did not match";
-        await this.emit(
-          reality,
-          "validation.rejected",
-          `Wake Report rejected: ${issueSummary}.`,
-          {
-            contract: "WakeReportSchema",
-            ...(error.issues.length ? { issues: error.issues } : {})
-          }
-        );
-        throw new Error(
-          `Memory could not return because the Wake Report failed validation${issue ? ` (${issue.path}: ${issue.code})` : ""}.`
-        );
+      if (error instanceof WakeReportValidationError || error instanceof CodexOutputValidationError) {
+        await this.handleContractRejection(reality, error);
       }
       throw error;
     }
   }
 
+  private async rejectContract(
+    reality: Reality,
+    contract: CodexOutputValidationError["contract"],
+    issuePath: string,
+    code: string
+  ): Promise<never> {
+    return this.handleContractRejection(
+      reality,
+      new CodexOutputValidationError(contract, [{ path: issuePath, code }])
+    );
+  }
+
+  private async handleContractRejection(
+    reality: Reality,
+    error: CodexOutputValidationError
+  ): Promise<never> {
+    const issue = error.issues[0];
+    const issueSummary = issue ? `${issue.path} returned ${issue.code}` : "the structured fields did not match";
+    const contractName = error.contract === "WakeReportSchema"
+      ? "Wake Report"
+      : error.contract === "InvestigationReportSchema"
+        ? "Investigation Report"
+        : "Synthesis Report";
+    await this.emit(
+      reality,
+      "validation.rejected",
+      `${contractName} rejected: ${issueSummary}.`,
+      {
+        contract: error.contract,
+        ...(error.issues.length ? { issues: error.issues } : {})
+      }
+    );
+    if (error.contract === "WakeReportSchema") {
+      throw new Error(
+        `Memory could not return because the Wake Report failed validation${issue ? ` (${issue.path}: ${issue.code})` : ""}.`
+      );
+    }
+    throw new Error(
+      `${contractName} could not enter the Reality because validation failed${issue ? ` (${issue.path}: ${issue.code})` : ""}.`
+    );
+  }
+
   private async requireNamedReality(name: string): Promise<Reality> {
     const reality = (await this.repository.listRealities()).find((entry) => entry.name === name);
     if (!reality) throw new Error(`Reality ${name} missing.`);
+    return reality;
+  }
+
+  private async requireDreamAtDepth(depth: number): Promise<Reality> {
+    const reality = (await this.repository.listRealities()).find((entry) =>
+      entry.kind === "dream" && entry.depth === depth
+    );
+    if (!reality) throw new Error(`Dream at depth ${depth} missing.`);
     return reality;
   }
 
@@ -788,7 +1181,7 @@ export class RealityOrchestrator {
     session: DemoSession,
     phase: number,
     activeRealityId: string,
-    changes: Partial<Pick<DemoSession, "finalDiff" | "anchorResults">> = {}
+    changes: Partial<Pick<DemoSession, "finalDiff" | "anchorResults" | "regressionResult">> = {}
   ): Promise<void> {
     await this.repository.saveSession({
       ...session,

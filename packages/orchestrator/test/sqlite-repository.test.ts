@@ -40,6 +40,13 @@ describe("SqliteRealityRepository", () => {
       activeRealityId: reality.id,
       finalDiff: "",
       anchorResults: [],
+      regressionResult: {
+        status: "passed",
+        output: "4 tests passed",
+        command: "vitest run demo/password-reset/tests",
+        durationMs: 420,
+        testFiles: ["demo/password-reset/tests/anchors.spec.ts"]
+      },
       createdAt: now,
       updatedAt: now
     };
@@ -56,6 +63,7 @@ describe("SqliteRealityRepository", () => {
 
     expect((await repository.getReality(reality.id))?.parentId).toBeNull();
     expect((await repository.getSession())?.activeRealityId).toBe(reality.id);
+    expect((await repository.getSession())?.regressionResult?.status).toBe("passed");
     await repository.deleteAll();
     expect((await repository.getRunArchive("archive-1"))?.realities[0]?.id).toBe(reality.id);
     repository.close();

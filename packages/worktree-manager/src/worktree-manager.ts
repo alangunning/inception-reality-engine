@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -12,10 +12,12 @@ export interface WorktreeDescriptor {
 
 export interface WorktreeManager {
   discoverRepoRoot(startDirectory?: string): Promise<string>;
-  create(realityId: string, baseRef?: string): Promise<WorktreeDescriptor>;
+  create(realityId: string, baseRef?: string, parentWorktreePath?: string): Promise<WorktreeDescriptor>;
   remove(descriptor: WorktreeDescriptor): Promise<void>;
   cleanupAll(): Promise<number>;
   writeFile(worktreePath: string, relativePath: string, content: string): Promise<void>;
+  readFile(worktreePath: string, relativePath: string): Promise<string>;
+  listChangedFiles(worktreePath: string): Promise<string[]>;
   diff(worktreePath: string, pathspec?: string): Promise<string>;
   run(worktreePath: string, command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
@@ -44,7 +46,7 @@ export class GitWorktreeManager implements WorktreeManager {
     return stdout.trim();
   }
 
-  async create(realityId: string, baseRef = "HEAD"): Promise<WorktreeDescriptor> {
+  async create(realityId: string, baseRef = "HEAD", parentWorktreePath?: string): Promise<WorktreeDescriptor> {
     await mkdir(this.worktreeRoot, { recursive: true });
     const branchName = `inception/${safeBranchPart(realityId)}`;
     const worktreePath = path.join(this.worktreeRoot, safeBranchPart(realityId));
@@ -55,6 +57,9 @@ export class GitWorktreeManager implements WorktreeManager {
       // Branch does not exist yet.
     }
     await execFileAsync("git", ["worktree", "add", "-b", branchName, worktreePath, baseRef], { cwd: this.repoRoot });
+    if (parentWorktreePath) {
+      await this.inheritParentState(parentWorktreePath, worktreePath);
+    }
     // Vite writes bundled config files beside the resolved node_modules tree.
     // A local cache keeps that write inside the Reality worktree.
     await mkdir(path.join(worktreePath, "node_modules", ".vite-temp"), { recursive: true });
@@ -145,7 +150,42 @@ export class GitWorktreeManager implements WorktreeManager {
     await writeFile(target, content, "utf8");
   }
 
+  async readFile(worktreePath: string, relativePath: string): Promise<string> {
+    return readFile(resolveInsideWorktree(worktreePath, relativePath), "utf8");
+  }
+
+  async listChangedFiles(worktreePath: string): Promise<string[]> {
+    const [{ stdout: tracked }, { stdout: untracked }] = await Promise.all([
+      execFileAsync("git", ["diff", "HEAD", "--name-only", "-z"], {
+        cwd: worktreePath,
+        maxBuffer: 5_000_000
+      }),
+      execFileAsync("git", ["ls-files", "--others", "--exclude-standard", "-z"], {
+        cwd: worktreePath,
+        maxBuffer: 5_000_000
+      })
+    ]);
+    return [...new Set(
+      `${tracked}\0${untracked}`
+        .split("\0")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    )].sort();
+  }
+
   async diff(worktreePath: string, pathspec = "."): Promise<string> {
+    const { stdout: untracked } = await execFileAsync(
+      "git",
+      ["ls-files", "--others", "--exclude-standard", "-z", "--", pathspec],
+      { cwd: worktreePath, maxBuffer: 5_000_000 }
+    );
+    const untrackedPaths = untracked.split("\0").filter(Boolean);
+    if (untrackedPaths.length) {
+      await execFileAsync("git", ["add", "-N", "--", ...untrackedPaths], {
+        cwd: worktreePath,
+        maxBuffer: 5_000_000
+      });
+    }
     const { stdout } = await execFileAsync("git", ["diff", "--", pathspec], { cwd: worktreePath, maxBuffer: 5_000_000 });
     return stdout;
   }
@@ -165,6 +205,37 @@ export class GitWorktreeManager implements WorktreeManager {
         stderr: failure.stderr ?? String(error),
         exitCode: typeof failure.code === "number" ? failure.code : 1
       };
+    }
+  }
+
+  private async inheritParentState(parentWorktreePath: string, childWorktreePath: string): Promise<void> {
+    const { stdout: patch } = await execFileAsync("git", ["diff", "HEAD", "--binary"], {
+      cwd: parentWorktreePath,
+      maxBuffer: 10_000_000
+    });
+    if (patch) {
+      const patchPath = path.join(childWorktreePath, ".inception-parent.patch");
+      await writeFile(patchPath, patch, "utf8");
+      try {
+        await execFileAsync("git", ["apply", "--whitespace=nowarn", patchPath], {
+          cwd: childWorktreePath,
+          maxBuffer: 10_000_000
+        });
+      } finally {
+        await rm(patchPath, { force: true });
+      }
+    }
+
+    const { stdout } = await execFileAsync(
+      "git",
+      ["ls-files", "--others", "--exclude-standard", "-z"],
+      { cwd: parentWorktreePath, maxBuffer: 5_000_000 }
+    );
+    for (const relativePath of stdout.split("\0").filter(Boolean)) {
+      const source = resolveInsideWorktree(parentWorktreePath, relativePath);
+      const target = resolveInsideWorktree(childWorktreePath, relativePath);
+      await mkdir(path.dirname(target), { recursive: true });
+      await copyFile(source, target);
     }
   }
 }

@@ -94,7 +94,7 @@ export class RealityEntity {
   }
 
   advanceTime(minutes: number, focus: string, summary?: string): this {
-    this.state.worldState.simulatedMinutes += minutes;
+    this.state.worldState.simulatedMinutes += minutes * (this.state.constitution.timeDilation ?? 1);
     this.state.worldState.currentFocus = focus;
     if (summary) this.state.worldState.summary = summary;
     return this.touch();

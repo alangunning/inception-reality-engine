@@ -48,7 +48,11 @@ export class PasswordResetService {
       this.consumeGlobal(100, GLOBAL_WINDOW_MS, timestamp);
 
     if (allowed && this.accounts.has(email)) {
-      this.deliverReset(email);
+      try {
+        this.deliverReset(email);
+      } catch {
+        // Delivery failures remain behind the enumeration-safe public boundary.
+      }
     }
 
     return { message: GENERIC_MESSAGE };

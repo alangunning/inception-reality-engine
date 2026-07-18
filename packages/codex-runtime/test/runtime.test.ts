@@ -26,6 +26,9 @@ describe("Codex runtime", () => {
     expect(second.threadId).toBe(first.threadId);
     expect(first.events.every((event) => event.metadata?.stage)).toBe(true);
     expect(first.events.some((event) => event.summary.includes("bounded operation"))).toBe(false);
+    expect(first.report.realityId).toBe(reality.id);
+    expect(first.report.evidence[0]?.title).toBe("IP-only throttle");
+    expect((await runtime.synthesise(reality, [])).applied).toBe(false);
   });
 
   it("rejects malformed wake reports", () => {

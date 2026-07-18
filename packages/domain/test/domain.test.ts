@@ -76,7 +76,21 @@ describe("Reality domain", () => {
     expect(prompt).toContain("WAKE CONTRACT");
     expect(prompt).toContain(`Reality ID: ${entity.snapshot().id}`);
     expect(prompt).toContain(`set realityId exactly to "${entity.snapshot().id}"`);
+    expect(prompt).toContain("must never create one yourself");
+    expect(prompt).toContain("Label simulated or hypothetical observations as synthetic evidence");
     expect(prompt).not.toContain("chain-of-thought");
+  });
+
+  it("applies each Reality's time-dilation law to experienced world time", () => {
+    const entity = RealityEntity.create({
+      depth: 2,
+      kind: "dream",
+      name: "Fast world",
+      premise: constitution.premise,
+      constitution: { ...constitution, timeDilation: 120 }
+    });
+    entity.advanceTime(2, "Running the decisive experiment");
+    expect(entity.snapshot().worldState.simulatedMinutes).toBe(240);
   });
 
   it("validates structured wake memories", () => {

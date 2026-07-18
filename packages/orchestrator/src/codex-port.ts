@@ -1,5 +1,10 @@
 import { z } from "zod";
-import type { Reality, WakeReport } from "@inception/domain";
+import type {
+  InvestigationReport,
+  Reality,
+  SynthesisReport,
+  WakeReport
+} from "@inception/domain";
 
 export const CodexRuntimeEventMetadataSchema = z.object({
   stage: z.enum(["thread", "turn", "command", "file", "tool", "search", "plan"]).optional(),
@@ -30,6 +35,7 @@ export interface CodexExecutionResult {
   threadId: string;
   events: CodexRuntimeEvent[];
   summary: string;
+  report: InvestigationReport;
 }
 
 export interface CodexWakeResult {
@@ -38,9 +44,22 @@ export interface CodexWakeResult {
   report: WakeReport;
 }
 
+export interface CodexSynthesisResult {
+  threadId: string;
+  events: CodexRuntimeEvent[];
+  report: SynthesisReport;
+  applied: boolean;
+}
+
 export interface CodexRuntime {
   inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult>;
   wake(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexWakeResult>;
+  synthesise(
+    reality: Reality,
+    reports: WakeReport[],
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
+    repairContext?: string
+  ): Promise<CodexSynthesisResult>;
 }
 
 export interface WakeReportValidationIssue {
@@ -48,9 +67,19 @@ export interface WakeReportValidationIssue {
   code: string;
 }
 
-export class WakeReportValidationError extends Error {
-  constructor(readonly issues: WakeReportValidationIssue[] = []) {
-    super("Wake Report failed schema validation.");
+export class CodexOutputValidationError extends Error {
+  constructor(
+    readonly contract: "InvestigationReportSchema" | "WakeReportSchema" | "SynthesisReportSchema",
+    readonly issues: WakeReportValidationIssue[] = []
+  ) {
+    super(`${contract} failed schema validation.`);
+    this.name = "CodexOutputValidationError";
+  }
+}
+
+export class WakeReportValidationError extends CodexOutputValidationError {
+  constructor(issues: WakeReportValidationIssue[] = []) {
+    super("WakeReportSchema", issues);
     this.name = "WakeReportValidationError";
   }
 }

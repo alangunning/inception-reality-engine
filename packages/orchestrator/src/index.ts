@@ -1,5 +1,6 @@
 export * from "./ports";
 export * from "./codex-port";
+export * from "./worktree-port";
 export * from "./event-bus";
 export * from "./prisma-repository";
 export * from "./in-memory-repository";

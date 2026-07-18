@@ -1,10 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { WakeReportSchema, type Reality, type WakeReport } from "@inception/domain";
+import {
+  InvestigationReportSchema,
+  SynthesisReportSchema,
+  WakeReportSchema,
+  type InvestigationReport,
+  type Reality,
+  type WakeReport
+} from "@inception/domain";
 import {
   CodexRuntimeEventSchema,
   type CodexExecutionResult,
   type CodexRuntime,
   type CodexRuntimeEvent,
+  type CodexSynthesisResult,
   type CodexWakeResult
 } from "./types";
 
@@ -58,11 +66,94 @@ export class MockCodexRuntime implements CodexRuntime {
       await onEvent?.(event);
       if (eventDelay) await new Promise((resolve) => setTimeout(resolve, eventDelay));
     }
+    const generatedAt = new Date().toISOString();
+    const report: InvestigationReport = reality.depth === 0
+      ? {
+          realityId: reality.id,
+          summary: "The implementation limits requests by IP but exposes account state and lacks identifier-level protection.",
+          evidence: [{
+            kind: "code",
+            title: "IP-only throttle",
+            summary: "The implementation counts requests by source IP but has no identifier-level or global safety budget.",
+            source: "demo/password-reset/src/password-reset.ts",
+            artefactPath: "demo/password-reset/src/password-reset.ts",
+            synthetic: false
+          }],
+          subjectReports: [],
+          changedBeliefs: [],
+          dreamProposal: {
+            title: "Under coordinated attack",
+            premise: "Assume an attacker coordinates requests across accounts and source addresses.",
+            uncertainty: "Does per-IP rate limiting actually prevent abuse?",
+            rationale: "The implementation has only been evaluated in a single-source world.",
+            impactProbability: 0.82,
+            expectedInsight: "Determine whether identifier and global controls are necessary.",
+            estimatedTokens: 18_000,
+            costClass: "medium"
+          },
+          remainingUncertainty: ["Whether coordinated sources can bypass the IP-only boundary."],
+          changedFiles: [],
+          generatedAt
+        }
+      : {
+          realityId: reality.id,
+          summary: "Enumeration is observable and distributed source addresses have no shared identifier budget.",
+          evidence: [
+            {
+              kind: "observation",
+              title: "Account enumeration remains possible",
+              summary: "The incomplete service returns a distinct message when an account does not exist.",
+              source: "attacker-subject",
+              artefactPath: null,
+              synthetic: false
+            },
+            {
+              kind: "code",
+              title: "Distributed abuse has no shared budget",
+              summary: "Requests from new IP addresses begin with fresh counters even when the same account is targeted.",
+              source: "investigator-subject",
+              artefactPath: "demo/password-reset/src/password-reset.ts",
+              synthetic: false
+            }
+          ],
+          subjectReports: reality.subjects.map((subject) => ({
+            subjectId: subject.id,
+            name: subject.name,
+            role: subject.role,
+            findings: subject.role === "Attacker"
+              ? ["Known and unknown accounts receive distinguishable responses."]
+              : subject.role === "Investigator"
+                ? ["Counters are keyed only by IP; identifiers have no cooldown."]
+                : ["A rotating-source test will decide whether the defence generalises."],
+            artefactPaths: []
+          })),
+          changedBeliefs: [{
+            from: reality.beliefs.at(-1)?.statement ?? "Per-IP limiting prevents practical abuse.",
+            to: "Per-IP throttling alone does not generalise to coordinated or distributed abuse.",
+            confidence: 0.93,
+            evidenceTitles: [
+              "Account enumeration remains possible",
+              "Distributed abuse has no shared budget"
+            ]
+          }],
+          dreamProposal: {
+            title: "Rotating IP swarm",
+            premise: "Assume one attacker can rotate source IPs for every request against one identifier.",
+            uncertainty: "Can source rotation obtain effectively unlimited reset deliveries?",
+            rationale: "A nested world can isolate the distributed-address assumption and produce one decisive test.",
+            impactProbability: 0.91,
+            expectedInsight: "Produce a deterministic distributed-address abuse test.",
+            estimatedTokens: 9_000,
+            costClass: "low"
+          },
+          remainingUncertainty: ["Whether rotating source addresses bypass the defence in a deterministic test."],
+          changedFiles: [],
+          generatedAt
+        };
     return {
       threadId: mockThreadId(reality),
-      summary: nested
-        ? "The dream reproduced abuse across independent source addresses."
-        : "The implementation limits requests by IP but exposes account state and lacks identifier-level protection.",
+      summary: report.summary,
+      report: InvestigationReportSchema.parse(report),
       events
     };
   }
@@ -157,6 +248,33 @@ export class MockCodexRuntime implements CodexRuntime {
       threadId: mockThreadId(reality),
       report: WakeReportSchema.parse(report),
       events
+    };
+  }
+
+  async synthesise(
+    reality: Reality,
+    reports: WakeReport[],
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexSynthesisResult> {
+    const event = CodexRuntimeEventSchema.parse({
+      type: "decision",
+      summary: "Validated memories are ready for deterministic demo synthesis.",
+      metadata: { stage: "turn", status: "completed" }
+    });
+    await onEvent?.(event);
+    return {
+      threadId: mockThreadId(reality),
+      events: [event],
+      report: SynthesisReportSchema.parse({
+        realityId: reality.id,
+        summary: "Layered abuse controls and returned attack tests are ready to enter the waking Reality.",
+        appliedMemories: reports.map((report) => report.realityId),
+        changedFiles: [],
+        retainedArtefacts: reports.flatMap((report) => report.artefacts.map((artefact) => artefact.path)),
+        unresolved: reports.flatMap((report) => report.remainingUncertainty),
+        generatedAt: new Date().toISOString()
+      }),
+      applied: false
     };
   }
 }
