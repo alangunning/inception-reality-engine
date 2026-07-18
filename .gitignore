@@ -6,8 +6,14 @@ prisma/dev.db
 prisma/dev.db-journal
 prisma/dev.db-shm
 prisma/dev.db-wal
+prisma/playwright.db
+prisma/playwright.db-journal
+prisma/playwright.db-shm
+prisma/playwright.db-wal
 .inception
 coverage
+playwright-report
+test-results
 *.log
 .DS_Store
 generated/prisma

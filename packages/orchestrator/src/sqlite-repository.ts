@@ -2,10 +2,12 @@ import { DatabaseSync } from "node:sqlite";
 import {
   DemoSessionSchema,
   RealityEventSchema,
+  RealityRunArchiveSchema,
   RealitySchema,
   type DemoSession,
   type Reality,
-  type RealityEvent
+  type RealityEvent,
+  type RealityRunArchive
 } from "@inception/domain";
 import type { RealityRepository } from "./ports";
 
@@ -49,8 +51,8 @@ export class SqliteRealityRepository implements RealityRepository {
         codexThreadId TEXT,
         worktreePath TEXT,
         branchName TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        createdAt DATETIME NOT NULL,
+        updatedAt DATETIME NOT NULL
       );
       CREATE INDEX IF NOT EXISTS RealityRecord_parentId_idx ON RealityRecord(parentId);
       CREATE INDEX IF NOT EXISTS RealityRecord_depth_idx ON RealityRecord(depth);
@@ -62,7 +64,7 @@ export class SqliteRealityRepository implements RealityRepository {
         summary TEXT NOT NULL,
         dreamTime INTEGER NOT NULL,
         payloadJson TEXT NOT NULL,
-        occurredAt TEXT NOT NULL
+        occurredAt DATETIME NOT NULL
       );
       CREATE INDEX IF NOT EXISTS RealityEventRecord_realityId_idx ON RealityEventRecord(realityId);
       CREATE INDEX IF NOT EXISTS RealityEventRecord_occurredAt_idx ON RealityEventRecord(occurredAt);
@@ -73,9 +75,17 @@ export class SqliteRealityRepository implements RealityRepository {
         activeRealityId TEXT,
         finalDiff TEXT NOT NULL,
         anchorResultsJson TEXT NOT NULL,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        createdAt DATETIME NOT NULL,
+        updatedAt DATETIME NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS RealityRunArchiveRecord (
+        id TEXT PRIMARY KEY,
+        snapshotJson TEXT NOT NULL,
+        archivedAt DATETIME NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS RealityRunArchiveRecord_archivedAt_idx
+        ON RealityRunArchiveRecord(archivedAt);
     `);
   }
 
@@ -211,6 +221,37 @@ export class SqliteRealityRepository implements RealityRepository {
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt)
     }) : null;
+  }
+
+  async saveRunArchive(archive: RealityRunArchive): Promise<void> {
+    const validated = RealityRunArchiveSchema.parse(archive);
+    this.db.prepare(`
+      INSERT INTO RealityRunArchiveRecord (id, snapshotJson, archivedAt)
+      VALUES (@id, @snapshotJson, @archivedAt)
+      ON CONFLICT(id) DO UPDATE SET
+        snapshotJson=excluded.snapshotJson,
+        archivedAt=excluded.archivedAt
+    `).run({
+      id: validated.id,
+      snapshotJson: JSON.stringify(validated),
+      archivedAt: validated.archivedAt
+    });
+  }
+
+  async listRunArchives(limit = 20): Promise<RealityRunArchive[]> {
+    const rows = this.db.prepare(
+      "SELECT snapshotJson FROM RealityRunArchiveRecord ORDER BY archivedAt DESC LIMIT ?"
+    ).all(limit) as Row[];
+    return rows.map((row) => RealityRunArchiveSchema.parse(parseJson(row.snapshotJson)));
+  }
+
+  async getRunArchive(id: string): Promise<RealityRunArchive | null> {
+    const row = this.db.prepare(
+      "SELECT snapshotJson FROM RealityRunArchiveRecord WHERE id = ?"
+    ).get(id) as Row | undefined;
+    return row
+      ? RealityRunArchiveSchema.parse(parseJson(row.snapshotJson))
+      : null;
   }
 
   async deleteAll(): Promise<void> {

@@ -1,33 +1,73 @@
 import { randomUUID } from "node:crypto";
-import type { Reality, WakeReport } from "@inception/domain";
-import type { CodexExecutionResult, CodexRuntime, CodexWakeResult } from "./types";
+import { WakeReportSchema, type Reality, type WakeReport } from "@inception/domain";
+import {
+  CodexRuntimeEventSchema,
+  type CodexExecutionResult,
+  type CodexRuntime,
+  type CodexRuntimeEvent,
+  type CodexWakeResult
+} from "./types";
 
 function mockThreadId(reality: Reality): string {
   return reality.codexThreadId ?? `mock-thread-${reality.id}`;
 }
 
+function mockDelayMilliseconds(): number {
+  const value = Number(process.env.INCEPTION_MOCK_DELAY_MS ?? 0);
+  return Number.isFinite(value) ? Math.max(0, Math.min(value, 10_000)) : 0;
+}
+
 export class MockCodexRuntime implements CodexRuntime {
-  async inspect(reality: Reality): Promise<CodexExecutionResult> {
+  async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
     const nested = reality.depth > 0;
+    const events = [
+        {
+          type: "progress",
+          summary: `Password-reset inspection entered ${reality.name}.`,
+          metadata: { stage: "turn", status: "started" }
+        },
+        {
+          type: "tool",
+          summary: "Command returned with exit 0.",
+          metadata: {
+            stage: "command",
+            status: "completed",
+            command: "vitest run demo/password-reset",
+            exitCode: 0
+          }
+        },
+        {
+          type: "file",
+          summary: "Inspected demo/password-reset/src/password-reset.ts.",
+          metadata: {
+            stage: "file",
+            status: "completed",
+            paths: ["demo/password-reset/src/password-reset.ts"]
+          }
+        },
+        {
+          type: "decision",
+          summary: nested
+            ? "A rotating-IP attack test is the smallest decisive experiment."
+            : "Per-IP throttling is not sufficient evidence of abuse resistance.",
+          metadata: { stage: "turn", status: "completed" }
+        }
+      ].map((event) => CodexRuntimeEventSchema.parse(event));
+    const eventDelay = Math.floor(mockDelayMilliseconds() / events.length);
+    for (const event of events) {
+      await onEvent?.(event);
+      if (eventDelay) await new Promise((resolve) => setTimeout(resolve, eventDelay));
+    }
     return {
       threadId: mockThreadId(reality),
       summary: nested
         ? "The dream reproduced abuse across independent source addresses."
         : "The implementation limits requests by IP but exposes account state and lacks identifier-level protection.",
-      events: [
-        { type: "progress", summary: "Codex inspected the password-reset boundary." },
-        { type: "tool", summary: "Relevant implementation and tests were read inside the Reality worktree." },
-        {
-          type: "decision",
-          summary: nested
-            ? "A rotating-IP attack test is the smallest decisive experiment."
-            : "Per-IP throttling is not sufficient evidence of abuse resistance."
-        }
-      ]
+      events
     };
   }
 
-  async wake(reality: Reality): Promise<CodexWakeResult> {
+  async wake(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexWakeResult> {
     const generatedAt = new Date().toISOString();
     const report: WakeReport = reality.depth >= 2
       ? {
@@ -95,13 +135,28 @@ export class MockCodexRuntime implements CodexRuntime {
           generatedAt
         };
 
+    const events = [
+      {
+        type: "decision",
+        summary: "The Kick was accepted and exploration stopped.",
+        metadata: { stage: "turn", status: "completed" }
+      },
+      {
+        type: "file",
+        summary: `Memory artefact ${report.artefacts[0]?.name ?? randomUUID()} prepared.`,
+        metadata: {
+          stage: "file",
+          status: "completed",
+          paths: report.artefacts[0]?.path ? [report.artefacts[0].path] : undefined
+        }
+      }
+    ].map((event) => CodexRuntimeEventSchema.parse(event));
+    for (const event of events) await onEvent?.(event);
+
     return {
       threadId: mockThreadId(reality),
-      report,
-      events: [
-        { type: "decision", summary: "The Kick was accepted and exploration stopped." },
-        { type: "file", summary: `Memory artefact ${report.artefacts[0]?.name ?? randomUUID()} prepared.` }
-      ]
+      report: WakeReportSchema.parse(report),
+      events
     };
   }
 }

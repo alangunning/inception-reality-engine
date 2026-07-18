@@ -55,3 +55,11 @@ model DemoSessionRecord {
   createdAt          DateTime
   updatedAt          DateTime
 }
+
+model RealityRunArchiveRecord {
+  id           String   @id
+  snapshotJson String
+  archivedAt   DateTime
+
+  @@index([archivedAt])
+}

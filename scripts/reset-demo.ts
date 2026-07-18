@@ -1,29 +1,40 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { RealityRunArchiveSchema } from "@inception/domain";
 import { SqliteRealityRepository } from "@inception/orchestrator";
+import { GitWorktreeManager } from "@inception/worktree-manager";
 
 const repo = process.cwd();
+const envFile = path.join(repo, ".env");
+if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
 const databaseUrl = process.env.DATABASE_URL ?? `file:${repo}/prisma/dev.db`;
 const databaseFile = databaseUrl.startsWith("file:") ? databaseUrl.slice(5) : databaseUrl;
 const resolvedDatabaseFile = path.isAbsolute(databaseFile) ? databaseFile : path.resolve(repo, databaseFile);
 fs.mkdirSync(path.dirname(resolvedDatabaseFile), { recursive: true });
 const repository = new SqliteRealityRepository(resolvedDatabaseFile);
-const worktreeRoot = path.join(repo, ".inception", "worktrees");
+const worktrees = new GitWorktreeManager(repo);
 
 try {
   const realities = (await repository.listRealities()).sort((a, b) => b.depth - a.depth);
+  const session = await repository.getSession();
+  const events = await repository.listEvents(5_000);
+  if (session && (session.phase > 0 || events.some((event) => event.type === "codex.progress"))) {
+    await repository.saveRunArchive(RealityRunArchiveSchema.parse({
+      id: randomUUID(),
+      session,
+      realities: realities.slice().sort((a, b) => a.depth - b.depth),
+      events,
+      archivedAt: new Date().toISOString()
+    }));
+  }
   for (const reality of realities) {
-    if (reality.worktreePath && fs.existsSync(reality.worktreePath)) {
-      try { execFileSync("git", ["worktree", "remove", "--force", reality.worktreePath], { cwd: repo }); } catch {}
-    }
-    if (reality.branchName) {
-      try { execFileSync("git", ["branch", "-D", reality.branchName], { cwd: repo }); } catch {}
+    if (reality.worktreePath && reality.branchName) {
+      await worktrees.remove({ path: reality.worktreePath, branchName: reality.branchName });
     }
   }
+  await worktrees.cleanupAll();
   await repository.deleteAll();
-  fs.rmSync(worktreeRoot, { recursive: true, force: true });
-  try { execFileSync("git", ["worktree", "prune"], { cwd: repo }); } catch {}
   console.log("Reality reset. Start the app to create a new waking Reality.");
 } finally {
   repository.close();

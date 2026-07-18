@@ -8,10 +8,11 @@ export function buildDreamPrompt(reality: Reality): string {
     ? reality.beliefs.map((entry) => `- ${entry.statement} (confidence ${entry.confidence})`).join("\n")
     : "- No explicit beliefs yet.";
   const anchors = reality.anchors.length
-    ? reality.anchors.map((entry) => `- IMMUTABLE: ${entry.name} — ${entry.description}`).join("\n")
+    ? reality.anchors.map((entry) => `- IMMUTABLE, OWNER ${entry.ownerRealityId}: ${entry.name} — ${entry.description}`).join("\n")
     : "- No explicit anchors.";
 
   return `You are operating inside the Reality \"${reality.name}\".
+Reality ID: ${reality.id}
 
 PREMISE
 ${reality.premise}
@@ -40,5 +41,5 @@ OPERATING CONTRACT
 
 WAKE CONTRACT
 ${reality.constitution.wakeContract.map((item) => `- ${item}`).join("\n")}
-When kicked, return only JSON matching the supplied WakeReport schema.`;
+When kicked, return only JSON matching the supplied WakeReport schema and set realityId exactly to "${reality.id}".`;
 }

@@ -62,6 +62,7 @@ export class RealityEntity {
       anchors: (input.inheritedAnchors ?? []).map((anchor) => ({
         ...anchor,
         realityId: id,
+        ownerRealityId: input.kind === "waking" ? id : anchor.ownerRealityId,
         status: "pending",
         output: undefined
       })),
@@ -159,6 +160,12 @@ export class RealityEntity {
   }
 
   replaceAnchors(anchors: RealityAnchor[]): this {
+    if (this.state.kind !== "waking") {
+      throw new Error("Child Realities cannot mutate parent-owned anchors.");
+    }
+    if (anchors.some((anchor) => anchor.ownerRealityId !== this.state.id)) {
+      throw new Error("A Reality may update only anchors that it owns.");
+    }
     this.state.anchors = anchors.map((anchor) => ({ ...anchor, immutable: true as const }));
     return this.touch();
   }

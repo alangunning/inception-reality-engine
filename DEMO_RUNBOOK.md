@@ -4,12 +4,14 @@
 
 ```bash
 npm install
-cp .env.example .env
 npm run demo:reset
-npm run dev
+npm run codex:check
+npm run dev:real
 ```
 
-Open `http://localhost:3000`. Keep mock mode enabled for the judged demo.
+Open `http://localhost:3000`. This uses the existing Codex CLI login in `~/.codex/auth.json`.
+
+For the deterministic backup, run `npm run dev:mock`. It follows the same UI sequence without network or account dependencies.
 
 ## Presentation sequence
 
@@ -19,7 +21,7 @@ Point to the central Reality graph, immutable anchors, initial belief, and isola
 
 Say: “This is not an agent dashboard. It is one software world with a premise, history, evidence, constitution, Codex thread, and Git worktree.”
 
-Click **Inspect password reset**.
+Click **Ask Codex to audit and improve password-reset security**. The live operation band confirms the real CLI is active, shows elapsed wall time, and names each validated command, tool, and file milestone. Its tool-call total includes terminal commands, file changes, MCP tools, and searches; the adjacent counters retain the command/file breakdown.
 
 ### 2. Surface uncertainty
 
@@ -27,13 +29,15 @@ Show the uncertainty card: whether per-IP rate limiting prevents abuse.
 
 Say: “The agent does not immediately commit to a fix. It proposes a counterfactual world capable of changing a belief.”
 
-Click **Dream: coordinated attack**.
+Click **Create attack Dream**.
 
 ### 3. Populate the Dream with bounded Subjects
 
-Click **Subjects enter**, then **Run bounded investigations**.
+Click **Enter attacker, investigator, and test engineer into Under coordinated attack**, then **Ask Codex to investigate coordinated password-reset abuse**.
 
 Show Ariadne, Arthur, and Eames as attacker, investigator, and test engineer. Emphasise that Subjects operate inside one Reality; they are not sibling worlds.
+
+In real mode these Subject charters are direct Codex subagent requests. Codex runs bounded investigations concurrently when capacity allows and waits for every Subject to return before synthesis.
 
 Show the returned evidence:
 
@@ -43,27 +47,27 @@ Show the returned evidence:
 
 ### 4. Descend one level deeper
 
-Click **Dream: rotating IP swarm**.
+Click **Create nested Dream**.
 
 Say: “The remaining uncertainty is narrow enough for a nested Dream: one identifier, a new IP on every request.”
 
-Click **Kick rotating-IP Dream**.
+Click **Kick and return memory**.
 
 Show the Wake Report and failing `rotating-ip.attack.spec.ts` artefact. Say: “The Dream returns memories, not raw reasoning.”
 
 ### 5. Wake the parent Dream
 
-Click **Kick coordinated-attack Dream**.
+Click **Kick and return memory**.
 
 Show its consolidated invariants and changed belief. Point out that parent-owned anchors remained immutable throughout both Dreams.
 
 ### 6. Synthesis and proof
 
-Click **Return memories to waking Reality**.
+Click **Synthesise returned memories into waking code**.
 
 Show the layered implementation: generic response, per-IP limit, identifier-level limit, and global circuit breaker.
 
-Click **Run immutable anchors**.
+Click **Run 3 parent-owned requirements**.
 
 Pause on the three green anchor results:
 
@@ -71,7 +75,7 @@ Pause on the three green anchor results:
 - Token expiry preserved
 - Rotating-IP resistance
 
-Click **Stabilise Reality**.
+Click **Stabilise Waking Reality**.
 
 ### 7. Close on the differentiator
 
@@ -81,10 +85,12 @@ Say: “Inception lets Codex explore assumptions in isolated software worlds, th
 
 ## Recovery
 
-At any point, click **Reset Reality** or run:
+When no operation is active, click the labeled **Full reset** button and confirm, or run:
 
 ```bash
 npm run demo:reset
 ```
 
-The deterministic sequence can then be replayed from the beginning.
+The deterministic sequence can then be replayed from the beginning. Full reset archives the validated event log for retrospective analysis while removing all active Reality and worktree state.
+
+If a Codex execution must be stopped first, open the gear menu, choose **Stop all Codex CLI**, then use **Full reset and cleanup**. These Admin controls are deliberately separate from the narrative UI.

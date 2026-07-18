@@ -33,6 +33,7 @@ All Codex-facing output must be validated with Zod before persistence. A raw SDK
 - Generate Prisma client: `npm run db:generate`
 - Push Prisma schema: `npm run db:push`
 - Test: `npm test`
+- Browser QA: `npm run test:e2e`
 - Type-check: `npm run typecheck`
 - Production build: `npm run build`
 - Full verification: `npm run verify`

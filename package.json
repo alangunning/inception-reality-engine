@@ -9,10 +9,15 @@
   ],
   "scripts": {
     "dev": "npm run prepare:repo && npm run dev -w @inception/web",
+    "dev:mock": "node scripts/run-codex-mode.mjs mock",
+    "dev:real": "node scripts/run-codex-mode.mjs real",
+    "codex:check": "node scripts/run-codex-mode.mjs check",
     "build": "npm run prepare:repo && npm run build -w @inception/web",
     "start": "npm run start -w @inception/web",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:update": "playwright test --update-snapshots",
     "typecheck": "npm run typegen -w @inception/web && tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
@@ -29,7 +34,9 @@
     "zod-to-json-schema": "3.24.6"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "22.15.30",
+    "postcss": "^8.5.10",
     "prisma": "7.8.0",
     "tsx": "4.20.3",
     "typescript": "5.8.3",
@@ -38,5 +45,14 @@
   "type": "module",
   "engines": {
     "node": ">=22.5.0"
+  },
+  "overrides": {
+    "@hono/node-server": "1.19.13",
+    "next": {
+      "postcss": "8.5.10"
+    },
+    "vite": {
+      "postcss": "8.5.10"
+    }
   }
 }

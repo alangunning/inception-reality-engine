@@ -10,7 +10,9 @@ export class SynthesisService {
       const memoryEvidence = entity.addEvidence({
         id: randomUUID(),
         kind: "invariant",
-        title: `Memory inherited from ${report.realityId.slice(0, 8)}`,
+        title: report.artefacts[0]?.name
+          ? `Memory returned with ${report.artefacts[0].name}`
+          : "Memory returned with validated invariants",
         summary: [...report.invariants, report.recommendation].join(" "),
         source: `wake-report:${report.realityId}`
       });

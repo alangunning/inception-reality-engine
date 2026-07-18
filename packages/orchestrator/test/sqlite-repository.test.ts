@@ -46,9 +46,18 @@ describe("SqliteRealityRepository", () => {
 
     await repository.saveReality(reality);
     await repository.saveSession(session);
+    await repository.saveRunArchive({
+      id: "archive-1",
+      session,
+      realities: [reality],
+      events: [],
+      archivedAt: now
+    });
 
     expect((await repository.getReality(reality.id))?.parentId).toBeNull();
     expect((await repository.getSession())?.activeRealityId).toBe(reality.id);
+    await repository.deleteAll();
+    expect((await repository.getRunArchive("archive-1"))?.realities[0]?.id).toBe(reality.id);
     repository.close();
   });
 });

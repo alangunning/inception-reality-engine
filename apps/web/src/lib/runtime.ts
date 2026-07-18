@@ -1,15 +1,16 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
-import { PrismaClient } from "@prisma/client";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { MockCodexRuntime, RealCodexRuntime } from "@inception/codex-runtime";
+import { CodexProcessControl, MockCodexRuntime, RealCodexRuntime } from "@inception/codex-runtime";
 import {
   InMemoryRealityEventBus,
   PrismaRealityRepository,
   RealityOrchestrator,
   SqliteRealityRepository,
   SynthesisService,
+  type DemoSnapshot,
   type InceptionPrismaClient,
   type RealityRepository
 } from "@inception/orchestrator";
@@ -17,14 +18,18 @@ import { GitWorktreeManager } from "@inception/worktree-manager";
 
 interface RuntimeContainer {
   persistence: "prisma" | "sqlite-fallback";
+  codexMode: "mock" | "real";
   eventBus: InMemoryRealityEventBus;
   orchestrator: RealityOrchestrator;
+  processControl: CodexProcessControl;
   disconnect(): Promise<void>;
 }
 
 declare global {
   var __inceptionRuntime: RuntimeContainer | undefined;
 }
+
+const requireModule = createRequire(import.meta.url);
 
 function discoverRepoRoot(): string {
   if (process.env.INCEPTION_REPO_ROOT) return process.env.INCEPTION_REPO_ROOT;
@@ -33,10 +38,18 @@ function discoverRepoRoot(): string {
 
 function sqliteFilename(repoRoot: string): string {
   const url = process.env.DATABASE_URL ?? `file:${repoRoot}/prisma/dev.db`;
+  if (!url.startsWith("file:")) {
+    throw new Error("The portable SQLite repository requires a file: DATABASE_URL.");
+  }
   const filename = url.startsWith("file:") ? url.slice("file:".length) : url;
   const resolved = path.isAbsolute(filename) ? filename : path.resolve(repoRoot, filename);
   fs.mkdirSync(path.dirname(resolved), { recursive: true });
   return resolved;
+}
+
+function normalisedDatabaseUrl(repoRoot: string): string {
+  const url = process.env.DATABASE_URL ?? `file:${repoRoot}/prisma/dev.db`;
+  return url.startsWith("file:") ? `file:${sqliteFilename(repoRoot)}` : url;
 }
 
 function createRepository(repoRoot: string): {
@@ -46,11 +59,27 @@ function createRepository(repoRoot: string): {
 } {
   if (process.env.INCEPTION_PERSISTENCE !== "sqlite") {
     try {
+      const prismaClientModule = requireModule("@prisma/client") as {
+        PrismaClient?: new (options: { adapter: PrismaLibSql }) => InceptionPrismaClient;
+      };
+      const PrismaClient = prismaClientModule.PrismaClient;
+      if (!PrismaClient) {
+        throw new Error("Generated Prisma client is unavailable");
+      }
+      if (normalisedDatabaseUrl(repoRoot).startsWith("file:")) {
+        const schemaBootstrap = new SqliteRealityRepository(sqliteFilename(repoRoot));
+        schemaBootstrap.close();
+      }
       const adapter = new PrismaLibSql({
-        url: process.env.DATABASE_URL ?? `file:${repoRoot}/prisma/dev.db`
+        url: normalisedDatabaseUrl(repoRoot)
       });
-      const prisma = new PrismaClient({ adapter }) as InceptionPrismaClient;
-      if (!prisma.realityRecord || !prisma.realityEventRecord || !prisma.demoSessionRecord) {
+      const prisma = new PrismaClient({ adapter });
+      if (
+        !prisma.realityRecord
+        || !prisma.realityEventRecord
+        || !prisma.demoSessionRecord
+        || !prisma.realityRunArchiveRecord
+      ) {
         throw new Error("Generated Prisma models are unavailable");
       }
       return {
@@ -77,7 +106,8 @@ export function getRuntime(): RuntimeContainer {
   const repoRoot = discoverRepoRoot();
   const persistence = createRepository(repoRoot);
   const eventBus = new InMemoryRealityEventBus();
-  const codexRuntime = process.env.INCEPTION_CODEX_MODE === "real"
+  const codexMode = process.env.INCEPTION_CODEX_MODE === "real" ? "real" : "mock";
+  const codexRuntime = codexMode === "real"
     ? new RealCodexRuntime()
     : new MockCodexRuntime();
   const worktrees = new GitWorktreeManager(repoRoot);
@@ -91,9 +121,29 @@ export function getRuntime(): RuntimeContainer {
   );
   globalThis.__inceptionRuntime = {
     persistence: persistence.persistence,
+    codexMode,
     eventBus,
     orchestrator,
+    processControl: new CodexProcessControl(),
     disconnect: persistence.disconnect
   };
   return globalThis.__inceptionRuntime;
+}
+
+export type PresentedDemoSnapshot = DemoSnapshot & {
+  runtime: {
+    codexMode: RuntimeContainer["codexMode"];
+    persistence: RuntimeContainer["persistence"];
+  };
+};
+
+export function presentSnapshot(snapshot: DemoSnapshot): PresentedDemoSnapshot {
+  const runtime = getRuntime();
+  return {
+    ...snapshot,
+    runtime: {
+      codexMode: runtime.codexMode,
+      persistence: runtime.persistence
+    }
+  };
 }

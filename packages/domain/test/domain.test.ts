@@ -20,6 +20,7 @@ describe("Reality domain", () => {
       inheritedAnchors: [{
         id: "anchor-1",
         realityId: "parent",
+        ownerRealityId: "parent",
         name: "Generic response",
         description: "Never disclose account existence",
         testCommand: "vitest anchors",
@@ -32,6 +33,32 @@ describe("Reality domain", () => {
     expect(reality.depth).toBe(1);
     expect(reality.anchors[0]?.immutable).toBe(true);
     expect(reality.anchors[0]?.realityId).toBe(reality.id);
+    expect(reality.anchors[0]?.ownerRealityId).toBe("parent");
+  });
+
+  it("prevents a child Reality from mutating parent-owned anchors", () => {
+    const entity = RealityEntity.create({
+      depth: 1,
+      kind: "dream",
+      name: "Child",
+      premise: constitution.premise,
+      constitution,
+      inheritedAnchors: [{
+        id: "anchor-1",
+        realityId: "parent",
+        ownerRealityId: "parent",
+        name: "Generic response",
+        description: "Never disclose account existence",
+        testCommand: "vitest anchors",
+        immutable: true,
+        hidden: true,
+        status: "pending"
+      }]
+    });
+
+    expect(() => entity.replaceAnchors(entity.snapshot().anchors)).toThrow(
+      "Child Realities cannot mutate parent-owned anchors."
+    );
   });
 
   it("builds a prompt containing constitution, history, evidence, anchors and wake contract", () => {
@@ -47,6 +74,8 @@ describe("Reality domain", () => {
     expect(prompt).toContain("CONSTITUTION");
     expect(prompt).toContain("CURRENT BELIEFS");
     expect(prompt).toContain("WAKE CONTRACT");
+    expect(prompt).toContain(`Reality ID: ${entity.snapshot().id}`);
+    expect(prompt).toContain(`set realityId exactly to "${entity.snapshot().id}"`);
     expect(prompt).not.toContain("chain-of-thought");
   });
 
@@ -68,5 +97,27 @@ describe("Reality domain", () => {
       generatedAt: new Date().toISOString()
     });
     expect(parsed.changedBeliefs).toHaveLength(1);
+  });
+
+  it("normalises a structured-output null for optional artefact content", () => {
+    const parsed = WakeReportSchema.parse({
+      realityId: "dream-1",
+      initialBeliefs: [],
+      experiences: [],
+      changedBeliefs: [],
+      invariants: [],
+      artefacts: [{
+        name: "attack.spec.ts",
+        path: "tests/attack.spec.ts",
+        kind: "test",
+        summary: "Fails before fix",
+        content: null
+      }],
+      remainingUncertainty: [],
+      recommendation: "Retain the test",
+      generatedAt: new Date().toISOString()
+    });
+    expect(parsed.artefacts[0]).not.toHaveProperty("content", null);
+    expect(parsed.artefacts[0]?.content).toBeUndefined();
   });
 });

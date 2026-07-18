@@ -7,7 +7,9 @@
   "types": "src/index.ts",
   "dependencies": {
     "@inception/domain": "*",
+    "@inception/orchestrator": "*",
     "@openai/codex-sdk": "0.144.5",
+    "zod": "3.25.76",
     "zod-to-json-schema": "3.24.6"
   }
 }

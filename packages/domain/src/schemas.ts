@@ -12,6 +12,7 @@ export const RealityKindSchema = z.enum(["waking", "dream"]);
 
 export const RealityConstitutionSchema = z.object({
   mission: z.string().min(1),
+  scope: z.string().min(1).optional(),
   premise: z.string().min(1),
   constraints: z.array(z.string()),
   wakeContract: z.array(z.string()),
@@ -73,7 +74,7 @@ export const WakeArtefactSchema = z.object({
   path: z.string(),
   kind: z.enum(["test", "patch", "note", "log"]),
   summary: z.string(),
-  content: z.string().optional()
+  content: z.string().nullable().optional().transform((value) => value ?? undefined)
 });
 
 export const WakeBeliefChangeSchema = z.object({
@@ -101,6 +102,7 @@ export const WakeReportSchema = z.object({
 export const RealityAnchorSchema = z.object({
   id: z.string(),
   realityId: z.string(),
+  ownerRealityId: z.string(),
   name: z.string(),
   description: z.string(),
   testCommand: z.string(),
@@ -113,6 +115,7 @@ export const RealityAnchorSchema = z.object({
 export const RealityEventTypeSchema = z.enum([
   "reality.created",
   "codex.thread.bound",
+  "codex.progress",
   "inspection.completed",
   "uncertainty.discovered",
   "dream.created",
@@ -167,7 +170,9 @@ export const AnchorResultSchema = z.object({
   anchorId: z.string(),
   name: z.string(),
   status: z.enum(["passed", "failed"]),
-  output: z.string()
+  output: z.string(),
+  command: z.string().optional(),
+  durationMs: z.number().int().nonnegative().optional()
 });
 
 export const DemoSessionSchema = z.object({
@@ -178,6 +183,14 @@ export const DemoSessionSchema = z.object({
   anchorResults: z.array(AnchorResultSchema),
   createdAt: z.string(),
   updatedAt: z.string()
+});
+
+export const RealityRunArchiveSchema = z.object({
+  id: z.string(),
+  session: DemoSessionSchema,
+  realities: z.array(RealitySchema),
+  events: z.array(RealityEventSchema),
+  archivedAt: z.string()
 });
 
 export type RealityStatus = z.infer<typeof RealityStatusSchema>;
@@ -196,3 +209,4 @@ export type RealityEventType = z.infer<typeof RealityEventTypeSchema>;
 export type Reality = z.infer<typeof RealitySchema>;
 export type AnchorResult = z.infer<typeof AnchorResultSchema>;
 export type DemoSession = z.infer<typeof DemoSessionSchema>;
+export type RealityRunArchive = z.infer<typeof RealityRunArchiveSchema>;

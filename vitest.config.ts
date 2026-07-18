@@ -4,10 +4,10 @@ import path from "node:path";
 export default defineConfig({
   resolve: {
     alias: {
-      "@inception/domain": path.resolve(__dirname, "packages/domain/src/index.ts"),
-      "@inception/orchestrator": path.resolve(__dirname, "packages/orchestrator/src/index.ts"),
-      "@inception/codex-runtime": path.resolve(__dirname, "packages/codex-runtime/src/index.ts"),
-      "@inception/worktree-manager": path.resolve(__dirname, "packages/worktree-manager/src/index.ts")
+      "@inception/domain": path.resolve(import.meta.dirname, "packages/domain/src/index.ts"),
+      "@inception/orchestrator": path.resolve(import.meta.dirname, "packages/orchestrator/src/index.ts"),
+      "@inception/codex-runtime": path.resolve(import.meta.dirname, "packages/codex-runtime/src/index.ts"),
+      "@inception/worktree-manager": path.resolve(import.meta.dirname, "packages/worktree-manager/src/index.ts")
     }
   },
   test: {

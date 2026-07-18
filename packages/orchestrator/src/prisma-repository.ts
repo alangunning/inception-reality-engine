@@ -1,10 +1,12 @@
 import {
   DemoSessionSchema,
   RealityEventSchema,
+  RealityRunArchiveSchema,
   RealitySchema,
   type DemoSession,
   type Reality,
-  type RealityEvent
+  type RealityEvent,
+  type RealityRunArchive
 } from "@inception/domain";
 import type { RealityRepository } from "./ports";
 
@@ -25,6 +27,7 @@ export interface InceptionPrismaClient {
   realityRecord: PrismaDelegate;
   realityEventRecord: PrismaDelegate;
   demoSessionRecord: PrismaDelegate;
+  realityRunArchiveRecord: PrismaDelegate;
   $transaction<T>(operations: Promise<T>[]): Promise<T[]>;
   $disconnect?(): Promise<void>;
 }
@@ -165,6 +168,37 @@ export class PrismaRealityRepository implements RealityRepository {
   async getSession(): Promise<DemoSession | null> {
     const record = await this.prisma.demoSessionRecord.findUnique({ where: { id: "singleton" } });
     return record ? toSession(record) : null;
+  }
+
+  async saveRunArchive(archive: RealityRunArchive): Promise<void> {
+    const validated = RealityRunArchiveSchema.parse(archive);
+    await this.prisma.realityRunArchiveRecord.upsert({
+      where: { id: validated.id },
+      create: {
+        id: validated.id,
+        snapshotJson: JSON.stringify(validated),
+        archivedAt: new Date(validated.archivedAt)
+      },
+      update: {
+        snapshotJson: JSON.stringify(validated),
+        archivedAt: new Date(validated.archivedAt)
+      }
+    });
+  }
+
+  async listRunArchives(limit = 20): Promise<RealityRunArchive[]> {
+    const records = await this.prisma.realityRunArchiveRecord.findMany({
+      orderBy: { archivedAt: "desc" },
+      take: limit
+    });
+    return records.map((record) => RealityRunArchiveSchema.parse(parseJson(record.snapshotJson)));
+  }
+
+  async getRunArchive(id: string): Promise<RealityRunArchive | null> {
+    const record = await this.prisma.realityRunArchiveRecord.findUnique({ where: { id } });
+    return record
+      ? RealityRunArchiveSchema.parse(parseJson(record.snapshotJson))
+      : null;
   }
 
   async deleteAll(): Promise<void> {
