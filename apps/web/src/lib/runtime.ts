@@ -5,7 +5,9 @@ import path from "node:path";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { CodexProcessControl, MockCodexRuntime, RealCodexRuntime } from "@inception/codex-runtime";
 import {
+  type CodexRuntime,
   InMemoryRealityEventBus,
+  MissionOrchestrator,
   PrismaRealityRepository,
   RealityOrchestrator,
   SqliteRealityRepository,
@@ -14,13 +16,17 @@ import {
   type InceptionPrismaClient,
   type RealityRepository
 } from "@inception/orchestrator";
-import { GitWorktreeManager } from "@inception/worktree-manager";
+import { GitMissionWorkspaceFactory, GitWorktreeManager } from "@inception/worktree-manager";
 
 interface RuntimeContainer {
+  implementationVersion: string;
   persistence: "prisma" | "sqlite-fallback";
   codexMode: "mock" | "real";
   eventBus: InMemoryRealityEventBus;
+  missionEventBus: InMemoryRealityEventBus;
+  codexRuntime: CodexRuntime;
   orchestrator: RealityOrchestrator;
+  missionOrchestrator: MissionOrchestrator;
   processControl: CodexProcessControl;
   disconnect(): Promise<void>;
 }
@@ -30,6 +36,28 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260718.3";
+
+function upgradeRuntimeCapabilities(
+  candidate: CodexRuntime,
+  mode: RuntimeContainer["codexMode"]
+): CodexRuntime {
+  const legacy = candidate as CodexRuntime & {
+    info?: CodexRuntime["info"];
+    activeOperations?: CodexRuntime["activeOperations"];
+    abortAll?: CodexRuntime["abortAll"];
+  };
+  legacy.info ??= () => ({
+    mode,
+    model: mode === "real"
+      ? process.env.INCEPTION_CODEX_MODEL?.trim() || "gpt-5.6"
+      : "deterministic-mock",
+    sdkVersion: "0.144.6"
+  });
+  legacy.activeOperations ??= () => [];
+  legacy.abortAll ??= () => 0;
+  return legacy;
+}
 
 function discoverRepoRoot(): string {
   if (process.env.INCEPTION_REPO_ROOT) return process.env.INCEPTION_REPO_ROOT;
@@ -50,6 +78,12 @@ function sqliteFilename(repoRoot: string): string {
 function normalisedDatabaseUrl(repoRoot: string): string {
   const url = process.env.DATABASE_URL ?? `file:${repoRoot}/prisma/dev.db`;
   return url.startsWith("file:") ? `file:${sqliteFilename(repoRoot)}` : url;
+}
+
+function worktreeRoot(repoRoot: string): string {
+  const configured = process.env.INCEPTION_WORKTREE_ROOT?.trim();
+  if (!configured) return path.join(repoRoot, ".inception", "worktrees");
+  return path.isAbsolute(configured) ? configured : path.resolve(repoRoot, configured);
 }
 
 function createRepository(repoRoot: string): {
@@ -79,6 +113,7 @@ function createRepository(repoRoot: string): {
         || !prisma.realityEventRecord
         || !prisma.demoSessionRecord
         || !prisma.realityRunArchiveRecord
+        || !prisma.missionRunRecord
       ) {
         throw new Error("Generated Prisma models are unavailable");
       }
@@ -102,15 +137,95 @@ function createRepository(repoRoot: string): {
 }
 
 export function getRuntime(): RuntimeContainer {
-  if (globalThis.__inceptionRuntime) return globalThis.__inceptionRuntime;
+  if (globalThis.__inceptionRuntime) {
+    const existing = globalThis.__inceptionRuntime;
+    if (existing.implementationVersion !== RUNTIME_IMPLEMENTATION_VERSION) {
+      const legacyOrchestrator = existing.orchestrator as unknown as {
+        repository?: RealityRepository;
+        worktrees?: GitWorktreeManager;
+        synthesis?: SynthesisService;
+        repoRoot?: string;
+      };
+      const repository = legacyOrchestrator.repository;
+      if (!repository) {
+        throw new Error("The live Reality repository is unavailable for runtime migration.");
+      }
+      const repoRoot = legacyOrchestrator.repoRoot ?? discoverRepoRoot();
+      const codexRuntime = existing.codexMode === "real"
+        ? new RealCodexRuntime()
+        : new MockCodexRuntime();
+      const worktrees = new GitWorktreeManager(
+        repoRoot,
+        worktreeRoot(repoRoot),
+        process.env.INCEPTION_BRANCH_PREFIX?.trim() || "inception"
+      );
+      existing.codexRuntime = codexRuntime;
+      existing.orchestrator = new RealityOrchestrator(
+        repository,
+        existing.eventBus,
+        codexRuntime,
+        worktrees,
+        legacyOrchestrator.synthesis ?? new SynthesisService(),
+        repoRoot
+      );
+      existing.missionEventBus ??= new InMemoryRealityEventBus();
+      const missionRepository = typeof repository.getMissionRun === "function"
+        ? repository
+        : new SqliteRealityRepository(sqliteFilename(repoRoot));
+      existing.missionOrchestrator = new MissionOrchestrator(
+        missionRepository,
+        existing.missionEventBus,
+        codexRuntime,
+        new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
+      );
+      existing.implementationVersion = RUNTIME_IMPLEMENTATION_VERSION;
+      return existing;
+    }
+    const legacyRuntime = existing.codexRuntime ?? (existing.orchestrator as unknown as {
+      codexRuntime?: CodexRuntime;
+    }).codexRuntime;
+    existing.codexRuntime = upgradeRuntimeCapabilities(
+      legacyRuntime ?? (
+        existing.codexMode === "real" ? new RealCodexRuntime() : new MockCodexRuntime()
+      ),
+      existing.codexMode
+    );
+    if (!existing.missionEventBus) {
+      existing.missionEventBus = new InMemoryRealityEventBus();
+    }
+    if (!existing.missionOrchestrator) {
+      const liveRepository = (existing.orchestrator as unknown as {
+        repository?: RealityRepository;
+      }).repository;
+      if (!liveRepository) {
+        throw new Error("The live Reality repository is unavailable for Mission Composer.");
+      }
+      const repoRoot = discoverRepoRoot();
+      const repository = typeof liveRepository.getMissionRun === "function"
+        ? liveRepository
+        : new SqliteRealityRepository(sqliteFilename(repoRoot));
+      existing.missionOrchestrator = new MissionOrchestrator(
+        repository,
+        existing.missionEventBus,
+        existing.codexRuntime,
+        new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
+      );
+    }
+    return existing;
+  }
   const repoRoot = discoverRepoRoot();
   const persistence = createRepository(repoRoot);
   const eventBus = new InMemoryRealityEventBus();
+  const missionEventBus = new InMemoryRealityEventBus();
   const codexMode = process.env.INCEPTION_CODEX_MODE === "real" ? "real" : "mock";
   const codexRuntime = codexMode === "real"
     ? new RealCodexRuntime()
     : new MockCodexRuntime();
-  const worktrees = new GitWorktreeManager(repoRoot);
+  const worktrees = new GitWorktreeManager(
+    repoRoot,
+    worktreeRoot(repoRoot),
+    process.env.INCEPTION_BRANCH_PREFIX?.trim() || "inception"
+  );
   const orchestrator = new RealityOrchestrator(
     persistence.repository,
     eventBus,
@@ -119,11 +234,21 @@ export function getRuntime(): RuntimeContainer {
     new SynthesisService(),
     repoRoot
   );
+  const missionOrchestrator = new MissionOrchestrator(
+    persistence.repository,
+    missionEventBus,
+    codexRuntime,
+    new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
+  );
   globalThis.__inceptionRuntime = {
+    implementationVersion: RUNTIME_IMPLEMENTATION_VERSION,
     persistence: persistence.persistence,
     codexMode,
     eventBus,
+    missionEventBus,
+    codexRuntime,
     orchestrator,
+    missionOrchestrator,
     processControl: new CodexProcessControl(),
     disconnect: persistence.disconnect
   };
@@ -134,6 +259,8 @@ export type PresentedDemoSnapshot = DemoSnapshot & {
   runtime: {
     codexMode: RuntimeContainer["codexMode"];
     persistence: RuntimeContainer["persistence"];
+    model: string;
+    sdkVersion: string;
   };
 };
 
@@ -143,7 +270,9 @@ export function presentSnapshot(snapshot: DemoSnapshot): PresentedDemoSnapshot {
     ...snapshot,
     runtime: {
       codexMode: runtime.codexMode,
-      persistence: runtime.persistence
+      persistence: runtime.persistence,
+      model: runtime.codexRuntime.info().model,
+      sdkVersion: runtime.codexRuntime.info().sdkVersion
     }
   };
 }

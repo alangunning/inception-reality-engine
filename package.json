@@ -2,6 +2,7 @@
   "name": "inception-reality-engine",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "packageManager": "npm@10.9.2",
   "workspaces": [
     "apps/*",
@@ -23,11 +24,12 @@
     "db:push": "prisma db push",
     "demo:reset": "tsx scripts/reset-demo.ts",
     "verify": "npm run test && npm run typecheck && npm run build",
+    "judge:demo": "npm run dev:mock",
     "prepare:repo": "node scripts/ensure-git.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
-    "@openai/codex-sdk": "0.144.5",
+    "@openai/codex-sdk": "^0.144.6",
     "@prisma/adapter-libsql": "^7.8.0",
     "@prisma/client": "7.8.0",
     "zod": "3.25.76",

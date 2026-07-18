@@ -1,0 +1,16 @@
+services:
+  reality-engine:
+    build:
+      context: .
+    image: inception-reality-engine:0.1.0
+    ports:
+      - "3000:3000"
+    environment:
+      INCEPTION_CODEX_MODE: mock
+      INCEPTION_PERSISTENCE: sqlite
+      DATABASE_URL: file:/data/inception.db
+    volumes:
+      - inception-data:/data
+
+volumes:
+  inception-data:

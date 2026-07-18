@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import { RealityEntity } from "@inception/domain";
 import {
   buildSubjectOrchestrationPrompt,
+  codexThreadOptions,
+  configuredCodexModel,
   CodexRuntimeEventSchema,
   MockCodexRuntime,
+  SubjectCollaborationTrace,
   toSafeCodexRuntimeEvent,
   WakeReportParser,
   WakeReportValidationError
@@ -141,5 +144,126 @@ describe("Codex runtime", () => {
     expect(prompt).toContain("Ariadne (Attacker): Probe rotating-source abuse.");
     expect(prompt).toContain("wait for every Subject to return");
     expect(prompt).toContain("must not spawn further subagents");
+  });
+
+  it("pins real Reality threads to GPT-5.6 with the full worktree capability", () => {
+    const previousModel = process.env.INCEPTION_CODEX_MODEL;
+    delete process.env.INCEPTION_CODEX_MODEL;
+    try {
+      const reality = RealityEntity.create({
+        depth: 0,
+        kind: "waking",
+        name: "Waking",
+        premise: constitution.premise,
+        constitution
+      }).bindRuntime("thread-1", "/tmp/reality-worktree", "inception/reality").snapshot();
+
+      expect(configuredCodexModel()).toBe("gpt-5.6");
+      expect(codexThreadOptions(reality)).toMatchObject({
+        model: "gpt-5.6",
+        modelReasoningEffort: "high",
+        workingDirectory: "/tmp/reality-worktree",
+        sandboxMode: "danger-full-access",
+        approvalPolicy: "never",
+        networkAccessEnabled: true,
+        webSearchMode: "live"
+      });
+    } finally {
+      if (previousModel === undefined) delete process.env.INCEPTION_CODEX_MODEL;
+      else process.env.INCEPTION_CODEX_MODEL = previousModel;
+    }
+  });
+
+  it("accepts only auditable Subject spawn and terminal wait evidence", () => {
+    const trace = new SubjectCollaborationTrace([{
+      id: "subject-attacker",
+      realityId: "dream-1",
+      name: "Ariadne",
+      role: "Attacker",
+      mission: "Probe source rotation.",
+      status: "entered",
+      findings: []
+    }]);
+    const entered = trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["thread-subject-1"],
+        prompt: "SUBJECT_ID:subject-attacker\nsecret task detail",
+        status: "completed"
+      }
+    });
+    const returned = trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "wait",
+        receiver_thread_ids: ["thread-subject-1"],
+        agents_states: {
+          "thread-subject-1": {
+            status: "completed",
+            message: "raw Subject response must never be persisted"
+          }
+        },
+        status: "completed"
+      }
+    });
+
+    expect(entered[0]).toMatchObject({
+      type: "subject",
+      metadata: {
+        subjectId: "subject-attacker",
+        subjectThreadId: "thread-subject-1",
+        subjectState: "started",
+        collaborationTool: "spawn_agent"
+      }
+    });
+    expect(returned[0]).toMatchObject({
+      type: "subject",
+      metadata: {
+        subjectId: "subject-attacker",
+        subjectState: "completed",
+        collaborationTool: "wait"
+      }
+    });
+    expect(JSON.stringify([...entered, ...returned])).not.toContain("secret task detail");
+    expect(JSON.stringify([...entered, ...returned])).not.toContain("raw Subject response");
+    expect(() => trace.requireComplete()).not.toThrow();
+  });
+
+  it("rejects a Subject report when no native Codex return is observed", () => {
+    const trace = new SubjectCollaborationTrace([{
+      id: "subject-test",
+      realityId: "dream-1",
+      name: "Eames",
+      role: "Test engineer",
+      mission: "Build a decisive test.",
+      status: "entered",
+      findings: []
+    }]);
+    trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["thread-subject-2"],
+        prompt: "SUBJECT_ID:subject-test",
+        status: "completed"
+      }
+    });
+
+    try {
+      trace.requireComplete();
+      throw new Error("Expected missing native Subject evidence to be rejected.");
+    } catch (error) {
+      expect(error).toMatchObject({
+        contract: "InvestigationReportSchema",
+        issues: [{
+          path: "subjectReports.subject-test",
+          code: "missing_codex_return_evidence"
+        }]
+      });
+    }
   });
 });

@@ -64,3 +64,11 @@ model RealityRunArchiveRecord {
 
   @@index([archivedAt])
 }
+
+model MissionRunRecord {
+  id           String   @id
+  snapshotJson String
+  updatedAt    DateTime
+
+  @@index([updatedAt])
+}

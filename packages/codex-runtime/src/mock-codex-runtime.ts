@@ -26,8 +26,52 @@ function mockDelayMilliseconds(): number {
 }
 
 export class MockCodexRuntime implements CodexRuntime {
+  readonly mode = "mock" as const;
+
+  info() {
+    return { mode: this.mode, model: "deterministic-mock", sdkVersion: "0.144.6" } as const;
+  }
+
+  activeOperations() {
+    return [];
+  }
+
+  abortAll(): number {
+    return 0;
+  }
+
   async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
     const nested = reality.depth > 0;
+    const subjectEvents = reality.subjects.flatMap((subject) => [
+      {
+        type: "subject",
+        summary: `Subject entered Codex thread: ${subject.name}.`,
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: subject.id,
+          subjectName: subject.name,
+          subjectRole: subject.role,
+          subjectThreadId: `mock-subject-${subject.id}`,
+          subjectState: "started",
+          collaborationTool: "spawn_agent"
+        }
+      },
+      {
+        type: "subject",
+        summary: `Subject completed bounded investigation: ${subject.name}.`,
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: subject.id,
+          subjectName: subject.name,
+          subjectRole: subject.role,
+          subjectThreadId: `mock-subject-${subject.id}`,
+          subjectState: "completed",
+          collaborationTool: "wait"
+        }
+      }
+    ]);
     const events = [
         {
           type: "progress",
@@ -53,6 +97,7 @@ export class MockCodexRuntime implements CodexRuntime {
             paths: ["demo/password-reset/src/password-reset.ts"]
           }
         },
+        ...subjectEvents,
         {
           type: "decision",
           summary: nested

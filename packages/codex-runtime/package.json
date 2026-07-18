@@ -2,13 +2,14 @@
   "name": "@inception/codex-runtime",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "type": "module",
   "main": "src/index.ts",
   "types": "src/index.ts",
   "dependencies": {
     "@inception/domain": "*",
     "@inception/orchestrator": "*",
-    "@openai/codex-sdk": "0.144.5",
+    "@openai/codex-sdk": "0.144.6",
     "zod": "3.25.76",
     "zod-to-json-schema": "3.24.6"
   }

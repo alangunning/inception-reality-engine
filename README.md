@@ -1,127 +1,180 @@
-# Inception — Reality Engine
+# Inception: Reality Engine
 
-A working hackathon prototype for software-development agents that explore nested counterfactual realities called **dreams**.
+**Developer Tools | OpenAI Build Week | Submission candidate 0.1.0**
 
-Each Reality owns a premise, constitution, world history, evidence, Codex thread, and isolated Git worktree. A Dream is a child Reality. Bounded Codex sub-agents are represented as Subjects inside one Reality. Dreams wake with validated, structured memories rather than raw reasoning.
+Reality Engine lets a coding agent explore a risky assumption in nested, isolated software worlds before that assumption changes the waking repository.
 
-## Rehearsed demo
+Each **Reality** owns a premise, constitution, history, evidence, Codex thread, and Git worktree. A child Reality is a **Dream**. Direct Codex subagents are identity-bound **Subjects**. A **Kick** stops exploration and returns a Zod-validated **Wake Report** containing evidence, changed beliefs, invariants, test artefacts, and remaining uncertainty. Parent-owned **Reality Anchors** must pass before the result can stabilise.
 
-The built-in scenario explores an incomplete password-reset feature:
+This is not a generic multi-agent dashboard. The product is a proof-gated counterfactual runtime for software decisions.
 
-1. The waking Reality inspects the implementation.
-2. It identifies uncertainty around per-IP rate limiting.
-3. An **Under coordinated attack** Dream is created.
+## Why It Matters
+
+When coding agents make an incorrect assumption, engineers and users pay through review time, main-branch contamination, incomplete tests, security incidents, and production regressions. Ordinary agent workflows ask one thread to reason, implement, and judge its own work in the same world.
+
+Reality Engine separates those responsibilities:
+
+1. make the uncertainty explicit;
+2. fork an isolated world where the assumption can be experienced;
+3. delegate bounded independent investigations to auditable Subjects;
+4. return only validated memory and reproducible artefacts;
+5. synthesise what generalises in the waking worktree;
+6. require immutable parent-owned proof before stabilisation.
+
+The canonical scenario exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. Real-mode **Mission Composer** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, token budget, and Dream depth.
+
+## Run in Two Commands
+
+Requires Node.js 22.5 or newer, npm, and Git.
+
+```bash
+npm ci
+npm run dev:mock
+```
+
+Open `http://localhost:3000`. Mock mode is deterministic, persists to portable SQLite, creates real Git worktrees, and requires no OpenAI account, API key, Prisma generation, or network call.
+
+Opening, refreshing, replaying the timeline, or forming a Mission never starts Codex. Usage begins only after an explicit action whose label states that Codex will act.
+
+Container:
+
+```bash
+docker compose up --build
+```
+
+Tagged releases publish `ghcr.io/<repository-owner>/inception-reality-engine:v0.1.0` for judge testing without a local Node toolchain.
+
+## Canonical Demo
+
+1. The waking Reality asks Codex to audit password-reset security.
+2. Codex surfaces uncertainty around per-IP rate limiting.
+3. **Under coordinated attack** is created in a child worktree and thread.
 4. Attacker, investigator, and test-engineer Subjects enter.
-5. They discover account enumeration and distributed abuse.
-6. A nested **Rotating IP swarm** Dream creates a failing attack test.
-7. Memories return through two validated Wake Reports.
-8. The waking Reality promotes returned artefacts and synthesises the lesson into its implementation.
-9. Immutable anchors and the complete inherited regression suite must agree before stabilisation.
-10. The UI can replay the safe event history, collapse the Dreams into one waking Reality, and reveal the final Git diff.
+5. Native Codex collaboration events prove each real Subject thread started and returned.
+6. A nested **Rotating IP swarm** Dream creates and executes a failing attack test.
+7. The nested Dream and parent Dream return validated Wake Reports.
+8. Returned artefacts and invariants are synthesised into the waking implementation.
+9. Hidden anchors and the inherited regression suite run.
+10. Final beliefs, memories, proof results, Reality tree, and Git diff remain replayable.
 
-## Fast setup
+The deterministic path is rehearsable in under three minutes. The [judge guide](./docs/JUDGING.md) contains the exact video flow.
 
-Requires Node.js 22.5 or newer and Git.
+## Real GPT-5.6 and Codex
 
-```bash
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000`. The action dock names the exact next move, including whether it enters Codex, creates a Dream, returns memory, changes code, or runs anchors.
-
-Mock mode is the default on a fresh clone. It is deterministic and requires no OpenAI credentials or generated Prisma client. The app persists to a local SQLite database and creates isolated worktrees under `.inception/worktrees`.
-
-Use `npm run dev:mock` to force the rehearsed path when a local `.env` enables real mode.
-
-Opening or refreshing the app does **not** start Codex or consume API usage. In real mode, a Codex CLI execution begins only after an explicit action such as **Ask Codex to audit and improve password-reset security** or **Kick** is clicked. Action text is composed from the active Reality's constitution, proposals, anchors, and scope rather than a phase-specific UI string. While Codex runs, the live operation band shows wall-clock duration, safe command/tool/file milestones, and a refresh-stable busy state.
-
-## Prisma-backed persistence
-
-The repository includes a Prisma schema and `PrismaRealityRepository`. In normal networked development, generate the client and initialise the database once:
-
-```bash
-npm run db:generate
-npm run db:push
-```
-
-The app automatically selects Prisma when the generated models are present. Set `INCEPTION_PERSISTENCE=prisma` to require Prisma and fail rather than fall back. The portable SQLite repository exists so the hackathon demo remains rehearsable when Prisma engine downloads are unavailable.
-
-## Real Codex mode
-
-### Existing Codex CLI login
-
-The simplest real-mode path uses the judge or developer's own Codex login:
+Reuse an existing Codex CLI login:
 
 ```bash
 npm run codex:check
 npm run dev:real
 ```
 
-The SDK-spawned Codex CLI reuses the existing login from `${CODEX_HOME:-~/.codex}/auth.json`. Keep that OAuth file in the Codex home; do not copy its tokens into this project. Set `CODEX_HOME` only when the Codex home is non-standard.
+The SDK-spawned CLI uses `${CODEX_HOME:-~/.codex}/auth.json`. Every judge or contributor uses their own local Codex login; no credential is committed or copied into this project.
 
-### API key
-
-Create a local `.env` from `.env.example`, set:
+API key alternative:
 
 ```bash
-INCEPTION_CODEX_MODE="real"
-CODEX_API_KEY="your-key"
+cp .env.example .env
+# Set INCEPTION_CODEX_MODE=real and CODEX_API_KEY or OPENAI_API_KEY.
+npm run dev:real
 ```
 
-`OPENAI_API_KEY` is also accepted when `CODEX_API_KEY` is unset. Then run `npm run dev:real`. The ignored `.env` never enters Git.
+Real Reality threads default to **GPT-5.6** with high reasoning, unrestricted writes inside their Reality worktree, network access, and live web search. `INCEPTION_CODEX_MODEL` is an explicit compatibility override.
 
-The real adapter uses one `@openai/codex-sdk` thread per Reality, persists its thread ID, resumes that thread on later interactions, and sets the Reality worktree as `workingDirectory`. Inspection, Subject findings, Wake Reports, and synthesis all use dedicated Zod contracts with exact Reality identities. Invalid output becomes one concise validation event and is never substituted with scripted findings.
+The real adapter:
 
-Real mode enables Codex multi-agent collaboration with up to six direct Subjects. When a Dream contains Subject charters, Codex is explicitly required to spawn those bounded investigations, run them concurrently when possible, wait for every return, and allow delegated jobs up to one hour. Every active Subject must return through a validated identity-bound report before its findings can enter the Reality.
+- starts one `@openai/codex-sdk` thread per Reality;
+- persists and resumes the thread ID;
+- binds `workingDirectory` to that Reality's worktree;
+- supplies constitution, history, evidence, anchors, Subjects, and a JSON schema;
+- requires native `spawn_agent` plus terminal `wait` evidence for every active Subject;
+- rejects model-authored Subject reports that lack a real child-thread trace;
+- validates every investigation, synthesis, Wake Report, and safe event before persistence.
 
-Each child worktree inherits its parent's current tracked edits, deletions, and untracked evidence without sharing subsequent mutations. Reality-local constitution and immutable-anchor manifests live under `.inception` inside each worktree. Returned Wake artefacts are promoted into the waking worktree before Codex synthesis, and the final diff includes untracked files.
+Real mode is intentionally not read-only. See [Security](./SECURITY.md) before exposing it beyond a trusted local machine.
 
-Mock mode uses the same validated contracts and isolation flow, then applies a deterministic synthesis fixture. Real mode asks the waking Reality's persisted Codex thread to perform synthesis and repair with full worktree permissions; it is not reduced to read-only behavior.
+## Mission Composer
 
-### Runtime administration
+In real mode, open **Mission Composer** from the top bar or visit `/missions/new`.
 
-The gear button opens controls separate from the demo narrative. It lists active `codex exec` processes by PID, elapsed time, and working directory, and can stop them after confirmation. It also exposes the current validated event log and archived logs as JSON for retrospective analysis; raw model reasoning and raw Codex command output are never retained. **Full reset and cleanup** stops Codex, archives safe telemetry, deletes active state, removes registered and orphaned worktrees under `.inception/worktrees`, deletes their `inception/*` branches, prunes Git worktree metadata, and forms one clean waking Reality.
+Define:
 
-The labeled **Full reset** button in the action dock performs the same run/worktree cleanup without being confused with browser refresh and always requires confirmation.
+- an absolute path to a trusted local Git repository;
+- the mission, bounded scope, and initial belief to challenge;
+- constitution constraints and parent truths;
+- structured immutable proof commands;
+- token and Dream-depth budgets;
+- bounded Subject charters.
 
-## Browser QA
+Forming the waking Reality creates isolated Git state but makes no Codex call. Subsequent explicit actions can generate multiple nested Dreams, return memories upward, synthesise the waking implementation, run proofs, repair failures, and stabilise.
 
-Playwright runs against production rendering in delayed mock mode on port `3100`, with a dedicated SQLite file. It never invokes Codex or uses an OpenAI API key.
+## Product Experience
+
+- central Reality tree with visible Dream depth;
+- current premise, constitution, world state, and simulated dream-time;
+- live, timestamped, sortable and filterable safe event stream;
+- explicit native Subject thread state;
+- evidence provenance and model-reported belief confidence;
+- refresh-stable operation monitor and usage counters;
+- timeline replay for demo compression and post-analysis;
+- Memories comparison, immutable proof status, and final Git diff;
+- separate Admin view for SDK operations, OS processes, safe logs, stop, archive, reset, and cleanup.
+
+No raw chain-of-thought or raw model response is displayed or persisted.
+
+## Architecture
+
+```text
+apps/web                    Next.js UI, APIs, SSE, composition
+packages/domain             Framework-free entities and Zod contracts
+packages/orchestrator       Use cases, ports, proof gates, repositories
+packages/codex-runtime      Mock and real Codex SDK adapters
+packages/worktree-manager   Git worktree inheritance and lifecycle
+demo/password-reset         Canonical vulnerable fixture and anchors
+```
+
+Start with the versioned [architecture](./docs/ARCHITECTURE.md), [runtime flows](./docs/RUNTIME_FLOWS.md), and [documentation index](./docs/README.md).
+
+## Persistence and Isolation
+
+Generate the Prisma client when developing the production adapter:
 
 ```bash
-npx playwright install chromium
-npm run test:e2e
+npm run db:generate
+npm run db:push
 ```
 
-The suite covers desktop and mobile visual baselines, idle usage safety, exact action naming, refresh during an active operation, live timestamps and event filtering, timeline replay, Dream cost confirmation, reset confirmation, isolated Admin controls, the complete nested-Dream path, time dilation, memories, comprehensive proof, Dream collapse, and explicit code reveal.
+The app selects Prisma when generated models are available and otherwise uses the portable SQLite adapter. Both persist validated state and retrospective logs.
 
-## Monorepo
+Canonical, Playwright, and Mission worktrees have separate roots and branch prefixes. Full reset cleans only canonical-owned Git state. Missing persisted worktrees are reconstructed from parent state and returned artefacts without consuming Codex.
 
-- `apps/web` — Next.js App Router UI, API routes, and SSE
-- `packages/domain` — entities, value objects, prompts, and Zod contracts
-- `packages/orchestrator` — use cases, repositories, synthesis, and event bus
-- `packages/codex-runtime` — deterministic mock and real Codex SDK adapters
-- `packages/worktree-manager` — Git worktree lifecycle
-- `demo/password-reset` — vulnerable fixture and immutable anchor tests
-
-## Useful commands
+## Verification
 
 ```bash
 npm test
-npm run test:e2e
 npm run typecheck
 npm run build
+npm run test:e2e
 npm run verify
-npm run demo:reset
 ```
 
-## Demo discipline
+Playwright uses production rendering, a dedicated SQLite database, mock mode, and a dedicated worktree namespace. It covers desktop/mobile visual baselines, no-usage idle state, refresh during operations, event controls, timeline replay, nested Dreams, time dilation, Memories, proof, reset, and final diff.
 
-- Raw chain-of-thought is never displayed or persisted.
-- Parent-owned Reality Anchors are immutable inside Dreams.
-- A child Reality inherits the exact parent filesystem state that existed when the Dream was created.
-- Synthetic evidence is labelled and Codex may propose a Dream but cannot create one itself.
-- Reality stabilisation is blocked until immutable anchors and every returned regression artefact pass.
-- The canonical mocked sequence is designed to complete reliably in under three minutes.
-- Use **Memory returned** and **Reality stabilised** rather than transport or workflow terminology.
+## Codex Collaboration
+
+Codex and GPT-5.6 were used throughout architecture audit, implementation, SDK integration, root-cause analysis, testing, and visual QA. The human owner made the core product decisions around full-power real mode, explicit usage, parent-owned anchors, native Subject proof, canonical-versus-general flows, and safe event semantics.
+
+The full collaboration account and submission evidence are in [Codex and GPT-5.6 Collaboration](./docs/CODEX_COLLABORATION.md). The Devpost `/feedback` Session ID must be taken manually from the primary Codex build session; application Reality thread IDs are not substitutes.
+
+## Supported Platforms
+
+- macOS 12.7+ x64/arm64: tested locally
+- Linux x64/arm64: supported by the release container; CI verification required
+- Windows native: unverified
+- WSL2: expected but unverified
+- Browser: current Chromium, desktop and mobile
+
+See [Operations](./docs/OPERATIONS.md) for auth, usage, process control, logs, cleanup, environment variables, and release instructions.
+
+## License
+
+Apache License 2.0. See [LICENSE](./LICENSE).

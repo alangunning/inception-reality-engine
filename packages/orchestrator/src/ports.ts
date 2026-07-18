@@ -1,4 +1,10 @@
-import type { DemoSession, Reality, RealityEvent, RealityRunArchive } from "@inception/domain";
+import type {
+  DemoSession,
+  MissionRun,
+  Reality,
+  RealityEvent,
+  RealityRunArchive
+} from "@inception/domain";
 
 export interface RealityRepository {
   saveReality(reality: Reality): Promise<void>;
@@ -11,6 +17,10 @@ export interface RealityRepository {
   saveRunArchive(archive: RealityRunArchive): Promise<void>;
   listRunArchives(limit?: number): Promise<RealityRunArchive[]>;
   getRunArchive(id: string): Promise<RealityRunArchive | null>;
+  saveMissionRun(run: MissionRun): Promise<void>;
+  getMissionRun(id: string): Promise<MissionRun | null>;
+  listMissionRuns(limit?: number): Promise<MissionRun[]>;
+  deleteMissionRun(id: string): Promise<void>;
   deleteAll(): Promise<void>;
 }
 

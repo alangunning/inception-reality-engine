@@ -1,10 +1,12 @@
 import type { DatabaseSync as DatabaseSyncType } from "node:sqlite";
 import {
   DemoSessionSchema,
+  MissionRunSchema,
   RealityEventSchema,
   RealityRunArchiveSchema,
   RealitySchema,
   type DemoSession,
+  type MissionRun,
   type Reality,
   type RealityEvent,
   type RealityRunArchive
@@ -88,6 +90,14 @@ export class SqliteRealityRepository implements RealityRepository {
       );
       CREATE INDEX IF NOT EXISTS RealityRunArchiveRecord_archivedAt_idx
         ON RealityRunArchiveRecord(archivedAt);
+
+      CREATE TABLE IF NOT EXISTS MissionRunRecord (
+        id TEXT PRIMARY KEY,
+        snapshotJson TEXT NOT NULL,
+        updatedAt DATETIME NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS MissionRunRecord_updatedAt_idx
+        ON MissionRunRecord(updatedAt);
     `);
     const sessionColumns = this.db.prepare("PRAGMA table_info(DemoSessionRecord)").all() as Array<{ name: string }>;
     if (!sessionColumns.some((column) => column.name === "regressionResultJson")) {
@@ -261,6 +271,39 @@ export class SqliteRealityRepository implements RealityRepository {
     return row
       ? RealityRunArchiveSchema.parse(parseJson(row.snapshotJson))
       : null;
+  }
+
+  async saveMissionRun(run: MissionRun): Promise<void> {
+    const validated = MissionRunSchema.parse(run);
+    this.db.prepare(`
+      INSERT INTO MissionRunRecord (id, snapshotJson, updatedAt)
+      VALUES (@id, @snapshotJson, @updatedAt)
+      ON CONFLICT(id) DO UPDATE SET
+        snapshotJson=excluded.snapshotJson,
+        updatedAt=excluded.updatedAt
+    `).run({
+      id: validated.id,
+      snapshotJson: JSON.stringify(validated),
+      updatedAt: validated.updatedAt
+    });
+  }
+
+  async getMissionRun(id: string): Promise<MissionRun | null> {
+    const row = this.db.prepare(
+      "SELECT snapshotJson FROM MissionRunRecord WHERE id = ?"
+    ).get(id) as Row | undefined;
+    return row ? MissionRunSchema.parse(parseJson(row.snapshotJson)) : null;
+  }
+
+  async listMissionRuns(limit = 20): Promise<MissionRun[]> {
+    const rows = this.db.prepare(
+      "SELECT snapshotJson FROM MissionRunRecord ORDER BY updatedAt DESC LIMIT ?"
+    ).all(limit) as Row[];
+    return rows.map((row) => MissionRunSchema.parse(parseJson(row.snapshotJson)));
+  }
+
+  async deleteMissionRun(id: string): Promise<void> {
+    this.db.prepare("DELETE FROM MissionRunRecord WHERE id = ?").run(id);
   }
 
   async deleteAll(): Promise<void> {

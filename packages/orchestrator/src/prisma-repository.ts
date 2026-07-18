@@ -1,9 +1,11 @@
 import {
   DemoSessionSchema,
+  MissionRunSchema,
   RealityEventSchema,
   RealityRunArchiveSchema,
   RealitySchema,
   type DemoSession,
+  type MissionRun,
   type Reality,
   type RealityEvent,
   type RealityRunArchive
@@ -28,6 +30,7 @@ export interface InceptionPrismaClient {
   realityEventRecord: PrismaDelegate;
   demoSessionRecord: PrismaDelegate;
   realityRunArchiveRecord: PrismaDelegate;
+  missionRunRecord: PrismaDelegate;
   $transaction<T>(operations: Promise<T>[]): Promise<T[]>;
   $disconnect?(): Promise<void>;
 }
@@ -201,6 +204,36 @@ export class PrismaRealityRepository implements RealityRepository {
     return record
       ? RealityRunArchiveSchema.parse(parseJson(record.snapshotJson))
       : null;
+  }
+
+  async saveMissionRun(run: MissionRun): Promise<void> {
+    const validated = MissionRunSchema.parse(run);
+    const data = {
+      snapshotJson: JSON.stringify(validated),
+      updatedAt: new Date(validated.updatedAt)
+    };
+    await this.prisma.missionRunRecord.upsert({
+      where: { id: validated.id },
+      create: { id: validated.id, ...data },
+      update: data
+    });
+  }
+
+  async getMissionRun(id: string): Promise<MissionRun | null> {
+    const record = await this.prisma.missionRunRecord.findUnique({ where: { id } });
+    return record ? MissionRunSchema.parse(parseJson(record.snapshotJson)) : null;
+  }
+
+  async listMissionRuns(limit = 20): Promise<MissionRun[]> {
+    const records = await this.prisma.missionRunRecord.findMany({
+      orderBy: { updatedAt: "desc" },
+      take: limit
+    });
+    return records.map((record) => MissionRunSchema.parse(parseJson(record.snapshotJson)));
+  }
+
+  async deleteMissionRun(id: string): Promise<void> {
+    await this.prisma.missionRunRecord.deleteMany({ where: { id } });
   }
 
   async deleteAll(): Promise<void> {

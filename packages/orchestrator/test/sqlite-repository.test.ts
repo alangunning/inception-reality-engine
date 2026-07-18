@@ -2,7 +2,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { RealityEntity, type DemoSession } from "@inception/domain";
+import {
+  MissionRunSchema,
+  RealityEntity,
+  type DemoSession
+} from "@inception/domain";
 import { SqliteRealityRepository } from "../src/sqlite-repository";
 
 const directories: string[] = [];
@@ -60,12 +64,50 @@ describe("SqliteRealityRepository", () => {
       events: [],
       archivedAt: now
     });
+    const mission = MissionRunSchema.parse({
+      id: "mission-1",
+      definition: {
+        id: "mission-1",
+        name: "General mission",
+        repositoryPath: directory,
+        mission: "Test mission persistence.",
+        scope: "repository",
+        premise: "State should survive refresh.",
+        constraints: ["Preserve contracts."],
+        parentTruths: [],
+        wakeContract: ["Return evidence."],
+        proofs: [{
+          id: "proof-1",
+          name: "Tests",
+          executable: "npm",
+          args: ["test"]
+        }],
+        subjects: [],
+        tokenBudget: 10_000,
+        maxDreamDepth: 1,
+        createdAt: now
+      },
+      status: "exploring",
+      realities: [reality],
+      events: [],
+      activeRealityId: reality.id,
+      memories: [],
+      proofResults: [],
+      finalDiff: "",
+      createdAt: now,
+      updatedAt: now
+    });
+    await repository.saveMissionRun(mission);
 
     expect((await repository.getReality(reality.id))?.parentId).toBeNull();
     expect((await repository.getSession())?.activeRealityId).toBe(reality.id);
     expect((await repository.getSession())?.regressionResult?.status).toBe("passed");
+    expect((await repository.getMissionRun("mission-1"))?.definition.name).toBe("General mission");
     await repository.deleteAll();
     expect((await repository.getRunArchive("archive-1"))?.realities[0]?.id).toBe(reality.id);
+    expect((await repository.getMissionRun("mission-1"))?.status).toBe("exploring");
+    await repository.deleteMissionRun("mission-1");
+    expect(await repository.getMissionRun("mission-1")).toBeNull();
     repository.close();
   });
 });

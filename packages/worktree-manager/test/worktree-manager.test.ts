@@ -50,4 +50,39 @@ describe("GitWorktreeManager", () => {
       await rm(repo, { recursive: true, force: true });
     }
   }, 15_000);
+
+  it("cleans only its own worktree root and branch namespace", async () => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "inception-scoped-worktree-"));
+    try {
+      execFileSync("git", ["init", "-b", "main"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "demo@example.com"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "Inception Test"], { cwd: repo });
+      await writeFile(path.join(repo, "seed.txt"), "waking\n");
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-m", "seed"], { cwd: repo });
+
+      const live = new GitWorktreeManager(
+        repo,
+        path.join(repo, ".inception", "live-worktrees"),
+        "inception-live"
+      );
+      const test = new GitWorktreeManager(
+        repo,
+        path.join(repo, ".inception", "test-worktrees"),
+        "inception-test"
+      );
+      const liveReality = await live.create("live-reality");
+      const testReality = await test.create("test-reality");
+
+      expect(await test.cleanupAll()).toBe(1);
+
+      expect(await live.isPresent(liveReality.path)).toBe(true);
+      expect(await test.isPresent(testReality.path)).toBe(false);
+      expect(execFileSync("git", ["branch", "--list", "inception-live/*"], { cwd: repo }).toString())
+        .toContain("inception-live/live-reality");
+      await live.cleanupAll();
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+    }
+  }, 15_000);
 });

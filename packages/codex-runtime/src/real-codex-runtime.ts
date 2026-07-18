@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Codex, type Thread, type ThreadOptions } from "@openai/codex-sdk";
 import {
   InvestigationReportSchema,
@@ -7,8 +8,10 @@ import {
   type InvestigationReport,
   type Reality,
   type SynthesisReport,
+  type Subject,
   type WakeReport
 } from "@inception/domain";
+import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   CodexOutputValidationError,
@@ -20,6 +23,27 @@ import {
   type CodexWakeResult
 } from "./types";
 import { WakeReportParser, WakeReportValidationError } from "./wake-report-parser";
+
+const CODEX_SDK_VERSION = "0.144.6";
+
+export function configuredCodexModel(): string {
+  return process.env.INCEPTION_CODEX_MODEL?.trim() || "gpt-5.6";
+}
+
+export function codexThreadOptions(reality: Reality): ThreadOptions {
+  if (!reality.worktreePath) {
+    throw new Error(`Reality ${reality.id} has no worktree.`);
+  }
+  return {
+    model: configuredCodexModel(),
+    modelReasoningEffort: "high",
+    workingDirectory: reality.worktreePath,
+    sandboxMode: "danger-full-access",
+    approvalPolicy: "never",
+    networkAccessEnabled: true,
+    webSearchMode: "live"
+  };
+}
 
 function compact(value: unknown, maximum: number): string | undefined {
   if (typeof value !== "string") return undefined;
@@ -134,6 +158,122 @@ function itemStatus(eventType: string | undefined, itemStatusValue: string | und
   return undefined;
 }
 
+const CollabEventSchema = z.object({
+  type: z.enum(["item.started", "item.updated", "item.completed"]),
+  item: z.object({
+    type: z.literal("collab_tool_call"),
+    tool: z.enum(["spawn_agent", "send_input", "wait", "close_agent"]),
+    receiver_thread_ids: z.array(z.string()),
+    prompt: z.string().nullable().optional(),
+    agents_states: z.record(z.object({
+      status: z.enum(["pending_init", "running", "interrupted", "completed", "errored", "shutdown", "not_found"]),
+      message: z.unknown().optional()
+    }).passthrough()).optional(),
+    status: z.enum(["in_progress", "completed", "failed"])
+  }).passthrough()
+}).passthrough();
+
+export class SubjectCollaborationTrace {
+  private readonly subjects: Map<string, Pick<Subject, "id" | "name" | "role">>;
+  private readonly subjectByThread = new Map<string, string>();
+  private readonly spawned = new Set<string>();
+  private readonly returned = new Set<string>();
+  private readonly failed = new Set<string>();
+
+  constructor(subjects: Subject[]) {
+    this.subjects = new Map(subjects.map((subject) => [subject.id, subject]));
+  }
+
+  observe(rawEvent: unknown): CodexRuntimeEvent[] {
+    const parsed = CollabEventSchema.safeParse(rawEvent);
+    if (!parsed.success || parsed.data.type !== "item.completed") return [];
+    const item = parsed.data.item;
+
+    if (item.tool === "spawn_agent" && item.status === "completed") {
+      const subjectId = item.prompt?.match(/\bSUBJECT_ID:([A-Za-z0-9_-]+)\b/)?.[1];
+      const subject = subjectId ? this.subjects.get(subjectId) : undefined;
+      const threadId = item.receiver_thread_ids[0];
+      if (!subject || !threadId) return [];
+      this.spawned.add(subject.id);
+      this.subjectByThread.set(threadId, subject.id);
+      return [CodexRuntimeEventSchema.parse({
+        type: "subject",
+        summary: `Subject entered Codex thread: ${subject.name}.`,
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: subject.id,
+          subjectName: subject.name,
+          subjectRole: subject.role,
+          subjectThreadId: threadId,
+          subjectState: "started",
+          collaborationTool: "spawn_agent"
+        }
+      })];
+    }
+
+    if (item.tool !== "wait") return [];
+    const events: CodexRuntimeEvent[] = [];
+    for (const threadId of item.receiver_thread_ids) {
+      const subjectId = this.subjectByThread.get(threadId);
+      const subject = subjectId ? this.subjects.get(subjectId) : undefined;
+      if (!subject) continue;
+      const state = item.agents_states?.[threadId]?.status;
+      if (item.status === "failed" || (state && ["interrupted", "errored", "shutdown", "not_found"].includes(state))) {
+        this.failed.add(subject.id);
+        events.push(CodexRuntimeEventSchema.parse({
+          type: "subject",
+          summary: `Subject investigation failed: ${subject.name}.`,
+          metadata: {
+            stage: "subject",
+            status: "failed",
+            subjectId: subject.id,
+            subjectName: subject.name,
+            subjectRole: subject.role,
+            subjectThreadId: threadId,
+            subjectState: "failed",
+            collaborationTool: "wait"
+          }
+        }));
+      } else if (state === "completed") {
+        this.returned.add(subject.id);
+        events.push(CodexRuntimeEventSchema.parse({
+          type: "subject",
+          summary: `Subject completed bounded investigation: ${subject.name}.`,
+          metadata: {
+            stage: "subject",
+            status: "completed",
+            subjectId: subject.id,
+            subjectName: subject.name,
+            subjectRole: subject.role,
+            subjectThreadId: threadId,
+            subjectState: "completed",
+            collaborationTool: "wait"
+          }
+        }));
+      }
+    }
+    return events;
+  }
+
+  requireComplete(): void {
+    for (const subject of this.subjects.values()) {
+      if (!this.spawned.has(subject.id)) {
+        throw new CodexOutputValidationError("InvestigationReportSchema", [{
+          path: `subjectReports.${subject.id}`,
+          code: "missing_codex_spawn_evidence"
+        }]);
+      }
+      if (this.failed.has(subject.id) || !this.returned.has(subject.id)) {
+        throw new CodexOutputValidationError("InvestigationReportSchema", [{
+          path: `subjectReports.${subject.id}`,
+          code: "missing_codex_return_evidence"
+        }]);
+      }
+    }
+  }
+}
+
 export function buildSubjectOrchestrationPrompt(reality: Reality): string {
   const activeSubjects = reality.subjects.filter((subject) =>
     subject.status === "entered" || subject.status === "investigating"
@@ -144,12 +284,13 @@ Delegate only when you identify at least two bounded, independent investigations
   }
 
   const charters = activeSubjects
-    .map((subject) => `- ${subject.name} (${subject.role}): ${subject.mission}`)
+    .map((subject) => `- SUBJECT_ID:${subject.id} | ${subject.name} (${subject.role}): ${subject.mission}`)
     .join("\n");
   return `SUBJECT ORCHESTRATION
 Use Codex subagent collaboration tools to spawn one direct subagent for each Subject below. Run them in parallel when capacity allows, keep every investigation bounded to its charter, and wait for every Subject to return before synthesis.
 ${charters}
-Subjects inherit this Reality's worktree, constitution, and immutable anchors. They must return concise evidence and artefacts only, and must not spawn further subagents.`;
+Include the exact SUBJECT_ID marker in each spawn_agent task so the returned child thread can be bound to its charter. Use wait_agent with timeout_ms=3600000 and wait again until every Subject is terminal.
+Subjects inherit this Reality's worktree, constitution, model, and immutable anchors. They must return concise evidence and artefacts only, and must not spawn further subagents.`;
 }
 
 export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, scope: string): CodexRuntimeEvent | null {
@@ -335,8 +476,15 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
 }
 
 export class RealCodexRuntime implements CodexRuntime {
+  readonly mode = "real" as const;
   private readonly codex: Codex;
   private readonly parser = new WakeReportParser();
+  private readonly operations = new Map<string, {
+    controller: AbortController;
+    realityId: string;
+    model: string;
+    startedAt: string;
+  }>();
 
   constructor() {
     const apiKey = process.env.CODEX_API_KEY?.trim() || process.env.OPENAI_API_KEY?.trim();
@@ -360,8 +508,30 @@ export class RealCodexRuntime implements CodexRuntime {
     });
   }
 
+  info() {
+    return {
+      mode: this.mode,
+      model: configuredCodexModel(),
+      sdkVersion: CODEX_SDK_VERSION
+    } as const;
+  }
+
+  activeOperations() {
+    return [...this.operations].map(([id, operation]) => ({
+      id,
+      realityId: operation.realityId,
+      model: operation.model,
+      startedAt: operation.startedAt
+    }));
+  }
+
+  abortAll(): number {
+    const active = [...this.operations.values()];
+    for (const operation of active) operation.controller.abort();
+    return active.length;
+  }
+
   async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
-    const thread = this.threadFor(reality);
     const scope = reality.constitution.scope ?? reality.name;
     const operationLabel = `${scope} audit`;
     const prompt = `${buildDreamPrompt(reality)}
@@ -369,33 +539,25 @@ export class RealCodexRuntime implements CodexRuntime {
 ${buildSubjectOrchestrationPrompt(reality)}
 
 TASK
-Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise. Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, one high-value Dream proposal when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.`;
+Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
+${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
+Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, one high-value Dream proposal when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.`;
     const outputSchema = zodToJsonSchema(InvestigationReportSchema, {
       target: "openAi",
       $refStrategy: "none"
     }) as Record<string, unknown>;
-    const streamed = await thread.runStreamed(prompt, { outputSchema });
-    const events: CodexRuntimeEvent[] = [];
-    let finalResponse = "";
-
-    for await (const rawEvent of streamed.events) {
-      const raw = rawEvent as {
-        type?: string;
-        item?: { type?: string; text?: unknown };
-      };
-      if (
-        raw.type === "item.completed"
-        && raw.item?.type === "agent_message"
-        && typeof raw.item.text === "string"
-      ) {
-        finalResponse = raw.item.text;
-      }
-      const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, operationLabel);
-      if (event) {
-        events.push(event);
-        await onEvent?.(event);
-      }
-    }
+    const activeSubjects = reality.subjects.filter((subject) =>
+      subject.status === "entered" || subject.status === "investigating"
+    );
+    const subjectTrace = new SubjectCollaborationTrace(activeSubjects);
+    const { thread, events, finalResponse } = await this.streamStructured(
+      reality,
+      operationLabel,
+      prompt,
+      outputSchema,
+      onEvent,
+      subjectTrace
+    );
     const report = parseStructuredJson<InvestigationReport>(
       finalResponse,
       "InvestigationReportSchema",
@@ -407,6 +569,7 @@ Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, 
         code: "identity_mismatch"
       }]);
     }
+    if (activeSubjects.length) subjectTrace.requireComplete();
 
     return {
       threadId: this.requireThreadId(thread),
@@ -417,35 +580,17 @@ Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, 
   }
 
   async wake(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexWakeResult> {
-    const thread = this.threadFor(reality);
     const outputSchema = zodToJsonSchema(WakeReportSchema, {
       target: "openAi",
       $refStrategy: "none"
     }) as Record<string, unknown>;
-    const streamed = await thread.runStreamed(
-      `${buildDreamPrompt(reality)}\n\nKICK\nStop exploring now. Return the Wake Report as JSON only. Do not include raw reasoning.`,
-      { outputSchema }
+    const { thread, events, finalResponse } = await this.streamStructured(
+      reality,
+      "Wake Report generation",
+      `${buildDreamPrompt(reality)}\n\nKICK\nStop exploring now. Return the Wake Report as JSON only. Set realityId exactly to "${reality.id}". Every returned artefact path must be the exact safe relative path of a file retained in this Reality worktree. Do not include raw reasoning.`,
+      outputSchema,
+      onEvent
     );
-    const events: CodexRuntimeEvent[] = [];
-    let finalResponse = "";
-    for await (const rawEvent of streamed.events) {
-      const raw = rawEvent as {
-        type?: string;
-        item?: { type?: string; text?: unknown };
-      };
-      if (
-        raw.type === "item.completed"
-        && raw.item?.type === "agent_message"
-        && typeof raw.item.text === "string"
-      ) {
-        finalResponse = raw.item.text;
-      }
-      const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, "Wake Report generation");
-      if (event) {
-        events.push(event);
-        await onEvent?.(event);
-      }
-    }
     const report = this.parser.parse(finalResponse);
     if (report.realityId !== reality.id) {
       throw new WakeReportValidationError([{ path: "realityId", code: "identity_mismatch" }]);
@@ -470,7 +615,6 @@ Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, 
     onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
     repairContext?: string
   ): Promise<CodexSynthesisResult> {
-    const thread = this.threadFor(reality);
     const outputSchema = zodToJsonSchema(SynthesisReportSchema, {
       target: "openAi",
       $refStrategy: "none"
@@ -482,31 +626,16 @@ RETURNED MEMORIES
 ${memory}
 
 SYNTHESIS TASK
-Apply the validated, generalisable memories to the waking implementation in this worktree. Preserve immutable anchors and public API semantics. Retain or strengthen every returned test artefact, run the complete password-reset test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
+Apply the validated, generalisable memories to the waking implementation in this worktree. Preserve immutable anchors and public API semantics. Retain or strengthen every returned test artefact, run every parent-owned proof command plus the complete relevant test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
 ${repairContext ? `\nREPAIR CONTEXT\n${repairContext}\nRepair the proof failure and rerun the complete suite.` : ""}
 Return only the structured synthesis report after the implementation and tests are complete. Set realityId exactly to "${reality.id}", list every applied memory Reality ID, changed file, retained artefact, and unresolved risk.`;
-    const streamed = await thread.runStreamed(prompt, { outputSchema });
-    const events: CodexRuntimeEvent[] = [];
-    let finalResponse = "";
-
-    for await (const rawEvent of streamed.events) {
-      const raw = rawEvent as {
-        type?: string;
-        item?: { type?: string; text?: unknown };
-      };
-      if (
-        raw.type === "item.completed"
-        && raw.item?.type === "agent_message"
-        && typeof raw.item.text === "string"
-      ) {
-        finalResponse = raw.item.text;
-      }
-      const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, repairContext ? "Reality repair" : "Memory synthesis");
-      if (event) {
-        events.push(event);
-        await onEvent?.(event);
-      }
-    }
+    const { thread, events, finalResponse } = await this.streamStructured(
+      reality,
+      repairContext ? "Reality repair" : "Memory synthesis",
+      prompt,
+      outputSchema,
+      onEvent
+    );
 
     const report = parseStructuredJson<SynthesisReport>(
       finalResponse,
@@ -538,19 +667,73 @@ Return only the structured synthesis report after the implementation and tests a
   }
 
   private threadFor(reality: Reality): Thread {
-    if (!reality.worktreePath) {
-      throw new Error(`Reality ${reality.id} has no worktree.`);
-    }
-    const options = {
-      workingDirectory: reality.worktreePath,
-      sandboxMode: "danger-full-access",
-      approvalPolicy: "never",
-      networkAccessEnabled: true,
-      webSearchMode: "live"
-    } satisfies ThreadOptions;
+    const options = codexThreadOptions(reality);
     return reality.codexThreadId
       ? this.codex.resumeThread(reality.codexThreadId, options)
       : this.codex.startThread(options);
+  }
+
+  private async streamStructured(
+    reality: Reality,
+    scope: string,
+    prompt: string,
+    outputSchema: Record<string, unknown>,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
+    subjectTrace?: SubjectCollaborationTrace
+  ): Promise<{ thread: Thread; events: CodexRuntimeEvent[]; finalResponse: string }> {
+    const thread = this.threadFor(reality);
+    const operationId = randomUUID();
+    const controller = new AbortController();
+    this.operations.set(operationId, {
+      controller,
+      realityId: reality.id,
+      model: configuredCodexModel(),
+      startedAt: new Date().toISOString()
+    });
+    const events: CodexRuntimeEvent[] = [];
+    let finalResponse = "";
+    const emit = async (event: CodexRuntimeEvent) => {
+      events.push(event);
+      await onEvent?.(event);
+    };
+
+    try {
+      await emit(CodexRuntimeEventSchema.parse({
+        type: "decision",
+        summary: `${configuredCodexModel()} bound to ${reality.name}.`,
+        metadata: {
+          stage: "model",
+          status: "completed",
+          model: configuredCodexModel(),
+          sdkVersion: CODEX_SDK_VERSION
+        }
+      }));
+      const streamed = await thread.runStreamed(prompt, {
+        outputSchema,
+        signal: controller.signal
+      });
+      for await (const rawEvent of streamed.events) {
+        const raw = rawEvent as {
+          type?: string;
+          item?: { type?: string; text?: unknown };
+        };
+        if (
+          raw.type === "item.completed"
+          && raw.item?.type === "agent_message"
+          && typeof raw.item.text === "string"
+        ) {
+          finalResponse = raw.item.text;
+        }
+        for (const subjectEvent of subjectTrace?.observe(rawEvent) ?? []) {
+          await emit(subjectEvent);
+        }
+        const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, scope);
+        if (event) await emit(event);
+      }
+      return { thread, events, finalResponse };
+    } finally {
+      this.operations.delete(operationId);
+    }
   }
 
   private requireThreadId(thread: Thread): string {

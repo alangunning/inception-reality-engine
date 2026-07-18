@@ -32,6 +32,8 @@ export default defineConfig({
       INCEPTION_CODEX_MODE: "mock",
       INCEPTION_PERSISTENCE: "sqlite",
       INCEPTION_REPO_ROOT: repoRoot,
+      INCEPTION_WORKTREE_ROOT: path.join(repoRoot, ".inception", "playwright-worktrees"),
+      INCEPTION_BRANCH_PREFIX: "inception-playwright",
       INCEPTION_MOCK_DELAY_MS: "2400",
       NEXT_DIST_DIR: ".next-playwright",
       NEXT_TELEMETRY_DISABLED: "1"

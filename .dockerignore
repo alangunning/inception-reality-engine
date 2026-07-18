@@ -1,0 +1,13 @@
+.git
+.github
+.inception
+.next*
+apps/web/.next*
+node_modules
+playwright-report
+test-results
+prisma/*.db*
+.env
+.env.*
+!.env.example
+TEMP.md

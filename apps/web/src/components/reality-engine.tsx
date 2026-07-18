@@ -52,11 +52,13 @@ type PresentedDemoSnapshot = DemoSnapshot & {
   runtime: {
     codexMode: "mock" | "real";
     persistence: "prisma" | "sqlite-fallback";
+    model: string;
+    sdkVersion: string;
   };
 };
 
 interface SafeEventMetadata {
-  stage?: "thread" | "turn" | "command" | "file" | "tool" | "search" | "plan";
+  stage?: "thread" | "turn" | "command" | "file" | "tool" | "search" | "plan" | "subject" | "model";
   status?: "started" | "updated" | "completed" | "failed";
   detail?: string;
   command?: string;
@@ -70,6 +72,14 @@ interface SafeEventMetadata {
   reasoningTokens?: number;
   failureKind?: "test" | "environment" | "configuration" | "missing-tool" | "build" | "command";
   diagnostic?: string;
+  model?: string;
+  sdkVersion?: string;
+  subjectId?: string;
+  subjectName?: string;
+  subjectRole?: string;
+  subjectThreadId?: string;
+  subjectState?: "started" | "completed" | "failed";
+  collaborationTool?: "spawn_agent" | "wait";
 }
 
 interface CodexProcess {
@@ -77,6 +87,13 @@ interface CodexProcess {
   parentPid: number;
   elapsed: string;
   workingDirectory?: string;
+}
+
+interface CodexSdkOperation {
+  id: string;
+  realityId: string;
+  model: string;
+  startedAt: string;
 }
 
 interface RunLogSummary {
@@ -184,6 +201,16 @@ function safeEventMetadata(event: RealityEvent): SafeEventMetadata {
 }
 
 function metadataDetail(metadata: SafeEventMetadata): string | null {
+  if (metadata.subjectName) {
+    return [
+      metadata.subjectRole,
+      metadata.subjectThreadId ? `thread ${shortId(metadata.subjectThreadId)}` : null,
+      metadata.collaborationTool
+    ].filter(Boolean).join(" / ");
+  }
+  if (metadata.model) {
+    return `${metadata.model}${metadata.sdkVersion ? ` / Codex SDK ${metadata.sdkVersion}` : ""}`;
+  }
   if (metadata.command) {
     const exit = metadata.exitCode === undefined ? "" : ` / exit ${metadata.exitCode}`;
     return `$ ${metadata.command}${exit}`;
@@ -410,12 +437,12 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
 }) {
   const realityOperation = operation?.realityId === reality.id ? operation : null;
   const latestBelief = reality.beliefs.at(-1);
-  const integrity = reality.anchors.some((anchor) => anchor.status === "failed")
-    ? 35
-    : reality.status === "stabilised"
-      ? 100
-      : 76;
-  const intentDrift = Math.min(100, reality.proposals.filter((proposal) => proposal.status === "open").length * 18);
+  const proofState = reality.anchors.some((anchor) => anchor.status === "failed")
+    ? "Proof failed"
+    : reality.anchors.length > 0 && reality.anchors.every((anchor) => anchor.status === "passed")
+      ? "Verified"
+      : "Unverified";
+  const unresolvedProposals = reality.proposals.filter((proposal) => proposal.status === "open").length;
   const dreamBudget = reality.proposals.reduce((total, proposal) => total + (proposal.estimatedTokens ?? 0), 0);
   return (
     <aside className="world-inspector">
@@ -463,18 +490,19 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
             <div><dt>World state</dt><dd>{reality.worldState.summary}</dd></div>
             <div><dt>Implementation</dt><dd>{reality.worldState.implementationState}</dd></div>
           </dl>
-          <div className="reality-health" aria-label="Reality health">
-            <span className="health-heading"><TimerReset size={14} /> REALITY HEALTH</span>
-            {[
-              ["Integrity", integrity],
-              ["Confidence", Math.round((latestBelief?.confidence ?? 0) * 100)],
-              ["Intent drift", intentDrift]
-            ].map(([label, value]) => (
-              <div className="health-row" key={label}>
-                <span>{label}</span><i><b style={{ width: `${value}%` }} /></i><strong>{value}%</strong>
-              </div>
-            ))}
-            <small>Dream budget proposed: {dreamBudget.toLocaleString()} tokens</small>
+          <div className="reality-health" aria-label="Evidence-derived Reality signals">
+            <span className="health-heading"><TimerReset size={14} /> REALITY SIGNALS</span>
+            <div className="health-row">
+              <span>Parent-owned proof</span><strong>{proofState}</strong>
+            </div>
+            <div className="health-row">
+              <span>Model-reported confidence</span>
+              <strong>{Math.round((latestBelief?.confidence ?? 0) * 100)}%</strong>
+            </div>
+            <div className="health-row">
+              <span>Open uncertainties</span><strong>{unresolvedProposals}</strong>
+            </div>
+            <small>Model-estimated Dream budget: {dreamBudget.toLocaleString()} tokens</small>
           </div>
         </div>
       )}
@@ -540,7 +568,7 @@ function MemoryReport({ reality, report }: { reality: Reality; report: WakeRepor
         <div className="memory-belief">
           <div><span>ENTERED BELIEVING</span><p>{changed.from}</p></div>
           <ArrowRight size={18} />
-          <div><span>WOKE BELIEVING / {Math.round(changed.confidence * 100)}%</span><p>{changed.to}</p></div>
+          <div><span>WOKE BELIEVING / MODEL-REPORTED {Math.round(changed.confidence * 100)}%</span><p>{changed.to}</p></div>
         </div>
       )}
       <div className="memory-columns">
@@ -572,12 +600,20 @@ function OperationMonitor({ operation, realities, events, now }: {
 }) {
   const reality = realities.find((candidate) => candidate.id === operation.realityId);
   const operationEvents = events.filter((event) =>
-    event.type === "codex.progress"
+    (
+      event.type === "codex.progress"
+      || event.type === "subject.started"
+      || event.type === "subject.completed"
+      || event.type === "subject.failed"
+      || event.type === "reality.fractured"
+      || event.type === "reality.recovered"
+    )
     && event.realityId === operation.realityId
     && new Date(event.occurredAt).getTime() >= new Date(operation.startedAt).getTime()
   );
   const latest = operationEvents.at(-1);
   const latestMetadata = latest ? safeEventMetadata(latest) : {};
+  const observedCodex = operationEvents.some((event) => event.type === "codex.progress");
   const terminal = (event: RealityEvent) => {
     const status = safeEventMetadata(event).status;
     return status === "completed" || status === "failed";
@@ -592,12 +628,21 @@ function OperationMonitor({ operation, realities, events, now }: {
     const stage = safeEventMetadata(event).stage;
     return (stage === "tool" || stage === "search") && terminal(event);
   }).length;
-  const toolCallCount = commandCount + fileCount + externalToolCount;
+  const subjectStarts = operationEvents.filter((event) => event.type === "subject.started").length;
+  const subjectReturns = operationEvents.filter((event) => event.type === "subject.completed").length;
+  const collaborationToolCount = operationEvents.filter((event) =>
+    event.type === "subject.started"
+    || event.type === "subject.completed"
+    || event.type === "subject.failed"
+  ).length;
+  const sdkToolCount = externalToolCount + collaborationToolCount;
 
   return (
     <section className="operation-monitor" aria-live="polite" aria-label="Active Reality operation" data-testid="operation-monitor">
       <div className="operation-state">
-        <span className="operation-live"><Radio size={12} /> LIVE OPERATION</span>
+        <span className="operation-live">
+          <Radio size={12} /> {operation.executor === "codex" ? "CODEX OPERATION" : "REALITY ACTION"}
+        </span>
         <span className="operation-elapsed"><Clock3 size={14} /> {formatElapsed(now - new Date(operation.startedAt).getTime())}</span>
       </div>
       <div className="operation-identity">
@@ -608,7 +653,8 @@ function OperationMonitor({ operation, realities, events, now }: {
       <div className="operation-counters" aria-label="Operation telemetry">
         <span><SquareTerminal size={14} /><b>{commandCount}</b> commands</span>
         <span><FileCode2 size={14} /><b>{fileCount}</b> file events</span>
-        <span title="Completed command, file, MCP, and search calls"><Radio size={14} /><b>{toolCallCount}</b> tool calls</span>
+        <span title="Native Codex Subject spawn and terminal return evidence"><UsersRound size={14} /><b>{subjectReturns}/{subjectStarts}</b> Subjects</span>
+        <span title="Completed MCP, search, and Codex collaboration tool calls"><Radio size={14} /><b>{sdkToolCount}</b> SDK tools</span>
         <span><Layers3 size={14} /><b>{operationEvents.length}</b> milestones</span>
       </div>
       <div className="operation-latest">
@@ -616,13 +662,13 @@ function OperationMonitor({ operation, realities, events, now }: {
           {formatClock(latest?.occurredAt ?? operation.startedAt)}
         </time>
         <span>
-          <strong>{latest?.summary ?? `${operation.label} entered ${reality?.name ?? "the current Reality"}.`}</strong>
+          <strong>{latest?.summary ?? `${operation.label} is preparing ${reality?.name ?? "the current Reality"}.`}</strong>
           {latestMetadata.diagnostic && <small className="event-diagnostic">{latestMetadata.diagnostic}</small>}
           {latest
             ? metadataDetail(latestMetadata) && <small>{metadataDetail(latestMetadata)}</small>
-            : <small>Waiting for the first validated Codex milestone.</small>}
+            : <small>The isolated worktree is being checked. Codex usage begins when a thread milestone appears.</small>}
         </span>
-        <em>{latestMetadata.stage ?? "orchestrator"} / {latestMetadata.status ?? "active"}</em>
+        <em>{latestMetadata.stage ?? "orchestrator"} / {latestMetadata.status ?? (observedCodex ? "active" : "preparing")}</em>
       </div>
       <div className="operation-scan" aria-hidden="true"><i /></div>
     </section>
@@ -744,6 +790,7 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
   onStateChanged: () => Promise<void>;
 }) {
   const [processes, setProcesses] = useState<CodexProcess[]>([]);
+  const [sdkOperations, setSdkOperations] = useState<CodexSdkOperation[]>([]);
   const [currentLog, setCurrentLog] = useState<RunLogSummary | null>(null);
   const [archivedLogs, setArchivedLogs] = useState<RunLogSummary[]>([]);
   const [codexMode, setCodexMode] = useState<"mock" | "real">("mock");
@@ -754,11 +801,13 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
     const response = await fetch("/api/admin/codex", { cache: "no-store" });
     const body = await readApiResponse<{
       processes?: CodexProcess[];
+      sdkOperations?: CodexSdkOperation[];
       codexMode?: "mock" | "real";
       error?: string;
     }>(response, "Could not inspect Codex processes.");
     if (!response.ok) throw new Error(body.error ?? "Could not inspect Codex processes.");
     setProcesses(body.processes ?? []);
+    setSdkOperations(body.sdkOperations ?? []);
     setCodexMode(body.codexMode ?? "mock");
   }, []);
 
@@ -785,7 +834,8 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
   }, [loadHistory, loadProcesses, open]);
 
   const stopCodex = async () => {
-    if (!window.confirm(`Stop ${processes.length || "all"} active Codex CLI execution${processes.length === 1 ? "" : "s"}? In-flight Reality actions will return an error.`)) return;
+    const activeCount = Math.max(processes.length, sdkOperations.length);
+    if (!window.confirm(`Stop ${activeCount || "all"} active Codex operation${activeCount === 1 ? "" : "s"}? In-flight Reality actions will return an error.`)) return;
     setBusy("stopping");
     setAdminError(null);
     try {
@@ -855,12 +905,22 @@ function AdminDrawer({ open, onClose, onFullReset, onStateChanged }: {
             )) : (
               <EmptyState icon={<SquareTerminal size={18} />}>No active Codex CLI executions.</EmptyState>
             )}
+            {sdkOperations.map((entry) => (
+              <article className="process-row" key={entry.id}>
+                <span className="process-live"><Radio size={12} /> SDK STREAM</span>
+                <div>
+                  <strong>{entry.model}</strong>
+                  <code>Reality {entry.realityId.slice(0, 12)} / {entry.id.slice(0, 8)}</code>
+                </div>
+                <small>{relativeAge(Date.now(), entry.startedAt)}</small>
+              </article>
+            ))}
           </div>
           <button
             type="button"
             className="admin-stop"
             onClick={stopCodex}
-            disabled={busy !== "idle" || !processes.length}
+            disabled={busy !== "idle" || (!processes.length && !sdkOperations.length)}
           >
             <Power size={15} /> {busy === "stopping" ? "Stopping Codex CLI" : "Stop all Codex CLI"}
           </button>
@@ -988,9 +1048,9 @@ function DreamGate({ proposal, owner, onCancel, onConfirm }: {
           <p>{proposal.premise}</p>
         </div>
         <div className="dream-gate-decision">
-          <div><span>IMPACT PROBABILITY</span><strong>{Math.round((proposal.impactProbability ?? 0.5) * 100)}%</strong></div>
-          <div><span>ESTIMATED CODEX BUDGET</span><strong>{(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</strong></div>
-          <div><span>COST CLASS</span><strong>{proposal.costClass ?? "unscored"}</strong></div>
+          <div><span>MODEL-ESTIMATED IMPACT</span><strong>{Math.round((proposal.impactProbability ?? 0.5) * 100)}%</strong></div>
+          <div><span>MODEL-ESTIMATED CODEX BUDGET</span><strong>{(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</strong></div>
+          <div><span>MODEL-ESTIMATED COST</span><strong>{proposal.costClass ?? "unscored"}</strong></div>
         </div>
         <div className="dream-gate-insight">
           <span>EXPECTED INSIGHT</span>
@@ -1078,7 +1138,7 @@ export function RealityEngine() {
   const [revealCode, setRevealCode] = useState(false);
   const [pendingDreamAction, setPendingDreamAction] = useState<DemoAction | null>(null);
 
-  const loadSnapshot = useCallback(async () => {
+  const loadSnapshot = useCallback(async (preserveError = false) => {
     const response = await fetch("/api/demo", { cache: "no-store" });
     const body = await readApiResponse<PresentedDemoSnapshot & { error?: string }>(
       response,
@@ -1086,7 +1146,7 @@ export function RealityEngine() {
     );
     if (!response.ok) throw new Error(body.error ?? "Could not enter the Reality Engine.");
     setSnapshot(body);
-    setError(null);
+    if (!preserveError) setError(null);
     setSelectedRealityId((current) => current ?? body.session.activeRealityId);
   }, []);
 
@@ -1140,7 +1200,9 @@ export function RealityEngine() {
       setInspectorTab("world");
       setTimelineIndex(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      const message = cause instanceof Error ? cause.message : String(cause);
+      await loadSnapshot(true).catch(() => undefined);
+      setError(message);
     } finally {
       setLocalOperation(null);
       setLoading("idle");
@@ -1237,14 +1299,24 @@ export function RealityEngine() {
           <div className="brand-symbol"><Layers3 size={22} /></div>
           <div><strong>INCEPTION</strong><span>Reality Engine</span></div>
         </div>
-        <div className="topbar-status">
-          <span className="stream-status"><Radio size={13} /> LIVE MEMORY STREAM</span>
-          <span><BrainCircuit size={13} /> {snapshot.runtime.codexMode.toUpperCase()} CODEX</span>
-          <span><Layers3 size={13} /> {snapshot.runtime.persistence === "prisma" ? "PRISMA" : "PORTABLE SQLITE"}</span>
-          <span><Network size={13} /> {snapshot.realities.length} REALITIES</span>
-          <button type="button" className="admin-trigger" data-testid="admin-trigger" onClick={() => setAdminOpen(true)} title="Admin controls" aria-label="Open admin controls">
-            <Settings size={15} />
-          </button>
+        <div className="topbar-controls">
+          <div className="topbar-status" data-testid="topbar-status" role="status" aria-label="Reality Engine status">
+            <span className="stream-status"><Radio size={13} /> LIVE MEMORY STREAM</span>
+            <span><BrainCircuit size={13} /> {snapshot.runtime.codexMode.toUpperCase()} CODEX / {snapshot.runtime.model.toUpperCase()}</span>
+            <span><Layers3 size={13} /> {snapshot.runtime.persistence === "prisma" ? "PRISMA" : "PORTABLE SQLITE"}</span>
+            <span><Network size={13} /> {snapshot.realities.length} REALITIES</span>
+          </div>
+          <nav className="topbar-actions" data-testid="topbar-actions" aria-label="Reality Engine actions">
+            {snapshot.runtime.codexMode === "real" && (
+              <a className="mission-link" href="/missions/new" title="Mission Composer" aria-label="Open Mission Composer">
+                <GitBranch size={13} />
+                <span>MISSION COMPOSER</span>
+              </a>
+            )}
+            <button type="button" className="admin-trigger" data-testid="admin-trigger" onClick={() => setAdminOpen(true)} title="Admin controls" aria-label="Open admin controls">
+              <Settings size={15} />
+            </button>
+          </nav>
         </div>
       </header>
 
@@ -1372,9 +1444,9 @@ export function RealityEngine() {
                   <h3>{proposal.uncertainty}</h3>
                   <p>{proposal.rationale}</p>
                   <span className="proposal-metadata">
-                    <b>{Math.round((proposal.impactProbability ?? 0.5) * 100)}% impact</b>
-                    <b>{(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</b>
-                    <b>{proposal.costClass ?? "unscored"} cost</b>
+                    <b>estimate: {Math.round((proposal.impactProbability ?? 0.5) * 100)}% impact</b>
+                    <b>estimate: {(proposal.estimatedTokens ?? 0).toLocaleString()} tokens</b>
+                    <b>estimate: {proposal.costClass ?? "unscored"} cost</b>
                   </span>
                 </div>
                 <ChevronRight size={16} />
@@ -1444,12 +1516,12 @@ export function RealityEngine() {
         />
         <div className="belief-strip">
           <div>
-            <span>INITIAL BELIEF / {Math.round((initialBelief?.confidence ?? 0) * 100)}%</span>
+            <span>INITIAL BELIEF / MODEL-REPORTED {Math.round((initialBelief?.confidence ?? 0) * 100)}%</span>
             <p>{initialBelief?.statement ?? "No initial belief recorded."}</p>
           </div>
           <span className="belief-route"><i /><ArrowRight size={18} /><i /></span>
           <div>
-            <span>CURRENT WAKING BELIEF / {Math.round((finalBelief?.confidence ?? 0) * 100)}%</span>
+            <span>CURRENT WAKING BELIEF / MODEL-REPORTED {Math.round((finalBelief?.confidence ?? 0) * 100)}%</span>
             <p>{finalBelief?.statement ?? "Awaiting returned memory."}</p>
           </div>
         </div>

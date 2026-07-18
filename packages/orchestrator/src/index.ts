@@ -6,5 +6,6 @@ export * from "./prisma-repository";
 export * from "./in-memory-repository";
 export * from "./synthesis-service";
 export * from "./reality-orchestrator";
+export * from "./mission-orchestrator";
 
 export * from "./sqlite-repository";

@@ -15,6 +15,7 @@ export interface WorktreeManager {
   create(realityId: string, baseRef?: string, parentWorktreePath?: string): Promise<WorktreeDescriptor>;
   remove(descriptor: WorktreeDescriptor): Promise<void>;
   cleanupAll(): Promise<number>;
+  isPresent(worktreePath?: string): Promise<boolean>;
   writeFile(worktreePath: string, relativePath: string, content: string): Promise<void>;
   readFile(worktreePath: string, relativePath: string): Promise<string>;
   listChangedFiles(worktreePath: string): Promise<string[]>;
@@ -36,10 +37,20 @@ function resolveInsideWorktree(worktreePath: string, relativePath: string): stri
 }
 
 export class GitWorktreeManager implements WorktreeManager {
+  private readonly branchPrefix: string;
+
   constructor(
     private readonly repoRoot: string,
-    private readonly worktreeRoot = path.join(repoRoot, ".inception", "worktrees")
-  ) {}
+    private readonly worktreeRoot = path.join(repoRoot, ".inception", "worktrees"),
+    branchPrefix = "inception"
+  ) {
+    this.branchPrefix = branchPrefix
+      .split("/")
+      .map(safeBranchPart)
+      .filter(Boolean)
+      .join("/");
+    if (!this.branchPrefix) throw new Error("Worktree branch prefix must contain a safe Git branch component.");
+  }
 
   async discoverRepoRoot(startDirectory = this.repoRoot): Promise<string> {
     const { stdout } = await execFileAsync("git", ["rev-parse", "--show-toplevel"], { cwd: startDirectory });
@@ -48,8 +59,13 @@ export class GitWorktreeManager implements WorktreeManager {
 
   async create(realityId: string, baseRef = "HEAD", parentWorktreePath?: string): Promise<WorktreeDescriptor> {
     await mkdir(this.worktreeRoot, { recursive: true });
-    const branchName = `inception/${safeBranchPart(realityId)}`;
+    const branchName = `${this.branchPrefix}/${safeBranchPart(realityId)}`;
     const worktreePath = path.join(this.worktreeRoot, safeBranchPart(realityId));
+    try {
+      await execFileAsync("git", ["worktree", "remove", "--force", worktreePath], { cwd: this.repoRoot });
+    } catch {
+      // A stale directory may not be registered with Git.
+    }
     await rm(worktreePath, { recursive: true, force: true });
     try {
       await execFileAsync("git", ["branch", "-D", branchName], { cwd: this.repoRoot });
@@ -67,15 +83,18 @@ export class GitWorktreeManager implements WorktreeManager {
   }
 
   async remove(descriptor: WorktreeDescriptor): Promise<void> {
+    if (!await this.ownsPath(descriptor.path)) return;
     try {
       await execFileAsync("git", ["worktree", "remove", "--force", descriptor.path], { cwd: this.repoRoot });
     } catch {
       await rm(descriptor.path, { recursive: true, force: true });
     }
-    try {
-      await execFileAsync("git", ["branch", "-D", descriptor.branchName], { cwd: this.repoRoot });
-    } catch {
-      // Already gone.
+    if (descriptor.branchName.startsWith(`${this.branchPrefix}/`)) {
+      try {
+        await execFileAsync("git", ["branch", "-D", descriptor.branchName], { cwd: this.repoRoot });
+      } catch {
+        // Already gone.
+      }
     }
     try {
       await execFileAsync("git", ["worktree", "prune"], { cwd: this.repoRoot });
@@ -110,7 +129,7 @@ export class GitWorktreeManager implements WorktreeManager {
       } catch {
         await rm(descriptor.path, { recursive: true, force: true });
       }
-      if (descriptor.branchName.startsWith("inception/")) {
+      if (descriptor.branchName.startsWith(`${this.branchPrefix}/`)) {
         try {
           await execFileAsync("git", ["branch", "-D", descriptor.branchName], { cwd: this.repoRoot });
         } catch {
@@ -128,7 +147,7 @@ export class GitWorktreeManager implements WorktreeManager {
     try {
       const { stdout } = await execFileAsync(
         "git",
-        ["for-each-ref", "--format=%(refname:short)", "refs/heads/inception/"],
+        ["for-each-ref", "--format=%(refname:short)", `refs/heads/${this.branchPrefix}/`],
         { cwd: this.repoRoot }
       );
       for (const branchName of stdout.split("\n").map((entry) => entry.trim()).filter(Boolean)) {
@@ -142,6 +161,18 @@ export class GitWorktreeManager implements WorktreeManager {
       // Best effort cleanup.
     }
     return descriptors.length;
+  }
+
+  async isPresent(worktreePath?: string): Promise<boolean> {
+    if (!worktreePath || !await this.ownsPath(worktreePath)) return false;
+    try {
+      const { stdout } = await execFileAsync("git", ["rev-parse", "--is-inside-work-tree"], {
+        cwd: worktreePath
+      });
+      return stdout.trim() === "true";
+    } catch {
+      return false;
+    }
   }
 
   async writeFile(worktreePath: string, relativePath: string, content: string): Promise<void> {
@@ -237,5 +268,37 @@ export class GitWorktreeManager implements WorktreeManager {
       await mkdir(path.dirname(target), { recursive: true });
       await copyFile(source, target);
     }
+  }
+
+  private async ownsPath(candidatePath: string): Promise<boolean> {
+    const root = await realpath(this.worktreeRoot).catch(() => path.resolve(this.worktreeRoot));
+    const candidate = await realpath(candidatePath).catch(() => path.resolve(candidatePath));
+    return candidate !== root && candidate.startsWith(`${root}${path.sep}`);
+  }
+}
+
+export class GitMissionWorkspaceFactory {
+  constructor(private readonly storageRoot: string) {}
+
+  async open(repositoryPath: string, missionId: string): Promise<{
+    repoRoot: string;
+    worktrees: GitWorktreeManager;
+  }> {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["rev-parse", "--show-toplevel"],
+      { cwd: repositoryPath }
+    );
+    const repoRoot = stdout.trim();
+    if (!repoRoot) throw new Error("Mission repository is not a Git worktree.");
+    const safeMissionId = safeBranchPart(missionId);
+    return {
+      repoRoot,
+      worktrees: new GitWorktreeManager(
+        repoRoot,
+        path.join(this.storageRoot, safeMissionId, "worktrees"),
+        `inception-mission-${safeMissionId}`
+      )
+    };
   }
 }

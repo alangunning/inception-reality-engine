@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./mission.css";
 
 export const metadata: Metadata = {
   title: "Inception — Reality Engine",

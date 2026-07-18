@@ -184,6 +184,9 @@ export const RealityEventTypeSchema = z.enum([
   "uncertainty.discovered",
   "dream.created",
   "subject.entered",
+  "subject.started",
+  "subject.completed",
+  "subject.failed",
   "subject.returned",
   "evidence.discovered",
   "belief.changed",
@@ -198,6 +201,7 @@ export const RealityEventTypeSchema = z.enum([
   "anchor.passed",
   "anchor.failed",
   "reality.fractured",
+  "reality.recovered",
   "reality.stabilised",
   "validation.rejected"
 ]);
@@ -271,6 +275,59 @@ export const RealityRunArchiveSchema = z.object({
   archivedAt: z.string()
 });
 
+export const MissionProofSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  executable: z.string().min(1).max(240),
+  args: z.array(z.string().max(500)).max(30)
+});
+
+export const MissionSubjectCharterSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(100),
+  role: z.string().min(1).max(100),
+  mission: z.string().min(1).max(500)
+});
+
+export const MissionDefinitionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1).max(120),
+  repositoryPath: z.string().min(1).max(1_000),
+  mission: z.string().min(1).max(2_000),
+  scope: z.string().min(1).max(240),
+  premise: z.string().min(1).max(2_000),
+  constraints: z.array(z.string().min(1).max(500)).min(1).max(20),
+  parentTruths: z.array(z.string().min(1).max(500)).max(20),
+  wakeContract: z.array(z.string().min(1).max(500)).min(1).max(20),
+  proofs: z.array(MissionProofSchema).min(1).max(20),
+  subjects: z.array(MissionSubjectCharterSchema).max(6),
+  tokenBudget: z.number().int().positive().max(10_000_000),
+  maxDreamDepth: z.number().int().min(1).max(5),
+  createdAt: z.string()
+});
+
+export const MissionDefinitionDraftSchema = MissionDefinitionSchema.omit({
+  id: true,
+  createdAt: true
+}).extend({
+  proofs: z.array(MissionProofSchema.omit({ id: true })).min(1).max(20),
+  subjects: z.array(MissionSubjectCharterSchema.omit({ id: true })).max(6)
+});
+
+export const MissionRunSchema = z.object({
+  id: z.string(),
+  definition: MissionDefinitionSchema,
+  status: z.enum(["forming", "exploring", "verifying", "stabilised", "fractured"]),
+  realities: z.array(RealitySchema),
+  events: z.array(RealityEventSchema),
+  activeRealityId: z.string(),
+  memories: z.array(WakeReportSchema),
+  proofResults: z.array(AnchorResultSchema),
+  finalDiff: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string()
+});
+
 export type RealityStatus = z.infer<typeof RealityStatusSchema>;
 export type RealityKind = z.infer<typeof RealityKindSchema>;
 export type RealityConstitution = z.infer<typeof RealityConstitutionSchema>;
@@ -295,3 +352,8 @@ export type AnchorResult = z.infer<typeof AnchorResultSchema>;
 export type RegressionResult = z.infer<typeof RegressionResultSchema>;
 export type DemoSession = z.infer<typeof DemoSessionSchema>;
 export type RealityRunArchive = z.infer<typeof RealityRunArchiveSchema>;
+export type MissionProof = z.infer<typeof MissionProofSchema>;
+export type MissionSubjectCharter = z.infer<typeof MissionSubjectCharterSchema>;
+export type MissionDefinition = z.infer<typeof MissionDefinitionSchema>;
+export type MissionDefinitionDraft = z.infer<typeof MissionDefinitionDraftSchema>;
+export type MissionRun = z.infer<typeof MissionRunSchema>;

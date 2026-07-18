@@ -13,10 +13,225 @@ async function confirmDream(page: Page): Promise<void> {
   await page.getByTestId("dream-action").click();
   const gate = page.getByTestId("dream-gate");
   await expect(gate).toBeVisible();
-  await expect(gate).toContainText("IMPACT PROBABILITY");
-  await expect(gate).toContainText("ESTIMATED CODEX BUDGET");
+  await expect(gate).toContainText("MODEL-ESTIMATED IMPACT");
+  await expect(gate).toContainText("MODEL-ESTIMATED CODEX BUDGET");
   await expect(gate).toContainText("EXPECTED INSIGHT");
   await gate.getByRole("button", { name: "Confirm and create Dream" }).click();
+}
+
+function missionSnapshotFixture() {
+  const occurredAt = "2026-07-18T14:30:00.000Z";
+  const constitution = {
+    mission: "Make dependency loading resilient under partial registry failure.",
+    scope: "dependency loading",
+    premise: "The fallback path remains safe when the primary registry is unavailable.",
+    constraints: ["Preserve the public API.", "Do not expose raw model reasoning."],
+    wakeContract: ["Return evidence and artefacts."],
+    parentTruths: ["Existing callers remain compatible."],
+    timeDilation: 2,
+    runtimeLaws: ["A failed proof blocks stabilisation."]
+  };
+  const anchor = {
+    id: "proof-tests",
+    realityId: "root-reality",
+    ownerRealityId: "root-reality",
+    name: "Repository test suite",
+    description: "Immutable proof",
+    testCommand: "npm test",
+    immutable: true,
+    hidden: false,
+    status: "pending"
+  };
+  const root = {
+    id: "root-reality",
+    parentId: null,
+    depth: 0,
+    kind: "waking",
+    name: "Dependency Boundary",
+    status: "exploring",
+    premise: constitution.premise,
+    constitution: { ...constitution, timeDilation: 1 },
+    worldState: {
+      summary: "Primary registry failure is worth isolating.",
+      implementationState: "Codex inspection complete",
+      simulatedMinutes: 12,
+      currentFocus: "Choosing a decisive counterfactual",
+      status: "Uncertainty mapped"
+    },
+    subjects: [],
+    beliefs: [{
+      id: "belief-root",
+      realityId: "root-reality",
+      statement: constitution.premise,
+      confidence: 0.54,
+      origin: "initial",
+      evidenceIds: [],
+      createdAt: occurredAt
+    }],
+    evidence: [],
+    proposals: [{
+      id: "proposal-1",
+      realityId: "root-reality",
+      title: "Registry partition",
+      premise: "Assume the primary registry is unavailable for ten minutes.",
+      uncertainty: "Can the fallback preserve integrity under partial results?",
+      rationale: "The primary path cannot answer this.",
+      impactProbability: 0.76,
+      expectedInsight: "A deterministic failure test.",
+      estimatedTokens: 18_000,
+      costClass: "medium",
+      status: "dreaming"
+    }],
+    anchors: [anchor],
+    codexThreadId: "thread-root-123456",
+    worktreePath: "/tmp/mission/root",
+    branchName: "inception-mission/root",
+    createdAt: occurredAt,
+    updatedAt: occurredAt
+  };
+  const subjects = [
+    ["subject-1", "Ariadne", "Investigator"],
+    ["subject-2", "Saito", "Skeptic"],
+    ["subject-3", "Eames", "Test engineer"]
+  ].map(([id, name, role]) => ({
+    id,
+    realityId: "dream-reality",
+    name,
+    role,
+    mission: `${role} bounded investigation.`,
+    status: "returned",
+    findings: ["Returned one concise finding."]
+  }));
+  const dream = {
+    ...root,
+    id: "dream-reality",
+    parentId: "root-reality",
+    depth: 1,
+    kind: "dream",
+    name: "Registry partition",
+    premise: "Assume the primary registry is unavailable for ten minutes.",
+    constitution,
+    worldState: {
+      summary: "Fallback accepts stale metadata without an integrity proof.",
+      implementationState: "Codex inspection complete",
+      simulatedMinutes: 24,
+      currentFocus: "Evaluating counterfactual evidence",
+      status: "Uncertainty mapped"
+    },
+    subjects,
+    beliefs: [{
+      id: "belief-dream",
+      realityId: "dream-reality",
+      statement: "Fallback integrity requires an explicit signed-metadata invariant.",
+      confidence: 0.91,
+      origin: "observed",
+      evidenceIds: ["evidence-1"],
+      createdAt: occurredAt
+    }],
+    evidence: [{
+      id: "evidence-1",
+      realityId: "dream-reality",
+      kind: "test",
+      title: "Unsigned fallback accepted",
+      summary: "A regression test reproduces stale unsigned metadata entering the dependency graph.",
+      source: "Eames",
+      artefactPath: "tests/registry-partition.spec.ts",
+      provenance: "model-reported",
+      createdAt: occurredAt
+    }],
+    proposals: [],
+    anchors: [{ ...anchor, realityId: "dream-reality" }],
+    codexThreadId: "thread-dream-123456",
+    worktreePath: "/tmp/mission/dream",
+    branchName: "inception-mission/dream"
+  };
+  const events = subjects.flatMap((subject, index) => ([
+    {
+      id: `subject-start-${index}`,
+      realityId: dream.id,
+      type: "subject.started",
+      summary: `Subject entered Codex thread: ${subject.name}.`,
+      dreamTime: 0,
+      payload: {
+        missionId: "mission-1",
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: subject.id,
+          subjectName: subject.name,
+          subjectRole: subject.role,
+          subjectThreadId: `thread-${subject.id}-123456`,
+          subjectState: "started",
+          collaborationTool: "spawn_agent"
+        }
+      },
+      occurredAt
+    },
+    {
+      id: `subject-return-${index}`,
+      realityId: dream.id,
+      type: "subject.completed",
+      summary: `Subject completed bounded investigation: ${subject.name}.`,
+      dreamTime: 24,
+      payload: {
+        missionId: "mission-1",
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: subject.id,
+          subjectName: subject.name,
+          subjectRole: subject.role,
+          subjectThreadId: `thread-${subject.id}-123456`,
+          subjectState: "completed",
+          collaborationTool: "wait"
+        }
+      },
+      occurredAt
+    }
+  ]));
+  return {
+    run: {
+      id: "mission-1",
+      definition: {
+        id: "mission-1",
+        name: "Dependency Boundary",
+        repositoryPath: "/tmp/example",
+        mission: constitution.mission,
+        scope: constitution.scope,
+        premise: constitution.premise,
+        constraints: constitution.constraints,
+        parentTruths: constitution.parentTruths,
+        wakeContract: constitution.wakeContract,
+        proofs: [{
+          id: anchor.id,
+          name: anchor.name,
+          executable: "npm",
+          args: ["test"]
+        }],
+        subjects: subjects.map(({ id, name, role, mission }) => ({ id, name, role, mission })),
+        tokenBudget: 120_000,
+        maxDreamDepth: 2,
+        createdAt: occurredAt
+      },
+      status: "exploring",
+      realities: [root, dream],
+      events,
+      activeRealityId: dream.id,
+      memories: [],
+      proofResults: [],
+      finalDiff: "",
+      createdAt: occurredAt,
+      updatedAt: occurredAt
+    },
+    activeReality: dream,
+    operation: null,
+    nextAction: {
+      id: "kick",
+      kind: "kick",
+      label: "Kick Registry partition: return validated memory",
+      executor: "codex"
+    }
+  };
 }
 
 test.beforeEach(async ({ page }) => {
@@ -36,6 +251,33 @@ test("an empty API failure is reported without a browser JSON exception", async 
   const loading = page.locator(".loading-screen");
   await expect(loading).toContainText("The server returned an empty HTTP 500 response.");
   await expect(loading).not.toContainText("Unexpected end of JSON input");
+});
+
+test("Mission API returns concise field validation without raw Zod output", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The HTTP validation contract needs one browser target.");
+  const response = await page.request.post("/api/missions", {
+    data: {
+      name: "Dependency Boundary",
+      repositoryPath: "/tmp/example",
+      mission: "",
+      scope: "",
+      premise: ""
+    }
+  });
+
+  expect(response.status()).toBe(400);
+  const body = await response.json() as {
+    error: string;
+    issues: Array<{ path: string; code: string }>;
+  };
+  expect(body.error).toContain("Mission fields");
+  expect(body.error).toContain("mission");
+  expect(body.error).not.toContain("too_small");
+  expect(body.issues).toEqual(expect.arrayContaining([
+    expect.objectContaining({ path: "mission" }),
+    expect.objectContaining({ path: "scope" }),
+    expect.objectContaining({ path: "premise" })
+  ]));
 });
 
 test("timeline replay survives a retained window without the creation event", async ({ page }, testInfo) => {
@@ -83,6 +325,8 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   await expect(page.getByTestId("primary-action")).toContainText("Ask Codex");
   await expect(page.getByTestId("action-dock")).toContainText("REHEARSED CODEX RUNTIME");
   await expect(page.getByTestId("reset-run")).toHaveText(/Full reset/);
+  await expect(page.getByTestId("topbar-status").locator("a, button")).toHaveCount(0);
+  await expect(page.getByTestId("topbar-actions").getByRole("button", { name: "Open admin controls" })).toBeVisible();
   await expect(page.getByTestId("operation-monitor")).toHaveCount(0);
   await expect(page.getByTestId("simulated-world-time")).toContainText("0");
   await expect(page.getByTestId("reality-timeline")).toContainText("LIVE REALITY TIMELINE");
@@ -115,14 +359,14 @@ test("live operation survives refresh and returns timestamped, filterable events
 
   await page.getByTestId("primary-action").click();
   await expect(page.getByTestId("operation-monitor")).toBeVisible();
-  await expect(page.getByTestId("operation-monitor")).toContainText("LIVE OPERATION");
+  await expect(page.getByTestId("operation-monitor")).toContainText("CODEX OPERATION");
   await expect(page.getByTestId("operation-monitor")).toContainText(/Ask Codex to audit and improve password-reset security/i);
-  await expect(page.getByTestId("operation-monitor")).toContainText(/\d+ tool calls/);
+  await expect(page.getByTestId("operation-monitor")).toContainText(/\d+ SDK tools/);
   await expect(page.getByTestId("primary-action")).toBeDisabled();
 
   await page.reload();
   await expect(page.getByTestId("operation-monitor")).toBeVisible();
-  await expect(page.getByTestId("operation-monitor")).toContainText(/LIVE OPERATION TIME|LIVE OPERATION/);
+  await expect(page.getByTestId("operation-monitor")).toContainText("CODEX OPERATION");
   await expect(page.getByTestId("reset-run")).toBeDisabled();
 
   await expectNext(page, "Create Dream: Under coordinated attack");
@@ -207,6 +451,65 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   expect(dockObscuresInspector).toBe(false);
 
   await expect(page).toHaveScreenshot("reality-stabilised.png", {
+    fullPage: true
+  });
+});
+
+test("Mission Composer exposes general nested Reality and native Subject evidence", async ({ page }) => {
+  const fixture = missionSnapshotFixture();
+  let missionPosts = 0;
+  await page.route("**/api/missions/events?**", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream",
+    body: "data: {\"type\":\"connected\"}\n\n"
+  }));
+  await page.route("**/api/missions", async (route) => {
+    if (route.request().method() === "POST") {
+      missionPosts += 1;
+      await route.fulfill({ json: fixture });
+      return;
+    }
+    await route.fulfill({
+      json: {
+        runs: [],
+        runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
+        enabled: true,
+        defaultRepositoryPath: "/tmp/example"
+      }
+    });
+  });
+
+  await page.goto("/missions/new");
+  await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
+  await expect(page.locator(".mission-form")).toContainText("NO CODEX USAGE ON CREATE");
+  await expect(page.getByLabel("Reality name")).toHaveValue("Dependency Boundary");
+  await expect(page.getByLabel("Mission")).toHaveValue(/dependency loading resilient/i);
+  await expect(page.getByLabel("Scope")).toHaveValue(/registry fallback behavior/i);
+  await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/fallback registry/i);
+  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/integrity verification/i);
+
+  const defaultMission = await page.getByLabel("Mission").inputValue();
+  await page.getByLabel("Mission").fill(" ");
+  await page.getByRole("button", { name: "Form waking Reality" }).click();
+  await expect(page.locator(".mission-error")).toContainText("Complete the required Mission fields: Mission.");
+  expect(missionPosts).toBe(0);
+  await page.getByLabel("Mission").fill(defaultMission);
+  await page.getByRole("button", { name: "Form waking Reality" }).click();
+  expect(missionPosts).toBe(1);
+
+  await expect(page.getByTestId("mission-reality-tree").locator(".mission-node")).toHaveCount(2);
+  await expect(page.locator(".mission-locus")).toContainText("Registry partition");
+  await expect(page.locator(".mission-subjects article")).toHaveCount(3);
+  await expect(page.locator(".mission-subjects")).toContainText("Codex thread");
+  await expect(page.locator(".mission-event-list")).toContainText("Subject completed bounded investigation");
+  await expect(page.locator(".mission-action-dock")).toContainText("Kick Registry partition");
+  await expect(page.locator(".mission-proof")).toContainText("UNVERIFIED");
+
+  const viewportFits = await page.evaluate(() =>
+    document.documentElement.scrollWidth <= window.innerWidth
+  );
+  expect(viewportFits).toBe(true);
+  await expect(page).toHaveScreenshot("mission-composer-live.png", {
     fullPage: true
   });
 });

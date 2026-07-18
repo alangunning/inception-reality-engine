@@ -55,7 +55,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   backdrop-filter: blur(18px);
 }
 
-.brand, .brand > div:last-child, .topbar-status, .stream-status,
+.brand, .brand > div:last-child, .topbar-controls, .topbar-status, .topbar-actions, .stream-status,
 .section-heading, .section-heading > div:nth-child(2), .heading-meta,
 .locus-key, .validated-count, .diff-meta, .node-stats span,
 .state-badge, .inspector-tabs button, .dream-clock, .runtime-list dt,
@@ -80,8 +80,30 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .brand strong { font-size: 0.82rem; font-weight: 800; }
 .brand span { margin-top: 4px; color: var(--muted); font-size: 0.66rem; }
 
-.topbar-status { gap: 24px; color: var(--muted); font-size: 0.64rem; font-weight: 700; }
+.topbar-controls { min-width: 0; gap: 14px; }
+.topbar-status {
+  min-width: 0;
+  gap: 18px;
+  padding-right: 14px;
+  color: var(--muted);
+  border-right: 1px solid var(--line);
+  font-size: 0.64rem;
+  font-weight: 700;
+}
 .topbar-status > span { display: flex; align-items: center; gap: 7px; }
+.topbar-actions { gap: 8px; }
+.topbar-actions .mission-link {
+  min-height: 32px;
+  justify-content: center;
+  padding: 0 10px;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font-size: 0.61rem;
+  font-weight: 750;
+}
+.topbar-actions .mission-link:hover { color: var(--cyan); border-color: var(--line-strong); }
 .stream-status { color: var(--green); }
 .stream-status svg { animation: signal 1.8s ease-in-out infinite; }
 .admin-trigger {
@@ -287,7 +309,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .operation-counters {
   grid-area: counters;
   display: grid;
-  grid-template-columns: repeat(4, minmax(78px, 1fr));
+  grid-template-columns: repeat(5, minmax(68px, 1fr));
   gap: 6px;
   align-self: center;
 }
@@ -620,15 +642,13 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .health-heading { display: flex; align-items: center; gap: 6px; color: var(--cyan); font-size: 0.54rem; font-weight: 800; }
 .health-row {
   display: grid;
-  grid-template-columns: 72px 1fr 34px;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   margin-top: 9px;
   color: var(--muted);
   font-size: 0.56rem;
 }
-.health-row i { height: 3px; overflow: hidden; background: var(--line); }
-.health-row i b { display: block; height: 100%; background: var(--green); }
 .health-row strong { color: var(--text-soft); text-align: right; font-size: 0.55rem; }
 .reality-health > small { display: block; margin-top: 10px; color: var(--amber); font-size: 0.53rem; }
 .mission-copy { margin: 0 0 16px; color: var(--text); font-size: 0.76rem; line-height: 1.55; }
@@ -1316,12 +1336,17 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .world-ledger { grid-template-columns: 1fr 1fr; }
   .ledger-column:nth-child(2) { border-right: 0; }
   .ledger-column:last-child { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+  .topbar-status > span:nth-child(3), .topbar-status > span:nth-child(4) { display: none; }
 }
 
 @media (max-width: 760px) {
   .app-shell { padding: 0 12px 176px; }
   .topbar { height: 62px; }
   .topbar-status > span:not(.stream-status) { display: none; }
+  .topbar-status { padding-right: 10px; }
+  .topbar-controls { gap: 8px; }
+  .topbar-actions .mission-link { width: 32px; padding: 0; }
+  .topbar-actions .mission-link span { display: none; }
   .phase-header { min-height: 150px; }
   .phase-header h1 { max-width: 330px; font-size: 1.65rem; }
   .phase-track {

@@ -10,6 +10,8 @@ export async function GET(): Promise<Response> {
     return Response.json(
       {
         processes: await runtimeContainer.processControl.list(),
+        sdkOperations: runtimeContainer.codexRuntime.activeOperations(),
+        runtime: runtimeContainer.codexRuntime.info(),
         codexMode: runtimeContainer.codexMode
       },
       { headers: { "Cache-Control": "no-store" } }
@@ -24,8 +26,11 @@ export async function GET(): Promise<Response> {
 
 export async function DELETE(): Promise<Response> {
   try {
+    const runtimeContainer = getRuntime();
+    const abortedSdkOperations = runtimeContainer.codexRuntime.abortAll();
+    const stopped = await runtimeContainer.processControl.stopAll();
     return Response.json(
-      await getRuntime().processControl.stopAll(),
+      { ...stopped, abortedSdkOperations },
       { headers: { "Cache-Control": "no-store" } }
     );
   } catch (error) {

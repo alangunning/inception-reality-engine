@@ -10,6 +10,7 @@ function wait(milliseconds: number): Promise<void> {
 export async function POST(): Promise<Response> {
   try {
     const runtimeContainer = getRuntime();
+    const abortedSdkOperations = runtimeContainer.codexRuntime.abortAll();
     const stopped = await runtimeContainer.processControl.stopAll();
 
     let active = (await runtimeContainer.orchestrator.snapshot()).operation;
@@ -28,6 +29,7 @@ export async function POST(): Promise<Response> {
     return Response.json(
       {
         stopped,
+        abortedSdkOperations,
         snapshot: presentSnapshot(snapshot)
       },
       { headers: { "Cache-Control": "no-store" } }

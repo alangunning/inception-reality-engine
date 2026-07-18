@@ -1,4 +1,10 @@
-import type { DemoSession, Reality, RealityEvent, RealityRunArchive } from "@inception/domain";
+import type {
+  DemoSession,
+  MissionRun,
+  Reality,
+  RealityEvent,
+  RealityRunArchive
+} from "@inception/domain";
 import type { RealityRepository } from "./ports";
 
 export class InMemoryRealityRepository implements RealityRepository {
@@ -6,6 +12,7 @@ export class InMemoryRealityRepository implements RealityRepository {
   private events: RealityEvent[] = [];
   private session: DemoSession | null = null;
   private archives: RealityRunArchive[] = [];
+  private missionRuns = new Map<string, MissionRun>();
 
   async saveReality(reality: Reality): Promise<void> {
     this.realities.set(reality.id, structuredClone(reality));
@@ -39,6 +46,21 @@ export class InMemoryRealityRepository implements RealityRepository {
   }
   async getRunArchive(id: string): Promise<RealityRunArchive | null> {
     return structuredClone(this.archives.find((entry) => entry.id === id) ?? null);
+  }
+  async saveMissionRun(run: MissionRun): Promise<void> {
+    this.missionRuns.set(run.id, structuredClone(run));
+  }
+  async getMissionRun(id: string): Promise<MissionRun | null> {
+    return structuredClone(this.missionRuns.get(id) ?? null);
+  }
+  async listMissionRuns(limit = 20): Promise<MissionRun[]> {
+    return [...this.missionRuns.values()]
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      .slice(0, limit)
+      .map((run) => structuredClone(run));
+  }
+  async deleteMissionRun(id: string): Promise<void> {
+    this.missionRuns.delete(id);
   }
   async deleteAll(): Promise<void> {
     this.realities.clear();

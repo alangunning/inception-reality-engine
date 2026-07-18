@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -31,6 +31,10 @@ class FakeWorktreeManager implements WorktreeManager {
   }
   async remove(): Promise<void> {}
   async cleanupAll(): Promise<number> { return 0; }
+  async isPresent(worktreePath?: string): Promise<boolean> {
+    if (!worktreePath) return false;
+    return access(worktreePath).then(() => true, () => false);
+  }
   async writeFile(worktreePath: string, relativePath: string, content: string): Promise<void> {
     const target = path.join(worktreePath, relativePath);
     await mkdir(path.dirname(target), { recursive: true });
@@ -126,6 +130,34 @@ describe("RealityOrchestrator", () => {
 
       expect(await repository.listRealities()).toHaveLength(1);
       expect((await repository.listEvents()).filter((event) => event.type === "reality.created")).toHaveLength(1);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("restores a persisted Reality worktree without starting Codex", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-recovery-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const seeded = await orchestrator.snapshot();
+      const root = seeded.realities[0]!;
+      await rm(root.worktreePath!, { recursive: true, force: true });
+
+      const recovered = await orchestrator.snapshot();
+
+      await expect(access(recovered.realities[0]!.worktreePath!)).resolves.toBeUndefined();
+      expect(recovered.session.phase).toBe(0);
+      expect(recovered.events.some((event) => event.type === "reality.fractured")).toBe(true);
+      expect(recovered.events.some((event) => event.type === "reality.recovered")).toBe(true);
+      expect(recovered.events.some((event) => event.type === "codex.progress")).toBe(false);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -245,6 +277,66 @@ describe("RealityOrchestrator", () => {
       expect(archives[0]?.session.phase).toBe(10);
       expect(archives[0]?.events.some((event) => event.type === "reality.stabilised")).toBe(true);
       expect((await orchestrator.snapshot()).session.phase).toBe(0);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("revalidates a legacy nested memory before synthesis", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-memory-revalidation-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const actions: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream",
+        "wake_nested",
+        "wake_parent"
+      ];
+      for (const action of actions) await orchestrator.act(action);
+      const before = await orchestrator.snapshot();
+      const nested = before.realities.find((reality) => reality.depth === 2)!;
+      await repository.saveReality({
+        ...nested,
+        wakeReport: {
+          ...nested.wakeReport!,
+          realityId: nested.name,
+          artefacts: [{
+            ...nested.wakeReport!.artefacts[0]!,
+            path: "nested-worktree-path-not-supplied"
+          }]
+        }
+      });
+      await rm(
+        path.join(nested.worktreePath!, "demo/password-reset/tests/rotating-ip.attack.spec.ts"),
+        { force: true }
+      );
+
+      const recovered = await orchestrator.act("synthesise");
+      const recoveredNested = recovered.realities.find((reality) => reality.depth === 2)!;
+
+      expect(recovered.session.phase).toBe(8);
+      expect(recoveredNested.wakeReport?.realityId).toBe(recoveredNested.id);
+      expect(recoveredNested.wakeReport?.artefacts[0]?.path).toBe(
+        "demo/password-reset/tests/rotating-ip.attack.spec.ts"
+      );
+      expect(recovered.events.some((event) =>
+        event.type === "validation.rejected"
+        && event.payload.issues !== undefined
+      )).toBe(true);
+      expect(recovered.events.some((event) =>
+        event.summary.includes("Nested memory revalidated")
+      )).toBe(true);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

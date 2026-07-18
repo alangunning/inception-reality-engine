@@ -3,11 +3,12 @@ import type {
   InvestigationReport,
   Reality,
   SynthesisReport,
+  Subject,
   WakeReport
 } from "@inception/domain";
 
 export const CodexRuntimeEventMetadataSchema = z.object({
-  stage: z.enum(["thread", "turn", "command", "file", "tool", "search", "plan"]).optional(),
+  stage: z.enum(["thread", "turn", "command", "file", "tool", "search", "plan", "subject", "model"]).optional(),
   status: z.enum(["started", "updated", "completed", "failed"]).optional(),
   detail: z.string().min(1).max(220).optional(),
   command: z.string().min(1).max(180).optional(),
@@ -20,16 +21,37 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   outputTokens: z.number().int().nonnegative().optional(),
   reasoningTokens: z.number().int().nonnegative().optional(),
   failureKind: z.enum(["test", "environment", "configuration", "missing-tool", "build", "command"]).optional(),
-  diagnostic: z.string().min(1).max(180).optional()
+  diagnostic: z.string().min(1).max(180).optional(),
+  model: z.string().min(1).max(80).optional(),
+  sdkVersion: z.string().min(1).max(40).optional(),
+  subjectId: z.string().min(1).max(100).optional(),
+  subjectName: z.string().min(1).max(100).optional(),
+  subjectRole: z.string().min(1).max(100).optional(),
+  subjectThreadId: z.string().min(1).max(100).optional(),
+  subjectState: z.enum(["started", "completed", "failed"]).optional(),
+  collaborationTool: z.enum(["spawn_agent", "wait"]).optional()
 }).strict();
 
 export const CodexRuntimeEventSchema = z.object({
-  type: z.enum(["progress", "tool", "file", "decision"]),
+  type: z.enum(["progress", "tool", "file", "decision", "subject"]),
   summary: z.string().min(1).max(240),
   metadata: CodexRuntimeEventMetadataSchema.optional()
 }).strict();
 
 export type CodexRuntimeEvent = z.infer<typeof CodexRuntimeEventSchema>;
+
+export interface CodexRuntimeInfo {
+  mode: "mock" | "real";
+  model: string;
+  sdkVersion: string;
+}
+
+export interface CodexActiveOperation {
+  id: string;
+  realityId: string;
+  model: string;
+  startedAt: string;
+}
 
 export interface CodexExecutionResult {
   threadId: string;
@@ -52,6 +74,10 @@ export interface CodexSynthesisResult {
 }
 
 export interface CodexRuntime {
+  readonly mode: CodexRuntimeInfo["mode"];
+  info(): CodexRuntimeInfo;
+  activeOperations(): CodexActiveOperation[];
+  abortAll(): number;
   inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult>;
   wake(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexWakeResult>;
   synthesise(
@@ -60,6 +86,12 @@ export interface CodexRuntime {
     onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
     repairContext?: string
   ): Promise<CodexSynthesisResult>;
+}
+
+export interface SubjectCollaborationEvidence {
+  subject: Pick<Subject, "id" | "name" | "role">;
+  threadId: string;
+  returned: boolean;
 }
 
 export interface WakeReportValidationIssue {
