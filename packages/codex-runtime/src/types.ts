@@ -6,6 +6,7 @@ export {
 } from "@inception/orchestrator";
 export type {
   CodexExecutionResult,
+  CodexInterventionResult,
   CodexRuntime,
   CodexRuntimeEvent,
   CodexSynthesisResult,

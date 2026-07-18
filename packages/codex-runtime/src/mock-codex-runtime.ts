@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
+  AdversarialInterventionReportSchema,
   InvestigationReportSchema,
   SynthesisReportSchema,
   WakeReportSchema,
+  type MissionInterventionContract,
   type InvestigationReport,
   type Reality,
   type WakeReport
@@ -10,6 +12,7 @@ import {
 import {
   CodexRuntimeEventSchema,
   type CodexExecutionResult,
+  type CodexInterventionResult,
   type CodexRuntime,
   type CodexRuntimeEvent,
   type CodexSynthesisResult,
@@ -195,11 +198,85 @@ export class MockCodexRuntime implements CodexRuntime {
           changedFiles: [],
           generatedAt
         };
+    if (
+      nested
+      && (reality.constitution.runtimeLaws ?? []).some((law) =>
+        law.includes("sealed adversarial intervention")
+      )
+    ) {
+      report.adversarialDiagnosis = {
+        rootCause: "A permission boundary changed in the inspected request path.",
+        faultClass: "permission",
+        suspectedChangedFiles: ["src/sealed-intervention.ts"],
+        evidenceTitles: ["Distributed abuse has no shared budget"],
+        confidence: 0.88,
+        remainingUncertainty: []
+      };
+    }
     return {
       threadId: mockThreadId(reality),
       summary: report.summary,
       report: InvestigationReportSchema.parse(report),
       events
+    };
+  }
+
+  async intervene(
+    reality: Reality,
+    contract: MissionInterventionContract,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexInterventionResult> {
+    const subjectThreadId = `mock-subject-${contract.subject.id}`;
+    const events = [
+      CodexRuntimeEventSchema.parse({
+        type: "subject",
+        summary: `Subject entered Codex thread: ${contract.subject.name}.`,
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: contract.subject.id,
+          subjectName: contract.subject.name,
+          subjectRole: contract.subject.role,
+          subjectThreadId,
+          subjectState: "started",
+          collaborationTool: "spawn_agent"
+        }
+      }),
+      CodexRuntimeEventSchema.parse({
+        type: "subject",
+        summary: `Subject completed bounded intervention: ${contract.subject.name}.`,
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: contract.subject.id,
+          subjectName: contract.subject.name,
+          subjectRole: contract.subject.role,
+          subjectThreadId,
+          subjectState: "completed",
+          collaborationTool: "wait"
+        }
+      })
+    ];
+    for (const event of events) await onEvent?.(event);
+    const allowedRoot = contract.allowedPaths[0]
+      ?.replace(/\/\*\*.*$/, "")
+      .replace(/\*.*$/, "")
+      .replace(/\/$/, "") || "src";
+    const changedPath = `${allowedRoot}/sealed-intervention.ts`;
+    return {
+      coordinatorThreadId: `mock-intervention-${reality.id}`,
+      subjectThreadId,
+      events,
+      report: AdversarialInterventionReportSchema.parse({
+        contractId: contract.id,
+        realityId: reality.id,
+        subjectId: contract.subject.id,
+        faultClass: contract.faultClasses[0],
+        summary: "A reversible fault was injected within the declared path boundary.",
+        changedFiles: [changedPath],
+        expectedSymptoms: ["The fallback path violates its declared integrity invariant."],
+        generatedAt: new Date().toISOString()
+      })
     };
   }
 

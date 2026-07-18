@@ -16,7 +16,11 @@ import {
   type InceptionPrismaClient,
   type RealityRepository
 } from "@inception/orchestrator";
-import { GitMissionWorkspaceFactory, GitWorktreeManager } from "@inception/worktree-manager";
+import {
+  GitMissionWorkspaceFactory,
+  GitWorktreeManager,
+  TrainingTargetManager
+} from "@inception/worktree-manager";
 
 interface RuntimeContainer {
   implementationVersion: string;
@@ -27,6 +31,7 @@ interface RuntimeContainer {
   codexRuntime: CodexRuntime;
   orchestrator: RealityOrchestrator;
   missionOrchestrator: MissionOrchestrator;
+  trainingTargets: TrainingTargetManager;
   processControl: CodexProcessControl;
   disconnect(): Promise<void>;
 }
@@ -36,7 +41,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260718.3";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260718.6";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,
@@ -146,11 +151,12 @@ export function getRuntime(): RuntimeContainer {
         synthesis?: SynthesisService;
         repoRoot?: string;
       };
-      const repository = legacyOrchestrator.repository;
-      if (!repository) {
+      if (!legacyOrchestrator.repository) {
         throw new Error("The live Reality repository is unavailable for runtime migration.");
       }
       const repoRoot = legacyOrchestrator.repoRoot ?? discoverRepoRoot();
+      const persistence = createRepository(repoRoot);
+      const repository = persistence.repository;
       const codexRuntime = existing.codexMode === "real"
         ? new RealCodexRuntime()
         : new MockCodexRuntime();
@@ -178,6 +184,11 @@ export function getRuntime(): RuntimeContainer {
         codexRuntime,
         new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
       );
+      existing.trainingTargets = new TrainingTargetManager(
+        path.join(repoRoot, ".inception", "training-targets")
+      );
+      existing.persistence = persistence.persistence;
+      existing.disconnect = persistence.disconnect;
       existing.implementationVersion = RUNTIME_IMPLEMENTATION_VERSION;
       return existing;
     }
@@ -211,6 +222,9 @@ export function getRuntime(): RuntimeContainer {
         new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
       );
     }
+    existing.trainingTargets ??= new TrainingTargetManager(
+      path.join(discoverRepoRoot(), ".inception", "training-targets")
+    );
     return existing;
   }
   const repoRoot = discoverRepoRoot();
@@ -240,6 +254,9 @@ export function getRuntime(): RuntimeContainer {
     codexRuntime,
     new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
   );
+  const trainingTargets = new TrainingTargetManager(
+    path.join(repoRoot, ".inception", "training-targets")
+  );
   globalThis.__inceptionRuntime = {
     implementationVersion: RUNTIME_IMPLEMENTATION_VERSION,
     persistence: persistence.persistence,
@@ -249,6 +266,7 @@ export function getRuntime(): RuntimeContainer {
     codexRuntime,
     orchestrator,
     missionOrchestrator,
+    trainingTargets,
     processControl: new CodexProcessControl(),
     disconnect: persistence.disconnect
   };

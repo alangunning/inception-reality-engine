@@ -35,6 +35,7 @@ Alternatively set `CODEX_API_KEY` or `OPENAI_API_KEY` in `.env`. Credentials are
 ## Usage Boundaries
 
 - GET routes, page load, refresh, timeline replay, Admin inspection, and Mission creation do not call Codex.
+- Training-target status is local-only; VAmPI is cloned only after **Prepare VAmPI locally** and is never installed or started automatically.
 - Buttons identify Codex-backed actions before usage begins.
 - The operation band reports runtime, elapsed wall time, safe milestones, commands, tools, files, and token evidence.
 - Mission token budgets stop new actions after observed SDK usage reaches the configured limit.
@@ -52,6 +53,8 @@ Admin **Full reset and cleanup** archives the current safe log, stops Codex, del
 
 Mission deletion removes only that Mission's worktrees and branches. Playwright cleanup uses its own root and prefix. No cleanup path should delete a worktree it does not own.
 
+Pinned training targets remain in `.inception/training-targets` as an ignored reusable cache. Removing that directory is safe when no Mission operation is active; it is not part of canonical reset because it contains no running process or admitted Reality state.
+
 ## Retrospective Logs
 
 The Admin drawer exports the current or archived run as JSON. Exports include:
@@ -62,7 +65,7 @@ The Admin drawer exports the current or archived run as JSON. Exports include:
 - file paths, tool names, token counts, and model binding;
 - Subject name, role, child thread ID, collaboration tool, and terminal state;
 - validation failures and recovery events;
-- beliefs, evidence, Wake Reports, anchors, and final proof results.
+- beliefs, evidence, Wake Reports, Reality Totem seals, source/report digests, descendant lineage, anchors, and final proof results.
 
 They exclude raw reasoning, unrestricted SDK event payloads, raw Subject messages, credentials, and raw model responses.
 

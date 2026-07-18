@@ -29,6 +29,9 @@ The human owner made the decisions that define the product:
 - make Reality Anchors parent-owned and non-negotiable;
 - require native Subject spawn/return evidence instead of trusting model-authored Subject reports;
 - retain the timeline replay because it improves comprehension and compresses a three-minute demo;
+- treat schema validation as necessary but insufficient, adding automatic memory-integrity seals and descendant lineage before synthesis;
+- use a pinned VAmPI training target for the general security demo while keeping clone, execution, and Codex usage explicit;
+- bound the chaos-engineer Subject with operator-owned paths, fault classes, budgets, rollback, and automatic quarantine rather than allowing unrelated mutation;
 - keep Admin stop/reset controls outside the narrative UI;
 - reject generic activity messages in favour of evidence-rich events.
 

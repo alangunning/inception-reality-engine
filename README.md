@@ -4,7 +4,7 @@
 
 Reality Engine lets a coding agent explore a risky assumption in nested, isolated software worlds before that assumption changes the waking repository.
 
-Each **Reality** owns a premise, constitution, history, evidence, Codex thread, and Git worktree. A child Reality is a **Dream**. Direct Codex subagents are identity-bound **Subjects**. A **Kick** stops exploration and returns a Zod-validated **Wake Report** containing evidence, changed beliefs, invariants, test artefacts, and remaining uncertainty. Parent-owned **Reality Anchors** must pass before the result can stabilise.
+Each **Reality** owns a premise, constitution, history, evidence, Codex thread, and Git worktree. A child Reality is a **Dream**. Direct Codex subagents are identity-bound **Subjects**. A **Kick** stops exploration and proposes a Zod-validated **Wake Report** containing evidence, changed beliefs, invariants, test artefacts, and remaining uncertainty. A parent-owned **Reality Totem** automatically checks anchor identity, evidence, artefacts, descendant memory lineage, source state, and any sealed intervention before memory may propagate. Parent-owned **Reality Anchors** must then pass before the result can stabilise.
 
 This is not a generic multi-agent dashboard. The product is a proof-gated counterfactual runtime for software decisions.
 
@@ -17,7 +17,7 @@ Reality Engine separates those responsibilities:
 1. make the uncertainty explicit;
 2. fork an isolated world where the assumption can be experienced;
 3. delegate bounded independent investigations to auditable Subjects;
-4. return only validated memory and reproducible artefacts;
+4. admit only integrity-sealed memory and reproducible artefacts;
 5. synthesise what generalises in the waking worktree;
 6. require immutable parent-owned proof before stabilisation.
 
@@ -52,7 +52,7 @@ Tagged releases publish `ghcr.io/<repository-owner>/inception-reality-engine:v0.
 4. Attacker, investigator, and test-engineer Subjects enter.
 5. Native Codex collaboration events prove each real Subject thread started and returned.
 6. A nested **Rotating IP swarm** Dream creates and executes a failing attack test.
-7. The nested Dream and parent Dream return validated Wake Reports.
+7. Each Kick seals the Wake Report to its source state and verified descendant-memory chain.
 8. Returned artefacts and invariants are synthesised into the waking implementation.
 9. Hidden anchors and the inherited regression suite run.
 10. Final beliefs, memories, proof results, Reality tree, and Git diff remain replayable.
@@ -89,6 +89,7 @@ The real adapter:
 - requires native `spawn_agent` plus terminal `wait` evidence for every active Subject;
 - rejects model-authored Subject reports that lack a real child-thread trace;
 - validates every investigation, synthesis, Wake Report, and safe event before persistence.
+- requires a verified memory-integrity seal before synthesis can consume any Wake Report.
 
 Real mode is intentionally not read-only. See [Security](./SECURITY.md) before exposing it beyond a trusted local machine.
 
@@ -98,6 +99,7 @@ In real mode, open **Mission Composer** from the top bar or visit `/missions/new
 
 Define:
 
+- the curated, pinned VAmPI training target or another trusted local Git repository;
 - an absolute path to a trusted local Git repository;
 - the mission, bounded scope, and initial belief to challenge;
 - constitution constraints and parent truths;
@@ -105,7 +107,11 @@ Define:
 - token and Dream-depth budgets;
 - bounded Subject charters.
 
-Forming the waking Reality creates isolated Git state but makes no Codex call. Subsequent explicit actions can generate multiple nested Dreams, return memories upward, synthesise the waking implementation, run proofs, repair failures, and stabilise.
+The default preset is [VAmPI](https://github.com/erev0s/VAmPI), a small deliberately vulnerable Flask API listed in the [OWASP CTF catalogue](https://ctf.owasp.org/). **Prepare VAmPI locally** is an explicit, no-Codex action that clones one pinned revision into `.inception/training-targets`; page load never clones, installs, starts, or sends traffic to the target. The security mission uses only an authorized local clone and synthetic data.
+
+An optional sealed intervention can assign one native Codex Subject as a bounded chaos engineer. The operator owns its fault classes, allowed and protected paths, changed-file and patch limits, token/time budget, target depth, rollback commit, and reveal policy. The mutation is sealed before investigator Subjects enter. A partial or missed diagnosis quarantines the Wake Report automatically; an exact diagnosis allows it to join the descendant integrity chain.
+
+Forming the waking Reality creates isolated Git state but makes no Codex call. Subsequent explicit actions can generate multiple nested Dreams, return integrity-sealed memories upward, synthesise the waking implementation, run proofs, repair failures, and stabilise.
 
 ## Product Experience
 
@@ -117,6 +123,7 @@ Forming the waking Reality creates isolated Git state but makes no Codex call. S
 - refresh-stable operation monitor and usage counters;
 - timeline replay for demo compression and post-analysis;
 - Memories comparison, immutable proof status, and final Git diff;
+- Reality Totem checks, source/report digests, descendant seals, and automatic memory quarantine;
 - separate Admin view for SDK operations, OS processes, safe logs, stop, archive, reset, and cleanup.
 
 No raw chain-of-thought or raw model response is displayed or persisted.

@@ -6,6 +6,7 @@ import {
   type AnchorResult,
   type DemoSession,
   type InvestigationReport,
+  type MemoryIntegritySeal,
   type Reality,
   type RealityEvent,
   type RealityEventType,
@@ -22,6 +23,7 @@ import {
   WakeReportValidationError
 } from "./codex-port";
 import type { WorktreeManagerPort } from "./worktree-port";
+import { MemoryIntegrityService } from "./memory-integrity-service";
 import { ROTATING_IP_TEST, SECURE_PASSWORD_RESET_IMPLEMENTATION } from "./demo-fixture";
 import type { RealityEventBus, RealityRepository } from "./ports";
 import { SynthesisService } from "./synthesis-service";
@@ -88,11 +90,21 @@ const ACTION_PLAN: Record<number, ActionDefinition> = {
 
 const ROOT_NAME = "Waking Reality";
 
+function isDescendantOf(realities: Reality[], candidateId: string, ancestorId: string): boolean {
+  let candidate = realities.find((entry) => entry.id === candidateId);
+  while (candidate?.parentId) {
+    if (candidate.parentId === ancestorId) return true;
+    candidate = realities.find((entry) => entry.id === candidate?.parentId);
+  }
+  return false;
+}
+
 export class RealityOrchestrator {
   private operation: Promise<void> = Promise.resolve();
   private seedOperation: Promise<void> = Promise.resolve();
   private reconcileOperation: Promise<void> = Promise.resolve();
   private activeOperation: ActiveRealityOperation | null = null;
+  private readonly memoryIntegrity = new MemoryIntegrityService();
 
   constructor(
     private readonly repository: RealityRepository,
@@ -196,6 +208,7 @@ export class RealityOrchestrator {
         activeRealityId: reality.id,
         finalDiff: "",
         anchorResults: [],
+        memoryIntegrity: [],
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -522,6 +535,8 @@ export class RealityOrchestrator {
     const report = returned.wakeReport!;
 
     const parent = await this.requireDreamAtDepth(1);
+    const seal = await this.sealCanonicalMemory(session, returned, parent, report);
+    const integritySession = await this.acceptCanonicalMemorySeal(session, returned, seal);
     const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
     const parentEntity = RealityEntity.hydrate(parent);
     if (proposal) parentEntity.updateProposal(proposal.id, "resolved");
@@ -537,7 +552,7 @@ export class RealityOrchestrator {
     const updatedParent = parentEntity.snapshot();
     await this.repository.saveReality(updatedParent);
     await this.emit(returned, "memory.returned", "Memory returned from the rotating-IP Dream with a failing test artefact.", { report });
-    await this.advanceSession(session, 6, updatedParent.id);
+    await this.advanceSession(integritySession, 6, updatedParent.id);
   }
 
   private async experienceAndWakeNestedDream(nested: Reality): Promise<Reality> {
@@ -636,6 +651,8 @@ export class RealityOrchestrator {
     await this.repository.saveReality(returned);
 
     const root = await this.requireNamedReality(ROOT_NAME);
+    const seal = await this.sealCanonicalMemory(session, returned, root, result.report);
+    const integritySession = await this.acceptCanonicalMemorySeal(session, returned, seal);
     const proposal = root.proposals.find((entry) => entry.status === "dreaming");
     const rootEntity = RealityEntity.hydrate(root);
     if (proposal) rootEntity.updateProposal(proposal.id, "resolved");
@@ -650,7 +667,7 @@ export class RealityOrchestrator {
     const updatedRoot = rootEntity.snapshot();
     await this.repository.saveReality(updatedRoot);
     await this.emit(returned, "memory.returned", "Memory returned from the coordinated-attack Dream.", { report: result.report });
-    await this.advanceSession(session, 7, updatedRoot.id);
+    await this.advanceSession(integritySession, 7, updatedRoot.id);
   }
 
   private async synthesiseMemories(session: DemoSession): Promise<void> {
@@ -660,6 +677,7 @@ export class RealityOrchestrator {
       this.requireDreamAtDepth(2)
     ]);
     let nested = persistedNested;
+    let nestedRevalidated = false;
     if (!await this.hasPromotableNestedMemory(nested)) {
       await this.emit(
         nested,
@@ -671,6 +689,7 @@ export class RealityOrchestrator {
         }
       );
       nested = await this.experienceAndWakeNestedDream(nested);
+      nestedRevalidated = true;
       await this.emit(
         nested,
         "memory.returned",
@@ -681,6 +700,72 @@ export class RealityOrchestrator {
     const reports = [nested.wakeReport, attack.wakeReport].filter((report): report is NonNullable<typeof report> => Boolean(report));
     if (reports.length !== 2) throw new Error("Both Dream memories must return before synthesis.");
     if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    let integritySession = session;
+    if (nestedRevalidated) {
+      integritySession = {
+        ...integritySession,
+        memoryIntegrity: integritySession.memoryIntegrity.filter((seal) =>
+          seal.realityId !== nested.id
+          && !seal.descendantRealityIds.includes(nested.id)
+        ),
+        updatedAt: new Date().toISOString()
+      };
+      await this.repository.saveSession(integritySession);
+    }
+    for (const source of [nested, attack]) {
+      const existingSeal = integritySession.memoryIntegrity.find((seal) =>
+        seal.realityId === source.id
+      );
+      const reportMatches = Boolean(
+        existingSeal
+        && source.wakeReport
+        && this.memoryIntegrity.matchesReport(existingSeal, source.wakeReport)
+      );
+      const descendantsMatch = Boolean(
+        existingSeal
+        && this.memoryIntegrity.matchesDescendantSeals(
+          existingSeal,
+          source,
+          [root, attack, nested],
+          integritySession.memoryIntegrity
+        )
+      );
+      const sourceMatches = existingSeal
+        ? await this.matchesCanonicalSealedSource(source, existingSeal)
+        : false;
+      if (
+        existingSeal?.verdict === "verified"
+        && reportMatches
+        && descendantsMatch
+        && sourceMatches
+      ) {
+        continue;
+      }
+      if (existingSeal) {
+        const failedCheck = !reportMatches
+          ? "report-digest"
+          : !descendantsMatch
+            ? "descendant-lineage"
+            : "source-state";
+        const quarantined = this.memoryIntegrity.quarantine(
+          existingSeal,
+          failedCheck,
+          `The ${failedCheck} check changed after this memory crossed its Kick boundary.`
+        );
+        integritySession = await this.acceptCanonicalMemorySeal(
+          integritySession,
+          source,
+          quarantined
+        );
+      }
+      const report = source.wakeReport;
+      const parent = source.parentId
+        ? await this.repository.getReality(source.parentId)
+        : null;
+      if (!report || !parent) throw new Error("Memory integrity lineage is incomplete.");
+      const seal = await this.sealCanonicalMemory(integritySession, source, parent, report);
+      integritySession = await this.acceptCanonicalMemorySeal(integritySession, source, seal);
+    }
 
     await this.promoteWakeArtefacts(root, [nested, attack], reports);
     const runtimeResult = await this.requestSynthesis(root, reports);
@@ -701,7 +786,7 @@ export class RealityOrchestrator {
       retainedArtefacts: runtimeResult.report.retainedArtefacts,
       unresolved: runtimeResult.report.unresolved
     });
-    await this.advanceSession({ ...session, finalDiff: diff }, 8, synthesised.id, { finalDiff: diff });
+    await this.advanceSession({ ...integritySession, finalDiff: diff }, 8, synthesised.id, { finalDiff: diff });
   }
 
   private async hasPromotableNestedMemory(reality: Reality): Promise<boolean> {
@@ -720,6 +805,108 @@ export class RealityOrchestrator {
     } catch {
       return artefact.content !== undefined;
     }
+  }
+
+  private async sealCanonicalMemory(
+    session: DemoSession,
+    reality: Reality,
+    parent: Reality,
+    report: WakeReport
+  ): Promise<MemoryIntegritySeal> {
+    if (!reality.worktreePath) throw new Error("Memory source Reality is missing its worktree.");
+    let artefactsResolvable = true;
+    for (const artefact of report.artefacts) {
+      if (
+        path.isAbsolute(artefact.path)
+        || artefact.path.split(/[\\/]/).includes("..")
+      ) {
+        artefactsResolvable = false;
+        break;
+      }
+      if (artefact.content !== undefined || artefact.kind === "note") continue;
+      try {
+        await this.worktrees.readFile(reality.worktreePath, artefact.path);
+      } catch {
+        artefactsResolvable = false;
+        break;
+      }
+    }
+    const realities = await this.repository.listRealities();
+    const descendantSeals = session.memoryIntegrity.filter((seal) =>
+      seal.verdict === "verified"
+      && isDescendantOf(realities, seal.realityId, reality.id)
+    );
+    const descendantSourcesValid = (await Promise.all(descendantSeals.map(async (seal) => {
+      const source = realities.find((candidate) => candidate.id === seal.realityId);
+      return Boolean(source) && await this.matchesCanonicalSealedSource(source!, seal);
+    }))).every(Boolean);
+    const sourceState = await this.worktrees.diff(reality.worktreePath);
+    const sourceCommit = await this.worktrees.checkpoint(
+      reality.worktreePath,
+      `Memory integrity seal for ${reality.id}`
+    );
+    return this.memoryIntegrity.seal({
+      reality,
+      parent,
+      report,
+      realities,
+      inheritedMemories: realities
+        .map((candidate) => candidate.wakeReport)
+        .filter((memory): memory is WakeReport => Boolean(memory)),
+      priorSeals: session.memoryIntegrity,
+      sourceState,
+      sourceCommit,
+      artefactsResolvable,
+      descendantSourcesValid
+    });
+  }
+
+  private async matchesCanonicalSealedSource(
+    reality: Reality,
+    seal: MemoryIntegritySeal
+  ): Promise<boolean> {
+    if (!reality.worktreePath) return false;
+    try {
+      const [currentCommit, clean] = await Promise.all([
+        this.worktrees.currentCommit(reality.worktreePath),
+        this.worktrees.isClean(reality.worktreePath)
+      ]);
+      return this.memoryIntegrity.matchesSealedSource(seal, currentCommit, clean);
+    } catch {
+      return false;
+    }
+  }
+
+  private async acceptCanonicalMemorySeal(
+    session: DemoSession,
+    reality: Reality,
+    seal: MemoryIntegritySeal
+  ): Promise<DemoSession> {
+    const nextSession: DemoSession = {
+      ...session,
+      memoryIntegrity: [
+        ...session.memoryIntegrity.filter((entry) => entry.realityId !== seal.realityId),
+        seal
+      ],
+      updatedAt: new Date().toISOString()
+    };
+    await this.repository.saveSession(nextSession);
+    if (seal.verdict === "quarantined") {
+      await this.emit(reality, "memory.quarantined", `Memory quarantined from ${reality.name}; parent-owned integrity policy rejected its lineage.`, {
+        sealId: seal.id,
+        policyVersion: seal.policyVersion,
+        failedChecks: seal.checks
+          .filter((check) => check.status === "failed")
+          .map((check) => check.name)
+      });
+      throw new Error("Memory integrity gate quarantined the returned memory.");
+    }
+    await this.emit(reality, "memory.verified", `Memory integrity verified for ${reality.name}; its parent Reality may inherit it.`, {
+      sealId: seal.id,
+      policyVersion: seal.policyVersion,
+      descendantSealCount: seal.descendantSealIds.length
+    });
+    return nextSession;
   }
 
   private async runAnchors(session: DemoSession): Promise<void> {

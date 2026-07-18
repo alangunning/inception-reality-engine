@@ -38,12 +38,43 @@ describe("SqliteRealityRepository", () => {
       initialBeliefs: []
     }).snapshot();
     const now = new Date().toISOString();
+    const memoryIntegrity = [{
+      id: "seal-1",
+      realityId: reality.id,
+      parentRealityId: reality.id,
+      reportDigest: "a".repeat(64),
+      sourceStateDigest: "b".repeat(64),
+      sourceCommit: "abcdef0",
+      anchorFingerprint: "c".repeat(64),
+      parentAnchorFingerprint: "c".repeat(64),
+      descendantSealIds: [],
+      descendantRealityIds: [],
+      checks: ([
+        "schema",
+        "identity",
+        "report-digest",
+        "source-state",
+        "anchor-fingerprint",
+        "evidence-lineage",
+        "artefact-resolution",
+        "descendant-lineage",
+        "intervention-diagnosis"
+      ] as const).map((name) => ({
+        name,
+        status: "passed" as const,
+        summary: `${name} passed.`
+      })),
+      verdict: "verified" as const,
+      policyVersion: "memory-integrity/v2" as const,
+      sealedAt: now
+    }] satisfies DemoSession["memoryIntegrity"];
     const session: DemoSession = {
       id: "singleton",
       phase: 0,
       activeRealityId: reality.id,
       finalDiff: "",
       anchorResults: [],
+      memoryIntegrity,
       regressionResult: {
         status: "passed",
         output: "4 tests passed",
@@ -102,7 +133,9 @@ describe("SqliteRealityRepository", () => {
     expect((await repository.getReality(reality.id))?.parentId).toBeNull();
     expect((await repository.getSession())?.activeRealityId).toBe(reality.id);
     expect((await repository.getSession())?.regressionResult?.status).toBe("passed");
+    expect((await repository.getSession())?.memoryIntegrity[0]?.id).toBe("seal-1");
     expect((await repository.getMissionRun("mission-1"))?.definition.name).toBe("General mission");
+    expect((await repository.getMissionRun("mission-1"))?.memoryIntegrity).toEqual([]);
     await repository.deleteAll();
     expect((await repository.getRunArchive("archive-1"))?.realities[0]?.id).toBe(reality.id);
     expect((await repository.getMissionRun("mission-1"))?.status).toBe("exploring");

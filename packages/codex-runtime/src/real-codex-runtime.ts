@@ -1,11 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { Codex, type Thread, type ThreadOptions } from "@openai/codex-sdk";
 import {
+  AdversarialInterventionReportSchema,
   InvestigationReportSchema,
   SynthesisReportSchema,
   WakeReportSchema,
   buildDreamPrompt,
+  type AdversarialInterventionReport,
   type InvestigationReport,
+  type MissionInterventionContract,
   type Reality,
   type SynthesisReport,
   type Subject,
@@ -17,6 +20,7 @@ import {
   CodexOutputValidationError,
   CodexRuntimeEventSchema,
   type CodexExecutionResult,
+  type CodexInterventionResult,
   type CodexRuntime,
   type CodexRuntimeEvent,
   type CodexSynthesisResult,
@@ -77,7 +81,7 @@ function integer(value: unknown): number | undefined {
 
 function parseStructuredJson<T>(
   raw: string,
-  contract: "InvestigationReportSchema" | "SynthesisReportSchema",
+  contract: "InvestigationReportSchema" | "AdversarialInterventionReportSchema" | "SynthesisReportSchema",
   parse: (value: unknown) => { success: true; data: T } | { success: false; error: { issues: Array<{ path: PropertyKey[]; code: string }> } }
 ): T {
   let value: unknown;
@@ -271,6 +275,13 @@ export class SubjectCollaborationTrace {
         }]);
       }
     }
+  }
+
+  threadIdFor(subjectId: string): string | undefined {
+    for (const [threadId, mappedSubjectId] of this.subjectByThread) {
+      if (mappedSubjectId === subjectId && this.returned.has(subjectId)) return threadId;
+    }
+    return undefined;
   }
 }
 
@@ -534,6 +545,9 @@ export class RealCodexRuntime implements CodexRuntime {
   async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
     const scope = reality.constitution.scope ?? reality.name;
     const operationLabel = `${scope} audit`;
+    const diagnosisRequired = (reality.constitution.runtimeLaws ?? []).some((law) =>
+      law.includes("sealed adversarial intervention")
+    );
     const prompt = `${buildDreamPrompt(reality)}
 
 ${buildSubjectOrchestrationPrompt(reality)}
@@ -541,6 +555,7 @@ ${buildSubjectOrchestrationPrompt(reality)}
 TASK
 Audit ${scope} and run decisive tests inside this Reality. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
 ${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
+${diagnosisRequired ? "This Reality contains a sealed adversarial intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
 Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, one high-value Dream proposal when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.`;
     const outputSchema = zodToJsonSchema(InvestigationReportSchema, {
       target: "openAi",
@@ -575,6 +590,89 @@ Every active Subject must be represented by one subjectReports entry using its e
       threadId: this.requireThreadId(thread),
       events,
       summary: report.summary,
+      report
+    };
+  }
+
+  async intervene(
+    reality: Reality,
+    contract: MissionInterventionContract,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexInterventionResult> {
+    const subjectReality: Reality = {
+      ...reality,
+      codexThreadId: undefined,
+      subjects: [{
+        ...contract.subject,
+        realityId: reality.id,
+        status: "entered",
+        findings: []
+      }]
+    };
+    const subjectTrace = new SubjectCollaborationTrace(subjectReality.subjects);
+    const outputSchema = zodToJsonSchema(AdversarialInterventionReportSchema, {
+      target: "openAi",
+      $refStrategy: "none"
+    }) as Record<string, unknown>;
+    const prompt = `${buildDreamPrompt(subjectReality)}
+
+${buildSubjectOrchestrationPrompt(subjectReality)}
+
+SEALED ADVERSARIAL INTERVENTION
+Inject exactly one minimal, reversible fault that tests this hypothesis:
+${contract.hypothesis}
+
+Allowed fault classes: ${contract.faultClasses.join(", ")}
+Allowed path patterns: ${contract.allowedPaths.join(", ")}
+Protected path patterns: ${contract.protectedPaths.join(", ")}
+Hard limits: at most ${contract.maxChangedFiles} changed files, ${contract.maxPatchLines} patch lines, ${contract.tokenBudget} tokens, and ${contract.maxMinutes} minutes.
+
+Only the named adversarial Subject may edit. Do not modify Git metadata, .inception control files, immutable proof definitions, protected paths, dependency lockfiles unless explicitly allowed, or anything outside this Reality worktree. Do not commit. Do not add explanatory comments, filenames, notes, or tests that reveal the injected cause. The altered implementation must remain diagnosable from observable behavior and ordinary code evidence.
+
+Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contract.id}", realityId to "${reality.id}", and subjectId to "${contract.subject.id}". Report exact changed paths and expected observable symptoms without raw reasoning.`;
+    const { thread, events, finalResponse } = await this.streamStructured(
+      subjectReality,
+      "Sealed adversarial intervention",
+      prompt,
+      outputSchema,
+      onEvent,
+      subjectTrace,
+      true,
+      contract.maxMinutes * 60_000
+    );
+    const report = parseStructuredJson<AdversarialInterventionReport>(
+      finalResponse,
+      "AdversarialInterventionReportSchema",
+      (value) => AdversarialInterventionReportSchema.safeParse(value)
+    );
+    if (
+      report.contractId !== contract.id
+      || report.realityId !== reality.id
+      || report.subjectId !== contract.subject.id
+    ) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "identity",
+        code: "identity_mismatch"
+      }]);
+    }
+    if (!contract.faultClasses.includes(report.faultClass)) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "faultClass",
+        code: "fault_class_outside_contract"
+      }]);
+    }
+    subjectTrace.requireComplete();
+    const subjectThreadId = subjectTrace.threadIdFor(contract.subject.id);
+    if (!subjectThreadId) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "subjectId",
+        code: "missing_codex_subject_thread"
+      }]);
+    }
+    return {
+      coordinatorThreadId: this.requireThreadId(thread),
+      subjectThreadId,
+      events,
       report
     };
   }
@@ -666,9 +764,9 @@ Return only the structured synthesis report after the implementation and tests a
     };
   }
 
-  private threadFor(reality: Reality): Thread {
+  private threadFor(reality: Reality, forceNew = false): Thread {
     const options = codexThreadOptions(reality);
-    return reality.codexThreadId
+    return !forceNew && reality.codexThreadId
       ? this.codex.resumeThread(reality.codexThreadId, options)
       : this.codex.startThread(options);
   }
@@ -679,11 +777,16 @@ Return only the structured synthesis report after the implementation and tests a
     prompt: string,
     outputSchema: Record<string, unknown>,
     onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
-    subjectTrace?: SubjectCollaborationTrace
+    subjectTrace?: SubjectCollaborationTrace,
+    forceNewThread = false,
+    timeoutMilliseconds?: number
   ): Promise<{ thread: Thread; events: CodexRuntimeEvent[]; finalResponse: string }> {
-    const thread = this.threadFor(reality);
+    const thread = this.threadFor(reality, forceNewThread);
     const operationId = randomUUID();
     const controller = new AbortController();
+    const timeout = timeoutMilliseconds
+      ? setTimeout(() => controller.abort(), timeoutMilliseconds)
+      : undefined;
     this.operations.set(operationId, {
       controller,
       realityId: reality.id,
@@ -732,6 +835,7 @@ Return only the structured synthesis report after the implementation and tests a
       }
       return { thread, events, finalResponse };
     } finally {
+      if (timeout) clearTimeout(timeout);
       this.operations.delete(operationId);
     }
   }

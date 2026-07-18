@@ -79,6 +79,7 @@ export class SqliteRealityRepository implements RealityRepository {
         finalDiff TEXT NOT NULL,
         anchorResultsJson TEXT NOT NULL,
         regressionResultJson TEXT,
+        memoryIntegrityJson TEXT NOT NULL DEFAULT '[]',
         createdAt DATETIME NOT NULL,
         updatedAt DATETIME NOT NULL
       );
@@ -102,6 +103,9 @@ export class SqliteRealityRepository implements RealityRepository {
     const sessionColumns = this.db.prepare("PRAGMA table_info(DemoSessionRecord)").all() as Array<{ name: string }>;
     if (!sessionColumns.some((column) => column.name === "regressionResultJson")) {
       this.db.exec("ALTER TABLE DemoSessionRecord ADD COLUMN regressionResultJson TEXT;");
+    }
+    if (!sessionColumns.some((column) => column.name === "memoryIntegrityJson")) {
+      this.db.exec("ALTER TABLE DemoSessionRecord ADD COLUMN memoryIntegrityJson TEXT NOT NULL DEFAULT '[]';");
     }
   }
 
@@ -206,14 +210,15 @@ export class SqliteRealityRepository implements RealityRepository {
   async saveSession(session: DemoSession): Promise<void> {
     this.db.prepare(`
       INSERT INTO DemoSessionRecord
-      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, createdAt, updatedAt)
-      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @createdAt, @updatedAt)
+      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, memoryIntegrityJson, createdAt, updatedAt)
+      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @memoryIntegrityJson, @createdAt, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         phase=excluded.phase,
         activeRealityId=excluded.activeRealityId,
         finalDiff=excluded.finalDiff,
         anchorResultsJson=excluded.anchorResultsJson,
         regressionResultJson=excluded.regressionResultJson,
+        memoryIntegrityJson=excluded.memoryIntegrityJson,
         createdAt=excluded.createdAt,
         updatedAt=excluded.updatedAt
     `).run({
@@ -223,6 +228,7 @@ export class SqliteRealityRepository implements RealityRepository {
       finalDiff: session.finalDiff,
       anchorResultsJson: JSON.stringify(session.anchorResults),
       regressionResultJson: session.regressionResult ? JSON.stringify(session.regressionResult) : null,
+      memoryIntegrityJson: JSON.stringify(session.memoryIntegrity),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt
     });
@@ -237,6 +243,7 @@ export class SqliteRealityRepository implements RealityRepository {
       finalDiff: row.finalDiff,
       anchorResults: parseJson(row.anchorResultsJson),
       regressionResult: row.regressionResultJson ? parseJson(row.regressionResultJson) : undefined,
+      memoryIntegrity: row.memoryIntegrityJson ? parseJson(row.memoryIntegrityJson) : [],
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt)
     }) : null;

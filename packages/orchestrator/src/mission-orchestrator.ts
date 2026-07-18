@@ -5,9 +5,14 @@ import {
   MissionDefinitionSchema,
   MissionRunSchema,
   RealityEntity,
+  type AdversarialDiagnosis,
+  type AdversarialInterventionLedger,
+  type AdversarialInterventionReport,
   type AnchorResult,
   type InvestigationReport,
+  type MissionInterventionContract,
   type MissionDefinitionDraft,
+  type MemoryIntegritySeal,
   type MissionRun,
   type Reality,
   type RealityEvent,
@@ -20,6 +25,7 @@ import {
   type CodexRuntimeEvent
 } from "./codex-port";
 import type { RealityEventBus, RealityRepository } from "./ports";
+import { MemoryIntegrityService } from "./memory-integrity-service";
 import type {
   MissionWorkspaceFactoryPort,
   WorktreeManagerPort
@@ -27,6 +33,7 @@ import type {
 
 export type MissionAction =
   | "inspect"
+  | "intervene"
   | "create_dream"
   | "kick"
   | "synthesise"
@@ -44,7 +51,7 @@ export interface MissionOperation {
 
 export interface MissionNextAction {
   id: MissionAction;
-  kind: "advance" | "dream" | "kick" | "verify";
+  kind: "advance" | "intervene" | "dream" | "kick" | "verify";
   label: string;
   executor: "codex" | "orchestrator";
 }
@@ -86,9 +93,48 @@ function safeRelativePath(candidate: string): boolean {
     && !candidate.split(/[\\/]/).includes("..");
 }
 
+function safePathPattern(pattern: string): boolean {
+  return safeRelativePath(pattern.replaceAll("*", "bounded"));
+}
+
+function pathPatternRegex(pattern: string): RegExp {
+  const doubleStar = "\u0000";
+  const source = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+    .replaceAll("**", doubleStar)
+    .replaceAll("*", "[^/]*")
+    .replaceAll(doubleStar, ".*");
+  return new RegExp(`^${source}$`);
+}
+
+function matchesAnyPathPattern(candidate: string, patterns: string[]): boolean {
+  const normalised = candidate.replaceAll("\\", "/");
+  return patterns.some((pattern) => pathPatternRegex(pattern.replaceAll("\\", "/")).test(normalised));
+}
+
+function patchLineCount(patch: string): number {
+  return patch
+    .split("\n")
+    .filter((line) =>
+      (line.startsWith("+") && !line.startsWith("+++"))
+      || (line.startsWith("-") && !line.startsWith("---"))
+    )
+    .length;
+}
+
+function isDescendantOf(realities: Reality[], candidateId: string, ancestorId: string): boolean {
+  let candidate = realities.find((entry) => entry.id === candidateId);
+  while (candidate?.parentId) {
+    if (candidate.parentId === ancestorId) return true;
+    candidate = realities.find((entry) => entry.id === candidate?.parentId);
+  }
+  return false;
+}
+
 export class MissionOrchestrator {
   private readonly operationQueues = new Map<string, Promise<void>>();
   private readonly activeOperations = new Map<string, MissionOperation>();
+  private readonly memoryIntegrity = new MemoryIntegrityService();
 
   constructor(
     private readonly repository: RealityRepository,
@@ -102,6 +148,17 @@ export class MissionOrchestrator {
       throw new Error("Mission Composer is available only in real Codex mode.");
     }
     const draft = MissionDefinitionDraftSchema.parse(input);
+    if (draft.intervention?.targetDepth && draft.intervention.targetDepth > draft.maxDreamDepth) {
+      throw new Error("The intervention target depth must fit within the Mission Dream depth.");
+    }
+    for (const pattern of [
+      ...(draft.intervention?.allowedPaths ?? []),
+      ...(draft.intervention?.protectedPaths ?? [])
+    ]) {
+      if (!safePathPattern(pattern)) {
+        throw new Error(`Intervention path pattern must remain relative to the Reality: ${pattern}`);
+      }
+    }
     const id = randomUUID();
     const workspace = await this.workspaces.open(draft.repositoryPath, id);
     const createdAt = now();
@@ -112,6 +169,14 @@ export class MissionOrchestrator {
       wakeContract: draft.wakeContract.length ? draft.wakeContract : DEFAULT_WAKE_CONTRACT,
       proofs: draft.proofs.map((proof) => ({ ...proof, id: randomUUID() })),
       subjects: draft.subjects.map((subject) => ({ ...subject, id: randomUUID() })),
+      intervention: draft.intervention ? {
+        ...draft.intervention,
+        id: randomUUID(),
+        subject: {
+          ...draft.intervention.subject,
+          id: randomUUID()
+        }
+      } : undefined,
       createdAt
     });
     const root = RealityEntity.create({
@@ -170,6 +235,8 @@ export class MissionOrchestrator {
       events: [],
       activeRealityId: reality.id,
       memories: [],
+      interventions: [],
+      memoryIntegrity: [],
       proofResults: [],
       finalDiff: "",
       createdAt,
@@ -216,11 +283,14 @@ export class MissionOrchestrator {
           case "inspect":
             await this.inspect(run, active, workspace.worktrees);
             break;
+          case "intervene":
+            await this.intervene(run, active, workspace.worktrees);
+            break;
           case "create_dream":
             await this.createDream(run, active, workspace.worktrees);
             break;
           case "kick":
-            await this.kick(run, active);
+            await this.kick(run, active, workspace.worktrees);
             break;
           case "synthesise":
             await this.synthesise(run, active, workspace.worktrees);
@@ -278,6 +348,18 @@ export class MissionOrchestrator {
       async (event) => this.emitCodexEvent(run, reality, event)
     );
     this.validateSubjectReports(reality, result.report);
+    const intervention = run.interventions.find((entry) =>
+      entry.realityId === reality.id && entry.status === "sealed"
+    );
+    if (intervention) {
+      if (!result.report.adversarialDiagnosis) {
+        throw new CodexOutputValidationError("InvestigationReportSchema", [{
+          path: "adversarialDiagnosis",
+          code: "missing_sealed_intervention_diagnosis"
+        }]);
+      }
+      intervention.diagnosis = result.report.adversarialDiagnosis;
+    }
     const entity = RealityEntity.hydrate(reality)
       .bindRuntime(result.threadId, reality.worktreePath!, reality.branchName!);
     this.applyInvestigation(entity, result.report);
@@ -291,8 +373,124 @@ export class MissionOrchestrator {
     await this.emit(run, updated, "inspection.completed", `Codex inspected ${run.definition.scope} and returned validated evidence.`, {
       missionId: run.id,
       evidenceCount: result.report.evidence.length,
-      subjectReportCount: result.report.subjectReports.length
+      subjectReportCount: result.report.subjectReports.length,
+      adversarialDiagnosisReturned: Boolean(result.report.adversarialDiagnosis)
     });
+  }
+
+  private async intervene(
+    run: MissionRun,
+    reality: Reality,
+    worktrees: WorktreeManagerPort
+  ): Promise<void> {
+    const contract = this.requireInterventionContract(run, reality);
+    const ledger = this.requireInterventionLedger(run, reality);
+    ledger.status = "injecting";
+    ledger.startedAt = now();
+    await this.emit(run, reality, "intervention.started", `Adversarial Subject entered ${reality.name} under a sealed intervention contract.`, {
+      missionId: run.id,
+      contractId: contract.id,
+      subjectId: contract.subject.id,
+      subjectName: contract.subject.name,
+      subjectRole: contract.subject.role,
+      faultClasses: contract.faultClasses,
+      maxChangedFiles: contract.maxChangedFiles,
+      maxPatchLines: contract.maxPatchLines,
+      tokenBudget: contract.tokenBudget,
+      maxMinutes: contract.maxMinutes
+    });
+
+    let baselineCommit: string | undefined;
+    try {
+      baselineCommit = await worktrees.checkpoint(
+        reality.worktreePath!,
+        `Reality baseline before sealed intervention ${ledger.id}`
+      );
+      ledger.baselineCommit = baselineCommit;
+      const result = await this.codexRuntime.intervene(
+        reality,
+        contract,
+        async (event) => this.emitSealedInterventionEvent(run, reality, contract, event)
+      );
+      const actualChangedFiles = await worktrees.listChangedFiles(reality.worktreePath!);
+      const validated = await this.validateIntervention(
+        worktrees,
+        reality,
+        contract,
+        result.report,
+        actualChangedFiles,
+        result.events
+      );
+      const interventionCommit = await worktrees.sealChanges(
+        reality.worktreePath!,
+        validated.changedFiles,
+        `Sealed intervention ${ledger.id}`,
+        baselineCommit
+      );
+
+      ledger.status = "sealed";
+      ledger.sealedAt = now();
+      ledger.interventionCommit = interventionCommit;
+      ledger.subjectThreadId = result.subjectThreadId;
+      ledger.changedFileCount = validated.changedFiles.length;
+      ledger.patchLineCount = validated.patchLines;
+      ledger.report = result.report;
+
+      const investigatorSubjects = run.definition.subjects.map((charter) => ({
+        ...charter,
+        id: randomUUID(),
+        realityId: reality.id,
+        status: "entered" as const,
+        findings: []
+      }));
+      const updated: Reality = {
+        ...reality,
+        subjects: investigatorSubjects,
+        worldState: {
+          ...reality.worldState,
+          simulatedMinutes: reality.worldState.simulatedMinutes
+            + 3 * (reality.constitution.timeDilation ?? 1),
+          currentFocus: "Diagnosing a sealed intervention",
+          summary: "A bounded mutation is present; its cause remains sealed from investigator Subjects.",
+          status: "Intervention sealed; diagnosis ready"
+        },
+        updatedAt: now()
+      };
+      this.replaceReality(run, updated);
+      await this.materialiseContext(worktrees, updated);
+      await this.emit(run, updated, "intervention.sealed", `Intervention sealed: ${validated.changedFiles.length} in-scope file${validated.changedFiles.length === 1 ? "" : "s"} changed and rollback retained.`, {
+        missionId: run.id,
+        contractId: contract.id,
+        changedFileCount: validated.changedFiles.length,
+        patchLineCount: validated.patchLines,
+        rollbackReady: true
+      });
+      for (const subject of investigatorSubjects) {
+        await this.emit(run, updated, "subject.entered", `Subject entered after the intervention was sealed: ${subject.name}, ${subject.role}.`, {
+          missionId: run.id,
+          subjectId: subject.id,
+          role: subject.role,
+          disclosure: "intervention-details-sealed"
+        });
+      }
+    } catch (error) {
+      if (baselineCommit) {
+        await worktrees.restoreCheckpoint(reality.worktreePath!, baselineCommit).catch(() => undefined);
+      }
+      ledger.status = "rejected";
+      ledger.rejectionReason = safeFailure(error);
+      ledger.report = undefined;
+      ledger.interventionCommit = undefined;
+      ledger.subjectThreadId = undefined;
+      ledger.changedFileCount = undefined;
+      ledger.patchLineCount = undefined;
+      await this.emit(run, reality, "intervention.rejected", `Sealed intervention rejected and the Dream restored to its baseline: ${safeFailure(error)}`, {
+        missionId: run.id,
+        contractId: contract.id,
+        rollbackApplied: Boolean(baselineCommit)
+      });
+      throw error;
+    }
   }
 
   private async createDream(
@@ -307,9 +505,14 @@ export class MissionOrchestrator {
     if (!proposal) throw new Error("Codex has not returned an open uncertainty worth dreaming.");
     const parentEntity = RealityEntity.hydrate(parent).updateProposal(proposal.id, "dreaming");
     this.replaceReality(run, parentEntity.snapshot());
+    const childDepth = parent.depth + 1;
+    const interventionContract = run.definition.intervention?.enabled
+      && run.definition.intervention.targetDepth === childDepth
+      ? run.definition.intervention
+      : undefined;
     const child = RealityEntity.create({
       parentId: parent.id,
-      depth: parent.depth + 1,
+      depth: childDepth,
       kind: "dream",
       name: proposal.title,
       premise: proposal.premise,
@@ -322,7 +525,13 @@ export class MissionOrchestrator {
             .filter((entry) => entry.kind === "invariant")
             .map((entry) => entry.summary)
         ],
-        timeDilation: Math.max(2, parent.depth + 2)
+        timeDilation: Math.max(2, parent.depth + 2),
+        runtimeLaws: interventionContract
+          ? [
+              ...(parent.constitution.runtimeLaws ?? []),
+              "A sealed adversarial intervention may exist; diagnose it only from observable code, behavior, and test evidence."
+            ]
+          : parent.constitution.runtimeLaws
       },
       inheritedAnchors: parent.anchors,
       initialBeliefs: parent.beliefs.slice(-1).map((belief) => ({
@@ -331,14 +540,21 @@ export class MissionOrchestrator {
         origin: "inherited" as const
       }))
     });
-    for (const charter of run.definition.subjects) {
-      child.addSubject({
-        ...charter,
-        status: "entered",
-        findings: []
-      });
+    if (!interventionContract) {
+      for (const charter of run.definition.subjects) {
+        child.addSubject({
+          ...charter,
+          id: randomUUID(),
+          status: "entered",
+          findings: []
+        });
+      }
     }
-    const descriptor = await worktrees.create(child.snapshot().id, "HEAD", parent.worktreePath);
+    const descriptor = await worktrees.create(
+      child.snapshot().id,
+      parent.branchName ?? "HEAD",
+      parent.worktreePath
+    );
     child
       .bindRuntime(`unbound:${child.snapshot().id}`, descriptor.path, descriptor.branchName)
       .setStatus("exploring", "Dream formed; awaiting Codex investigation");
@@ -352,6 +568,25 @@ export class MissionOrchestrator {
       depth: dream.depth,
       uncertainty: proposal.uncertainty
     });
+    if (interventionContract) {
+      const ledger: AdversarialInterventionLedger = {
+        id: randomUUID(),
+        contractId: interventionContract.id,
+        realityId: dream.id,
+        status: "armed",
+        armedAt: now()
+      };
+      run.interventions.push(ledger);
+      await this.emit(run, dream, "intervention.armed", `Sealed intervention armed for ${dream.name}; no mutation has run.`, {
+        missionId: run.id,
+        contractId: interventionContract.id,
+        faultClasses: interventionContract.faultClasses,
+        allowedPathCount: interventionContract.allowedPaths.length,
+        protectedPathCount: interventionContract.protectedPaths.length,
+        maxChangedFiles: interventionContract.maxChangedFiles,
+        maxPatchLines: interventionContract.maxPatchLines
+      });
+    }
     for (const subject of dream.subjects) {
       await this.emit(run, dream, "subject.entered", `Subject entered: ${subject.name}, ${subject.role}.`, {
         missionId: run.id,
@@ -361,7 +596,11 @@ export class MissionOrchestrator {
     }
   }
 
-  private async kick(run: MissionRun, reality: Reality): Promise<void> {
+  private async kick(
+    run: MissionRun,
+    reality: Reality,
+    worktrees: WorktreeManagerPort
+  ): Promise<void> {
     if (!reality.parentId) throw new Error("The waking Reality cannot be kicked.");
     await this.emit(run, reality, "kick.triggered", `Kick triggered: ${reality.name} must return what generalises.`, {
       missionId: run.id
@@ -375,13 +614,56 @@ export class MissionOrchestrator {
       .setWakeReport(result.report);
     const kicked = entity.snapshot();
     this.replaceReality(run, kicked);
+    const parent = this.requireReality(run, reality.parentId);
+    const parentEntity = RealityEntity.hydrate(parent);
+    const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
+    const interventionOutcome = await this.revealIntervention(run, kicked);
+    const integritySeal = await this.sealMemoryIntegrity(
+      run,
+      kicked,
+      parent,
+      result.report,
+      worktrees,
+      interventionOutcome
+    );
+    run.memoryIntegrity = [
+      ...run.memoryIntegrity.filter((entry) => entry.realityId !== reality.id),
+      integritySeal
+    ];
+    if (integritySeal.verdict === "quarantined") {
+      if (proposal) parentEntity.updateProposal(proposal.id, "open");
+      const protectedParent = parentEntity
+        .advanceTime(
+          2,
+          "Quarantining unverified memory",
+          "The parent Reality rejected a memory that failed its immutable integrity policy."
+        )
+        .snapshot();
+      this.replaceReality(run, protectedParent);
+      run.activeRealityId = parent.id;
+      run.status = "exploring";
+      await this.emit(run, kicked, "memory.quarantined", `Memory quarantined from ${reality.name}: parent-owned integrity policy rejected one or more checks.`, {
+        missionId: run.id,
+        parentRealityId: parent.id,
+        failedChecks: integritySeal.checks
+          .filter((check) => check.status === "failed")
+          .map((check) => check.name),
+        policyVersion: integritySeal.policyVersion,
+        sealId: integritySeal.id
+      });
+      return;
+    }
+    await this.emit(run, kicked, "memory.verified", `Memory integrity verified for ${reality.name}; the parent Reality may inherit it.`, {
+      missionId: run.id,
+      parentRealityId: parent.id,
+      sealId: integritySeal.id,
+      descendantSealCount: integritySeal.descendantSealIds.length,
+      policyVersion: integritySeal.policyVersion
+    });
     run.memories = [
       ...run.memories.filter((memory) => memory.realityId !== result.report.realityId),
       result.report
     ];
-    const parent = this.requireReality(run, reality.parentId);
-    const parentEntity = RealityEntity.hydrate(parent);
-    const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
     if (proposal) parentEntity.updateProposal(proposal.id, "resolved");
     const awakenedParent = parentEntity
       .advanceTime(4, "Receiving validated memory", result.report.recommendation)
@@ -404,6 +686,52 @@ export class MissionOrchestrator {
   ): Promise<void> {
     if (root.kind !== "waking" || !run.memories.length) {
       throw new Error("Returned Dream memories are required before synthesis.");
+    }
+    const unverifiedMemories: WakeReport[] = [];
+    for (const memory of run.memories) {
+      const source = this.requireReality(run, memory.realityId);
+      const seal = run.memoryIntegrity.find((candidate) =>
+        candidate.realityId === memory.realityId
+      );
+      let failedCheck: "report-digest" | "descendant-lineage" | "source-state" | undefined;
+      if (seal?.verdict === "verified") {
+        if (!this.memoryIntegrity.matchesReport(seal, memory)) {
+          failedCheck = "report-digest";
+        } else if (!this.memoryIntegrity.matchesDescendantSeals(
+          seal,
+          source,
+          run.realities,
+          run.memoryIntegrity
+        )) {
+          failedCheck = "descendant-lineage";
+        } else if (!await this.matchesSealedSource(worktrees, source, seal)) {
+          failedCheck = "source-state";
+        }
+      }
+      if (!seal || seal.verdict !== "verified" || failedCheck) {
+        unverifiedMemories.push(memory);
+      }
+      if (seal && failedCheck) {
+        const quarantined = this.memoryIntegrity.quarantine(
+          seal,
+          failedCheck,
+          `The ${failedCheck} check changed after this memory crossed its Kick boundary.`,
+          now()
+        );
+        run.memoryIntegrity = [
+          ...run.memoryIntegrity.filter((entry) => entry.realityId !== source.id),
+          quarantined
+        ];
+        await this.emit(run, source, "memory.quarantined", `Memory quarantined from ${source.name}: ${failedCheck} no longer matches its sealed value.`, {
+          missionId: run.id,
+          sealId: quarantined.id,
+          failedChecks: [failedCheck],
+          policyVersion: quarantined.policyVersion
+        });
+      }
+    }
+    if (unverifiedMemories.length) {
+      throw new Error("Synthesis rejected Dream memory whose report, lineage, or sealed Git source changed.");
     }
     await this.promoteArtefacts(run, root, worktrees);
     const result = await this.codexRuntime.synthesise(
@@ -595,6 +923,227 @@ export class MissionOrchestrator {
         code: "subject_identity_mismatch"
       }]);
     }
+    if (report.adversarialDiagnosis) {
+      const evidenceTitles = new Set(report.evidence.map((entry) => entry.title));
+      if (report.adversarialDiagnosis.evidenceTitles.some((title) => !evidenceTitles.has(title))) {
+        throw new CodexOutputValidationError("InvestigationReportSchema", [{
+          path: "adversarialDiagnosis.evidenceTitles",
+          code: "diagnosis_evidence_not_returned"
+        }]);
+      }
+    }
+  }
+
+  private async validateIntervention(
+    worktrees: WorktreeManagerPort,
+    reality: Reality,
+    contract: MissionInterventionContract,
+    report: AdversarialInterventionReport,
+    actualChangedFiles: string[],
+    events: CodexRuntimeEvent[]
+  ): Promise<{ changedFiles: string[]; patchLines: number }> {
+    const changedFiles = [...new Set(actualChangedFiles)].sort();
+    if (!changedFiles.length) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "changedFiles",
+        code: "intervention_changed_no_files"
+      }]);
+    }
+    if (changedFiles.length > contract.maxChangedFiles) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "changedFiles",
+        code: "changed_file_budget_exceeded"
+      }]);
+    }
+    const requiredProtection = [".git/**", ".inception/**"];
+    for (const changedFile of changedFiles) {
+      if (!safeRelativePath(changedFile)) {
+        throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+          path: "changedFiles",
+          code: "path_outside_reality"
+        }]);
+      }
+      if (!matchesAnyPathPattern(changedFile, contract.allowedPaths)) {
+        throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+          path: changedFile,
+          code: "path_outside_intervention_allowlist"
+        }]);
+      }
+      if (matchesAnyPathPattern(changedFile, [...requiredProtection, ...contract.protectedPaths])) {
+        throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+          path: changedFile,
+          code: "protected_path_changed"
+        }]);
+      }
+    }
+    const reportedFiles = [...new Set(report.changedFiles)].sort();
+    if (
+      reportedFiles.length !== changedFiles.length
+      || reportedFiles.some((entry, index) => entry !== changedFiles[index])
+    ) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "changedFiles",
+        code: "reported_diff_mismatch"
+      }]);
+    }
+    let patchLines = 0;
+    for (const changedFile of changedFiles) {
+      patchLines += patchLineCount(await worktrees.diff(reality.worktreePath!, changedFile));
+    }
+    if (patchLines > contract.maxPatchLines) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "changedFiles",
+        code: "patch_line_budget_exceeded"
+      }]);
+    }
+    const observedTokens = events.reduce((total, event) =>
+      total
+      + (event.metadata?.inputTokens ?? 0)
+      + (event.metadata?.outputTokens ?? 0)
+      + (event.metadata?.reasoningTokens ?? 0), 0);
+    if (observedTokens > contract.tokenBudget) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "tokenBudget",
+        code: "intervention_token_budget_exceeded"
+      }]);
+    }
+    return { changedFiles, patchLines };
+  }
+
+  private async revealIntervention(
+    run: MissionRun,
+    reality: Reality
+  ): Promise<"detected" | "partial" | "missed" | undefined> {
+    const ledger = run.interventions.find((entry) =>
+      entry.realityId === reality.id && entry.status === "sealed"
+    );
+    if (!ledger) return undefined;
+    if (!ledger.report || !ledger.diagnosis) return "missed";
+    const actualFiles = new Set(ledger.report.changedFiles);
+    const identifiedFiles = [...new Set(
+      ledger.diagnosis.suspectedChangedFiles.filter((entry) => actualFiles.has(entry))
+    )].sort();
+    const missedFiles = ledger.report.changedFiles
+      .filter((entry) => !identifiedFiles.includes(entry))
+      .sort();
+    const faultClassMatched = ledger.diagnosis.faultClass === ledger.report.faultClass;
+    const outcome = faultClassMatched && !missedFiles.length
+      ? "detected" as const
+      : faultClassMatched || identifiedFiles.length
+        ? "partial" as const
+        : "missed" as const;
+    ledger.status = "revealed";
+    ledger.revealedAt = now();
+    ledger.assessment = {
+      outcome,
+      faultClassMatched,
+      identifiedFiles,
+      missedFiles,
+      evidenceTitles: ledger.diagnosis.evidenceTitles,
+      assessedAt: now()
+    };
+    await this.emit(run, reality, "intervention.revealed", `Intervention revealed: investigator Subjects ${outcome === "detected" ? "identified" : outcome === "partial" ? "partially identified" : "missed"} the controlled fault.`, {
+      missionId: run.id,
+      contractId: ledger.contractId,
+      outcome,
+      faultClass: ledger.report.faultClass,
+      faultClassMatched,
+      identifiedFileCount: identifiedFiles.length,
+      changedFileCount: ledger.report.changedFiles.length,
+      evidenceTitles: ledger.diagnosis.evidenceTitles
+    });
+    return outcome;
+  }
+
+  private async sealMemoryIntegrity(
+    run: MissionRun,
+    reality: Reality,
+    parent: Reality,
+    report: WakeReport,
+    worktrees: WorktreeManagerPort,
+    interventionOutcome: "detected" | "partial" | "missed" | undefined
+  ): Promise<MemoryIntegritySeal> {
+    let artefactsResolvable = true;
+    for (const artefact of report.artefacts) {
+      if (!safeRelativePath(artefact.path)) {
+        artefactsResolvable = false;
+        break;
+      }
+      if (artefact.content !== undefined || artefact.kind === "note") continue;
+      try {
+        await worktrees.readFile(reality.worktreePath!, artefact.path);
+      } catch {
+        artefactsResolvable = false;
+        break;
+      }
+    }
+
+    const descendantSeals = run.memoryIntegrity.filter((seal) =>
+      seal.verdict === "verified"
+      && isDescendantOf(run.realities, seal.realityId, reality.id)
+    );
+    const descendantSourcesValid = (await Promise.all(descendantSeals.map(async (seal) => {
+      const source = run.realities.find((candidate) => candidate.id === seal.realityId);
+      return Boolean(source) && await this.matchesSealedSource(worktrees, source!, seal);
+    }))).every(Boolean);
+    const sourceState = await worktrees.diff(reality.worktreePath!);
+    const sourceCommit = await worktrees.checkpoint(
+      reality.worktreePath!,
+      `Memory integrity seal for ${reality.id}`
+    );
+    return this.memoryIntegrity.seal({
+      reality,
+      parent,
+      report,
+      realities: run.realities,
+      inheritedMemories: run.memories,
+      priorSeals: run.memoryIntegrity,
+      sourceState,
+      sourceCommit,
+      artefactsResolvable,
+      descendantSourcesValid,
+      interventionOutcome,
+      sealedAt: now()
+    });
+  }
+
+  private async matchesSealedSource(
+    worktrees: WorktreeManagerPort,
+    reality: Reality,
+    seal: MemoryIntegritySeal
+  ): Promise<boolean> {
+    if (!reality.worktreePath) return false;
+    try {
+      const [currentCommit, clean] = await Promise.all([
+        worktrees.currentCommit(reality.worktreePath),
+        worktrees.isClean(reality.worktreePath)
+      ]);
+      return this.memoryIntegrity.matchesSealedSource(seal, currentCommit, clean);
+    } catch {
+      return false;
+    }
+  }
+
+  private requireInterventionContract(
+    run: MissionRun,
+    reality: Reality
+  ): MissionInterventionContract {
+    const contract = run.definition.intervention;
+    if (!contract || contract.targetDepth !== reality.depth) {
+      throw new Error("No adversarial intervention is configured for this Reality.");
+    }
+    return contract;
+  }
+
+  private requireInterventionLedger(
+    run: MissionRun,
+    reality: Reality
+  ): AdversarialInterventionLedger {
+    const ledger = run.interventions.find((entry) => entry.realityId === reality.id);
+    if (!ledger || !["armed", "rejected"].includes(ledger.status)) {
+      throw new Error("The sealed intervention is not ready to run.");
+    }
+    return ledger;
   }
 
   private async promoteArtefacts(
@@ -640,6 +1189,19 @@ export class MissionOrchestrator {
   private describeAction(run: MissionRun, active: Reality): MissionNextAction | null {
     if (run.status === "stabilised") return null;
     if (active.kind === "dream") {
+      const intervention = run.interventions.find((entry) =>
+        entry.realityId === active.id
+      );
+      if (intervention && (intervention.status === "armed" || intervention.status === "rejected")) {
+        return {
+          id: "intervene",
+          kind: "intervene",
+          executor: "codex",
+          label: intervention.status === "rejected"
+            ? `Retry the bounded adversarial intervention in ${active.name}`
+            : `Run the bounded adversarial intervention in ${active.name}`
+        };
+      }
       if (active.codexThreadId?.startsWith("unbound:")) {
         return {
           id: "inspect",
@@ -702,7 +1264,7 @@ export class MissionOrchestrator {
         id: "synthesise",
         kind: "advance",
         executor: "codex",
-        label: "Synthesize validated memories into the waking Reality"
+        label: "Synthesise validated memories into the waking Reality"
       };
     }
     if (!run.proofResults.length) {
@@ -782,6 +1344,34 @@ export class MissionOrchestrator {
     });
   }
 
+  private async emitSealedInterventionEvent(
+    run: MissionRun,
+    reality: Reality,
+    contract: MissionInterventionContract,
+    event: CodexRuntimeEvent
+  ): Promise<void> {
+    if (event.type === "subject") {
+      await this.emitCodexEvent(run, reality, event);
+      return;
+    }
+    if (event.metadata?.stage === "model") {
+      await this.emit(run, reality, "codex.progress", `${event.metadata.model ?? "Codex"} entered the sealed intervention coordinator thread.`, {
+        missionId: run.id,
+        contractId: contract.id,
+        kind: "model",
+        metadata: {
+          stage: "model",
+          status: event.metadata.status,
+          model: event.metadata.model,
+          sdkVersion: event.metadata.sdkVersion,
+          disclosure: "intervention-details-sealed"
+        },
+        operationId: this.activeOperations.get(run.id)?.id,
+        action: "intervene"
+      });
+    }
+  }
+
   private async emit(
     run: MissionRun,
     reality: Reality,
@@ -814,9 +1404,24 @@ export class MissionOrchestrator {
   private present(run: MissionRun): MissionSnapshot {
     const activeReality = this.requireActive(run);
     const operation = this.activeOperations.get(run.id) ?? null;
+    const presentedRun = MissionRunSchema.parse({
+      ...run,
+      interventions: run.interventions.map((entry) => {
+        if (entry.status === "revealed" || entry.status === "rejected") return entry;
+        const {
+          baselineCommit: _baselineCommit,
+          interventionCommit: _interventionCommit,
+          subjectThreadId: _subjectThreadId,
+          report: _report,
+          ...publicEntry
+        } = entry;
+        return publicEntry;
+      })
+    });
     return {
-      run: MissionRunSchema.parse(run),
-      activeReality,
+      run: presentedRun,
+      activeReality: presentedRun.realities.find((entry) => entry.id === activeReality.id)
+        ?? activeReality,
       operation: operation ? { ...operation } : null,
       nextAction: operation ? null : this.describeAction(run, activeReality)
     };

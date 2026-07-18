@@ -19,6 +19,11 @@ export interface WorktreeManagerPort {
   readFile(worktreePath: string, relativePath: string): Promise<string>;
   listChangedFiles(worktreePath: string): Promise<string[]>;
   diff(worktreePath: string, pathspec?: string): Promise<string>;
+  checkpoint(worktreePath: string, message: string): Promise<string>;
+  currentCommit(worktreePath: string): Promise<string>;
+  isClean(worktreePath: string): Promise<boolean>;
+  sealChanges(worktreePath: string, paths: string[], message: string, baselineRef: string): Promise<string>;
+  restoreCheckpoint(worktreePath: string, ref: string): Promise<void>;
   run(worktreePath: string, command: string, args: string[]): Promise<WorktreeRunResult>;
 }
 

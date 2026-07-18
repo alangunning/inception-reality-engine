@@ -22,12 +22,12 @@ async function confirmDream(page: Page): Promise<void> {
 function missionSnapshotFixture() {
   const occurredAt = "2026-07-18T14:30:00.000Z";
   const constitution = {
-    mission: "Make dependency loading resilient under partial registry failure.",
-    scope: "dependency loading",
-    premise: "The fallback path remains safe when the primary registry is unavailable.",
-    constraints: ["Preserve the public API.", "Do not expose raw model reasoning."],
+    mission: "Find and repair cross-user authorization failures in VAmPI.",
+    scope: "VAmPI API authorization",
+    premise: "A valid token prevents one user from reading another user's private resources.",
+    constraints: ["Use only the authorized local training target.", "Do not expose raw model reasoning."],
     wakeContract: ["Return evidence and artefacts."],
-    parentTruths: ["Existing callers remain compatible."],
+    parentTruths: ["Private book secrets require owner authorization."],
     timeDilation: 2,
     runtimeLaws: ["A failed proof blocks stabilisation."]
   };
@@ -35,9 +35,9 @@ function missionSnapshotFixture() {
     id: "proof-tests",
     realityId: "root-reality",
     ownerRealityId: "root-reality",
-    name: "Repository test suite",
+    name: "Authorization regression",
     description: "Immutable proof",
-    testCommand: "npm test",
+    testCommand: "python3 tests/test_authorization_regression.py",
     immutable: true,
     hidden: false,
     status: "pending"
@@ -47,12 +47,12 @@ function missionSnapshotFixture() {
     parentId: null,
     depth: 0,
     kind: "waking",
-    name: "Dependency Boundary",
+    name: "VAmPI Authorization Breach",
     status: "exploring",
     premise: constitution.premise,
     constitution: { ...constitution, timeDilation: 1 },
     worldState: {
-      summary: "Primary registry failure is worth isolating.",
+      summary: "Cross-user access is worth isolating.",
       implementationState: "Codex inspection complete",
       simulatedMinutes: 12,
       currentFocus: "Choosing a decisive counterfactual",
@@ -72,12 +72,12 @@ function missionSnapshotFixture() {
     proposals: [{
       id: "proposal-1",
       realityId: "root-reality",
-      title: "Registry partition",
-      premise: "Assume the primary registry is unavailable for ten minutes.",
-      uncertainty: "Can the fallback preserve integrity under partial results?",
-      rationale: "The primary path cannot answer this.",
+      title: "Cross-user book secret",
+      premise: "Assume an ordinary authenticated user requests a book owned by another user.",
+      uncertainty: "Does token authentication enforce resource ownership?",
+      rationale: "Authentication and object authorization are separate boundaries.",
       impactProbability: 0.76,
-      expectedInsight: "A deterministic failure test.",
+      expectedInsight: "A deterministic cross-user authorization test.",
       estimatedTokens: 18_000,
       costClass: "medium",
       status: "dreaming"
@@ -90,9 +90,9 @@ function missionSnapshotFixture() {
     updatedAt: occurredAt
   };
   const subjects = [
-    ["subject-1", "Ariadne", "Investigator"],
-    ["subject-2", "Saito", "Skeptic"],
-    ["subject-3", "Eames", "Test engineer"]
+    ["subject-1", "Ariadne", "Authorization investigator"],
+    ["subject-2", "Saito", "Red team operator"],
+    ["subject-3", "Eames", "Security test engineer"]
   ].map(([id, name, role]) => ({
     id,
     realityId: "dream-reality",
@@ -108,11 +108,11 @@ function missionSnapshotFixture() {
     parentId: "root-reality",
     depth: 1,
     kind: "dream",
-    name: "Registry partition",
-    premise: "Assume the primary registry is unavailable for ten minutes.",
+    name: "Cross-user book secret",
+    premise: "Assume an ordinary authenticated user requests a book owned by another user.",
     constitution,
     worldState: {
-      summary: "Fallback accepts stale metadata without an integrity proof.",
+      summary: "A valid token can retrieve another user's private book secret.",
       implementationState: "Codex inspection complete",
       simulatedMinutes: 24,
       currentFocus: "Evaluating counterfactual evidence",
@@ -122,7 +122,7 @@ function missionSnapshotFixture() {
     beliefs: [{
       id: "belief-dream",
       realityId: "dream-reality",
-      statement: "Fallback integrity requires an explicit signed-metadata invariant.",
+      statement: "Authentication must be paired with object-level owner authorization.",
       confidence: 0.91,
       origin: "observed",
       evidenceIds: ["evidence-1"],
@@ -132,10 +132,10 @@ function missionSnapshotFixture() {
       id: "evidence-1",
       realityId: "dream-reality",
       kind: "test",
-      title: "Unsigned fallback accepted",
-      summary: "A regression test reproduces stale unsigned metadata entering the dependency graph.",
+      title: "Cross-user secret returned",
+      summary: "A regression test reproduces one user retrieving another user's private book secret.",
       source: "Eames",
-      artefactPath: "tests/registry-partition.spec.ts",
+      artefactPath: "tests/test_authorization_regression.py",
       provenance: "model-reported",
       createdAt: occurredAt
     }],
@@ -194,7 +194,7 @@ function missionSnapshotFixture() {
       id: "mission-1",
       definition: {
         id: "mission-1",
-        name: "Dependency Boundary",
+        name: "VAmPI Authorization Breach",
         repositoryPath: "/tmp/example",
         mission: constitution.mission,
         scope: constitution.scope,
@@ -205,8 +205,8 @@ function missionSnapshotFixture() {
         proofs: [{
           id: anchor.id,
           name: anchor.name,
-          executable: "npm",
-          args: ["test"]
+          executable: "python3",
+          args: ["tests/test_authorization_regression.py"]
         }],
         subjects: subjects.map(({ id, name, role, mission }) => ({ id, name, role, mission })),
         tokenBudget: 120_000,
@@ -218,6 +218,7 @@ function missionSnapshotFixture() {
       events,
       activeRealityId: dream.id,
       memories: [],
+      interventions: [],
       proofResults: [],
       finalDiff: "",
       createdAt: occurredAt,
@@ -228,7 +229,7 @@ function missionSnapshotFixture() {
     nextAction: {
       id: "kick",
       kind: "kick",
-      label: "Kick Registry partition: return validated memory",
+      label: "Kick Cross-user book secret: return validated memory",
       executor: "codex"
     }
   };
@@ -428,6 +429,8 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expect(page.locator('.anchor-list .anchor-passed:not([data-testid="regression-proof"])')).toHaveCount(3);
   await expect(page.getByTestId("regression-proof")).toContainText("Inherited regression suite");
   await expect(page.locator(".memory-report")).toHaveCount(2);
+  await expect(page.getByTestId("canonical-memory-seal")).toHaveCount(2);
+  await expect(page.getByTestId("canonical-memory-seal").first()).toContainText("REALITY TOTEM");
   await expect(page.locator(".diff-workspace")).toBeVisible();
   await expect(page.locator(".diff-workspace pre")).toHaveCount(0);
   await page.getByTestId("reveal-code").click();
@@ -457,7 +460,11 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
 
 test("Mission Composer exposes general nested Reality and native Subject evidence", async ({ page }) => {
   const fixture = missionSnapshotFixture();
+  expect("memoryIntegrity" in fixture.run).toBe(false);
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
   let missionPosts = 0;
+  let targetPosts = 0;
   await page.route("**/api/missions/events?**", (route) => route.fulfill({
     status: 200,
     contentType: "text/event-stream",
@@ -473,20 +480,48 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
       json: {
         runs: [],
         runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
-        enabled: true,
-        defaultRepositoryPath: "/tmp/example"
+        enabled: true
       }
+    });
+  });
+  await page.route("**/api/missions/targets", async (route) => {
+    const target = {
+      id: "vampi",
+      name: "VAmPI",
+      description: "A small, deliberately vulnerable Flask API for authorized local security training.",
+      sourceUrl: "https://github.com/erev0s/VAmPI",
+      revision: "f16052dce83f05847133ec98f01c5193a41de7d8",
+      license: "MIT",
+      catalogueUrl: "https://ctf.owasp.org/",
+      prepared: route.request().method() === "POST",
+      repositoryPath: route.request().method() === "POST" ? "/tmp/example" : undefined
+    };
+    if (route.request().method() === "POST") targetPosts += 1;
+    await route.fulfill({
+      json: route.request().method() === "POST"
+        ? { target }
+        : { targets: [target] }
     });
   });
 
   await page.goto("/missions/new");
   await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
   await expect(page.locator(".mission-form")).toContainText("NO CODEX USAGE ON CREATE");
-  await expect(page.getByLabel("Reality name")).toHaveValue("Dependency Boundary");
-  await expect(page.getByLabel("Mission")).toHaveValue(/dependency loading resilient/i);
-  await expect(page.getByLabel("Scope")).toHaveValue(/registry fallback behavior/i);
-  await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/fallback registry/i);
-  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/integrity verification/i);
+  await expect(page.getByTestId("training-target")).toContainText("VAmPI");
+  await expect(page.getByTestId("training-target")).toContainText("OWASP CATALOGUE");
+  await expect(page.getByLabel("Reality name")).toHaveValue("VAmPI Authorization Breach");
+  await expect(page.getByLabel("Mission")).toHaveValue(/penetration-test VAmPI/i);
+  await expect(page.getByLabel("Scope")).toHaveValue(/Flask API authorization/i);
+  await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/valid token prevents/i);
+  await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/authorized for local security training/i);
+  await expect(page.getByLabel("Local Git repository")).toHaveValue("");
+  await expect(page.getByLabel(/Arm one bounded chaos-engineer intervention/)).not.toBeChecked();
+  await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
+  expect(targetPosts).toBe(0);
+
+  await page.getByRole("button", { name: "Prepare VAmPI locally" }).click();
+  await expect(page.getByLabel("Local Git repository")).toHaveValue("/tmp/example");
+  expect(targetPosts).toBe(1);
 
   const defaultMission = await page.getByLabel("Mission").inputValue();
   await page.getByLabel("Mission").fill(" ");
@@ -498,11 +533,12 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   expect(missionPosts).toBe(1);
 
   await expect(page.getByTestId("mission-reality-tree").locator(".mission-node")).toHaveCount(2);
-  await expect(page.locator(".mission-locus")).toContainText("Registry partition");
+  await expect(page.locator(".mission-locus")).toContainText("Cross-user book secret");
   await expect(page.locator(".mission-subjects article")).toHaveCount(3);
   await expect(page.locator(".mission-subjects")).toContainText("Codex thread");
   await expect(page.locator(".mission-event-list")).toContainText("Subject completed bounded investigation");
-  await expect(page.locator(".mission-action-dock")).toContainText("Kick Registry partition");
+  await expect(page.getByTestId("memory-integrity")).toContainText("Parent policy armed");
+  await expect(page.locator(".mission-action-dock")).toContainText("Kick Cross-user book secret");
   await expect(page.locator(".mission-proof")).toContainText("UNVERIFIED");
 
   const viewportFits = await page.evaluate(() =>
@@ -512,4 +548,5 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page).toHaveScreenshot("mission-composer-live.png", {
     fullPage: true
   });
+  expect(pageErrors).toEqual([]);
 });

@@ -796,6 +796,21 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .memory-report header small { color: var(--amber); font-size: 0.54rem; font-weight: 800; }
 .memory-report header h3 { margin: 3px 0 0; font-size: 0.82rem; }
 .validated-badge { gap: 5px; color: var(--green); font-size: 0.55rem; font-weight: 800; }
+.memory-integrity-strip {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  color: var(--text-soft);
+  background: #0d1714;
+  border-bottom: 1px solid #29473a;
+  font-size: 0.55rem;
+}
+.memory-integrity-strip > span { display: flex; align-items: center; gap: 6px; }
+.memory-integrity-strip svg, .memory-integrity-strip b { color: var(--green); }
+.memory-integrity-strip code { color: var(--muted); font-size: 0.52rem; }
 .memory-belief {
   display: grid;
   grid-template-columns: 1fr 40px 1fr;

@@ -19,6 +19,10 @@ This document tracks the Reality Engine against the canonical product conversati
 - Parent filesystem snapshot inheritance, including tracked changes, deletions, and untracked evidence.
 - Wake artefact promotion and complete diffs that include untracked files.
 - Parent-owned immutable anchors plus a complete inherited regression proof.
+- Automatic Reality Totem seals binding each memory to source state, parent anchors, evidence, artefacts, and verified descendant lineage.
+- Memory quarantine on stale digests, missing lineage, unresolved evidence/artefacts, or an incompletely diagnosed sealed intervention.
+- An optional bounded chaos-engineer Subject with operator-owned paths, fault classes, budgets, rollback, target depth, and delayed reveal.
+- A pinned VAmPI authorization-testing preset plus arbitrary trusted local repositories in Mission Composer.
 - Failed proof blocks stabilisation and offers a real Codex repair action.
 - Reality-local constitution, agent contract, and redacted anchor manifest.
 - Dream impact probability, expected insight, token estimate, cost class, and explicit confirmation.
@@ -41,7 +45,7 @@ This document tracks the Reality Engine against the canonical product conversati
 
 The password-reset example is a strong canonical demo because it gives a specific audience, visible uncertainty, executable evidence, and a measurable outcome. A password-reset-only engine may still make the underlying platform appear scenario-specific.
 
-Recommended next direction, pending explicit approval: retain password reset as the default first-run path and add a separate real-mode Mission Composer for a user-selected repository, mission, anchors, budget, and maximum Dream depth. Do not replace the canonical demo or turn the main experience into a generic agent dashboard.
+Implemented direction: password reset remains the default first-run proof, while real-mode Mission Composer accepts a curated VAmPI training target or a user-selected trusted repository, mission, anchors, budget, and maximum Dream depth. It remains a Reality/Dream/Subject/Wake product rather than a generic agent dashboard.
 
 ## Deferred ideas
 

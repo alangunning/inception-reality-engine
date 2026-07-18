@@ -16,11 +16,16 @@ Do not expose real mode directly to an untrusted network. The prototype's action
 - OAuth files and API keys remain outside the repository.
 - A child Reality cannot mutate parent-owned anchors.
 - Wake artefact paths must remain inside the Reality worktree.
+- Every admitted Wake Report must retain a matching SHA-256 report digest, source-state digest, source commit, parent anchor fingerprint, evidence/artefact checks, and verified descendant-seal chain.
+- Synthesis rejects missing, quarantined, stale, or lineage-mismatched memory seals and rechecks that every source worktree is clean at its sealed commit.
+- A sealed adversarial intervention is rolled back when it exceeds its operator-owned contract; its Wake Report is quarantined unless investigator Subjects exactly diagnose the controlled fault.
 - Proof commands in Mission Composer are stored as an executable plus argument array, not an interpolated shell command.
 
 ## Repository Trust
 
 Mission Composer should target repositories you trust. Repository tests and Codex-generated commands can execute arbitrary code with the current user's permissions. Git worktrees isolate branch state; they are not an operating-system sandbox.
+
+The curated VAmPI preset is deliberately vulnerable and is intended only for authorized local training. Preparation clones a pinned source revision but does not install dependencies, run a server, or execute the target. Do not point Subjects at public deployments, real accounts, real credentials, or third-party systems.
 
 ## Reporting
 

@@ -53,6 +53,7 @@ model DemoSessionRecord {
   finalDiff          String
   anchorResultsJson  String
   regressionResultJson String?
+  memoryIntegrityJson String   @default("[]")
   createdAt          DateTime
   updatedAt          DateTime
 }

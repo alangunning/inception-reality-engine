@@ -125,7 +125,7 @@
   font-size: 0.59rem;
   font-weight: 750;
 }
-.mission-form input, .mission-form textarea {
+.mission-form input, .mission-form textarea, .mission-form select {
   width: 100%;
   min-height: 42px;
   padding: 10px 11px;
@@ -137,12 +137,79 @@
   font-size: 0.72rem;
 }
 .mission-form textarea { min-height: 82px; resize: vertical; line-height: 1.5; }
-.mission-form input:focus, .mission-form textarea:focus {
+.mission-form select { appearance: auto; }
+.mission-form input:focus, .mission-form textarea:focus, .mission-form select:focus {
   border-color: var(--cyan);
   box-shadow: 0 0 0 1px var(--cyan-deep);
 }
 .mission-field-wide { grid-column: 1 / -1; }
 .mission-form-divider { margin-top: 12px; }
+.mission-target {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 13px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-left: 3px solid var(--amber);
+  border-radius: 5px;
+}
+.mission-target.is-prepared { border-left-color: var(--green); }
+.mission-target-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  color: var(--amber);
+  background: #211a10;
+  border-radius: 4px;
+}
+.mission-target.is-prepared .mission-target-icon { color: var(--green); background: #102018; }
+.mission-target > div { min-width: 0; }
+.mission-target small { display: block; color: var(--amber); font-size: 0.51rem; font-weight: 800; }
+.mission-target.is-prepared small { color: var(--green); }
+.mission-target strong { display: block; margin-top: 4px; font-size: 0.76rem; }
+.mission-target p { margin: 5px 0 0; color: var(--muted); font-size: 0.6rem; line-height: 1.45; }
+.mission-target-links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 7px; }
+.mission-target-links a { display: inline-flex; align-items: center; gap: 4px; color: var(--cyan); font-size: 0.5rem; font-weight: 750; text-decoration: none; }
+.mission-target-links code { color: var(--muted); font-size: 0.5rem; }
+.mission-target > button {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 11px;
+  color: var(--ink);
+  background: var(--amber);
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  font-size: 0.59rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.mission-target.is-prepared > button { background: var(--green); border-color: var(--green); }
+.mission-target > button:disabled { opacity: 0.5; cursor: not-allowed; }
+.mission-form label.mission-toggle {
+  min-height: 46px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+}
+.mission-toggle input {
+  width: 17px;
+  min-height: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  accent-color: var(--amber);
+}
+.mission-form .mission-toggle > span { color: var(--text-soft); font-size: 0.65rem; }
 .mission-segments {
   height: 42px;
   display: grid;
@@ -318,6 +385,50 @@
 .mission-belief small, .mission-proposal small { color: var(--muted); font-size: 0.5rem; }
 .mission-proposal { grid-template-columns: 1fr; padding-left: 10px; border-left: 2px solid var(--amber); }
 .mission-proposal strong { font-size: 0.68rem; }
+.mission-intervention {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--amber);
+  border-radius: 5px;
+}
+.mission-intervention.intervention-revealed { border-left-color: var(--green); }
+.mission-intervention.intervention-rejected { border-left-color: var(--red); }
+.mission-intervention-heading { display: flex; justify-content: space-between; gap: 12px; }
+.mission-intervention-heading > span { min-width: 0; }
+.mission-intervention-heading strong { display: block; font-size: 0.67rem; }
+.mission-intervention-heading small { display: block; margin-top: 4px; color: var(--amber); font-size: 0.5rem; }
+.mission-intervention-heading > b { flex: 0 0 auto; color: var(--muted); font-size: 0.51rem; }
+.mission-intervention p { margin: 9px 0 0; color: var(--text-soft); font-size: 0.61rem; line-height: 1.5; }
+.mission-intervention dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 10px 0 0; border-top: 1px solid var(--line); }
+.mission-intervention dl > div { min-width: 0; padding: 8px 8px 0 0; }
+.mission-intervention dt { color: var(--muted); font-size: 0.48rem; font-weight: 800; }
+.mission-intervention dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 0.57rem; }
+.mission-integrity {
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--muted);
+  border-radius: 5px;
+}
+.mission-integrity.integrity-verified { border-left-color: var(--green); }
+.mission-integrity.integrity-quarantined { border-left-color: var(--red); }
+.mission-integrity-checks { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px; }
+.integrity-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 6px;
+  color: var(--text-soft);
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  font-size: 0.5rem;
+  text-transform: uppercase;
+}
+.integrity-check.is-passed svg { color: var(--green); }
+.integrity-check.is-failed svg { color: var(--red); }
+.mission-integrity > code { display: block; margin-top: 9px; color: var(--muted); font-size: 0.5rem; }
 .mission-evidence { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .mission-evidence article {
   min-width: 0;
@@ -346,6 +457,8 @@
 .mission-event code { overflow-wrap: anywhere; color: var(--text-soft); font-size: 0.54rem; line-height: 1.4; }
 .mission-event em { color: var(--muted); font-size: 0.51rem; font-style: normal; }
 .mission-event.event-subject { border-left: 2px solid var(--amber); padding-left: 9px; }
+.mission-event.event-intervention { border-left: 2px solid var(--red); padding-left: 9px; }
+.mission-event.event-memory { border-left: 2px solid var(--green); padding-left: 9px; }
 .mission-event.event-reality { border-left: 2px solid var(--green); padding-left: 9px; }
 .mission-results {
   display: grid;
@@ -437,6 +550,8 @@
   .mission-nav > span { display: none; }
   .mission-form { grid-template-columns: 1fr; }
   .mission-form label, .mission-form fieldset, .mission-form > .mission-section-title { grid-column: 1; }
+  .mission-target { grid-template-columns: 34px minmax(0, 1fr); }
+  .mission-target > button { grid-column: 1 / -1; }
   .mission-run-header dl, .mission-world-state { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mission-run-header dl > div:nth-child(2), .mission-world-state div:nth-child(2) { border-right: 0; }
   .mission-subjects, .mission-evidence { grid-template-columns: 1fr; }

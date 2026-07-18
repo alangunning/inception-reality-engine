@@ -20,6 +20,11 @@ export interface WorktreeManager {
   readFile(worktreePath: string, relativePath: string): Promise<string>;
   listChangedFiles(worktreePath: string): Promise<string[]>;
   diff(worktreePath: string, pathspec?: string): Promise<string>;
+  checkpoint(worktreePath: string, message: string): Promise<string>;
+  currentCommit(worktreePath: string): Promise<string>;
+  isClean(worktreePath: string): Promise<boolean>;
+  sealChanges(worktreePath: string, paths: string[], message: string, baselineRef: string): Promise<string>;
+  restoreCheckpoint(worktreePath: string, ref: string): Promise<void>;
   run(worktreePath: string, command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
 
@@ -221,6 +226,65 @@ export class GitWorktreeManager implements WorktreeManager {
     return stdout;
   }
 
+  async checkpoint(worktreePath: string, message: string): Promise<string> {
+    await execFileAsync("git", ["add", "-A"], {
+      cwd: worktreePath,
+      maxBuffer: 5_000_000
+    });
+    const staged = await this.hasStagedChanges(worktreePath);
+    if (staged) await this.commit(worktreePath, message);
+    return this.head(worktreePath);
+  }
+
+  async currentCommit(worktreePath: string): Promise<string> {
+    return this.head(worktreePath);
+  }
+
+  async isClean(worktreePath: string): Promise<boolean> {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["status", "--porcelain=v1", "--untracked-files=all"],
+      { cwd: worktreePath, maxBuffer: 5_000_000 }
+    );
+    return stdout.trim().length === 0;
+  }
+
+  async sealChanges(
+    worktreePath: string,
+    paths: string[],
+    message: string,
+    baselineRef: string
+  ): Promise<string> {
+    if (!paths.length) throw new Error("A sealed intervention must change at least one file.");
+    for (const relativePath of paths) resolveInsideWorktree(worktreePath, relativePath);
+    await execFileAsync("git", ["add", "-A", "--", ...paths], {
+      cwd: worktreePath,
+      maxBuffer: 5_000_000
+    });
+    if (!await this.hasStagedChanges(worktreePath)) {
+      throw new Error("The intervention did not produce a sealable Git change.");
+    }
+    await this.commit(worktreePath, message);
+    const interventionCommit = await this.head(worktreePath);
+    await execFileAsync("git", ["reset", "--mixed", baselineRef], {
+      cwd: worktreePath,
+      maxBuffer: 5_000_000
+    });
+    return interventionCommit;
+  }
+
+  async restoreCheckpoint(worktreePath: string, ref: string): Promise<void> {
+    if (!/^[0-9a-f]{7,64}$/i.test(ref)) throw new Error("Rollback requires a retained Git commit.");
+    await execFileAsync("git", ["reset", "--hard", ref], {
+      cwd: worktreePath,
+      maxBuffer: 5_000_000
+    });
+    await execFileAsync("git", ["clean", "-fd"], {
+      cwd: worktreePath,
+      maxBuffer: 5_000_000
+    });
+  }
+
   async run(worktreePath: string, command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     try {
       const { stdout, stderr } = await execFileAsync(command, args, {
@@ -268,6 +332,37 @@ export class GitWorktreeManager implements WorktreeManager {
       await mkdir(path.dirname(target), { recursive: true });
       await copyFile(source, target);
     }
+  }
+
+  private async commit(worktreePath: string, message: string): Promise<void> {
+    await execFileAsync("git", [
+      "-c",
+      "user.name=Inception Reality Engine",
+      "-c",
+      "user.email=reality-engine@localhost",
+      "commit",
+      "--no-gpg-sign",
+      "-m",
+      message.slice(0, 180)
+    ], {
+      cwd: worktreePath,
+      maxBuffer: 5_000_000
+    });
+  }
+
+  private async hasStagedChanges(worktreePath: string): Promise<boolean> {
+    try {
+      await execFileAsync("git", ["diff", "--cached", "--quiet"], { cwd: worktreePath });
+      return false;
+    } catch (error) {
+      if ((error as { code?: number }).code === 1) return true;
+      throw error;
+    }
+  }
+
+  private async head(worktreePath: string): Promise<string> {
+    const { stdout } = await execFileAsync("git", ["rev-parse", "HEAD"], { cwd: worktreePath });
+    return stdout.trim();
   }
 
   private async ownsPath(candidatePath: string): Promise<boolean> {

@@ -9,7 +9,10 @@ import {
   CircleDot,
   Clock3,
   Code2,
+  ExternalLink,
   FileDiff,
+  Fingerprint,
+  FolderGit2,
   GitBranch,
   Layers3,
   LockKeyhole,
@@ -24,6 +27,7 @@ import {
   XCircle
 } from "lucide-react";
 import type {
+  AdversarialFaultClass,
   MissionDefinitionDraft,
   MissionRun,
   Reality,
@@ -62,40 +66,78 @@ interface ComposerState {
   proofArgs: string;
   tokenBudget: number;
   maxDreamDepth: number;
+  interventionEnabled: boolean;
+  interventionHypothesis: string;
+  interventionFaultClass: AdversarialFaultClass;
+  interventionAllowedPaths: string;
+  interventionProtectedPaths: string;
+  interventionMaxChangedFiles: number;
+  interventionMaxPatchLines: number;
+  interventionTokenBudget: number;
+  interventionMaxMinutes: number;
+  interventionTargetDepth: number;
 }
 
 const initialState: ComposerState = {
-  name: "Dependency Boundary",
+  name: "VAmPI Authorization Breach",
   repositoryPath: "",
-  mission: "Make dependency loading resilient when the primary package registry is partially unavailable.",
-  scope: "Package resolution and registry fallback behavior",
-  premise: "The fallback registry always preserves package integrity and freshness during a partial outage.",
-  constraints: "Preserve public behavior unless evidence proves a change is required.\nDo not weaken signature or integrity verification.\nPrefer executable evidence over speculation.",
-  parentTruths: "Existing callers remain compatible.\nResolved packages must pass integrity verification.",
-  proofName: "Repository test suite",
-  proofExecutable: "npm",
-  proofArgs: "test",
-  tokenBudget: 120_000,
-  maxDreamDepth: 2
+  mission: "Penetration-test VAmPI's book-secret and user-management authorization boundaries. Reproduce the highest-impact cross-user flaw using only local bundled data, return an executable regression test at tests/test_authorization_regression.py, and synthesise the smallest remediation that preserves the API contract.",
+  scope: "VAmPI Flask API authorization for users, books, and secret content",
+  premise: "A valid token prevents one ordinary user from reading or changing another user's private resources.",
+  constraints: "Work only inside the deliberately vulnerable local VAmPI clone.\nSend test traffic only to localhost and use bundled or synthetic data.\nDo not use real credentials, accounts, or external systems.\nPreserve the documented OpenAPI shape unless evidence requires a compatible correction.\nReturn reproducible exploit evidence without exposing hidden model reasoning.",
+  parentTruths: "This target is intentionally vulnerable and authorized for local security training.\nPrivate book secrets require owner authorization.\nOnly administrators may delete users.\nEvery security conclusion must cite executable or source evidence.",
+  proofName: "Authorization regression",
+  proofExecutable: "python3",
+  proofArgs: "tests/test_authorization_regression.py",
+  tokenBudget: 160_000,
+  maxDreamDepth: 3,
+  interventionEnabled: false,
+  interventionHypothesis: "A minimal authorization-boundary regression should be discoverable from cross-user behavior and ordinary source evidence without revealing which line changed.",
+  interventionFaultClass: "permission",
+  interventionAllowedPaths: "api_views/**\nmodels/**\napp.py\nconfig.py",
+  interventionProtectedPaths: ".git/**\n.inception/**\n.github/**\nopenapi_specs/**\nrequirements.txt\nDockerfile\ndocker-compose.yaml",
+  interventionMaxChangedFiles: 2,
+  interventionMaxPatchLines: 80,
+  interventionTokenBudget: 16_000,
+  interventionMaxMinutes: 12,
+  interventionTargetDepth: 1
 };
 
 const subjectCharters = [
   {
     name: "Ariadne",
-    role: "Investigator",
-    mission: "Map the implementation boundary, assumptions, and concrete evidence."
+    role: "Authorization investigator",
+    mission: "Trace identity, ownership, and privilege checks from the API boundary to persisted data."
   },
   {
     name: "Saito",
-    role: "Skeptic",
-    mission: "Challenge the leading belief with an independent counterexample."
+    role: "Red team operator",
+    mission: "Attempt bounded cross-user attacks using only localhost, synthetic identities, and the authorized training target."
   },
   {
     name: "Eames",
-    role: "Test engineer",
-    mission: "Create the smallest decisive executable proof."
+    role: "Security test engineer",
+    mission: "Turn the highest-impact finding into the smallest decisive executable regression test."
   }
 ];
+
+const adversarialSubject = {
+  name: "Mal",
+  role: "Bounded chaos engineer",
+  mission: "Inject one minimal reversible fault inside the operator's explicit path, file, patch, time, and token limits."
+};
+
+interface TrainingTargetStatus {
+  id: "vampi";
+  name: string;
+  description: string;
+  sourceUrl: string;
+  revision: string;
+  license: string;
+  catalogueUrl: string;
+  prepared: boolean;
+  repositoryPath?: string;
+}
 
 async function readJson<T extends object>(response: Response, fallback: string): Promise<T> {
   const text = await response.text();
@@ -189,6 +231,14 @@ function MissionRunView({
   const [error, setError] = useState<string | null>(null);
   const run = snapshot.run;
   const reality = snapshot.activeReality;
+  // Browser state may outlive a schema migration during local development.
+  const interventions = run.interventions ?? [];
+  const memoryIntegrity = run.memoryIntegrity ?? [];
+  const intervention = interventions.find((entry) => entry.realityId === reality.id)
+    ?? interventions.at(-1);
+  const interventionContract = run.definition.intervention;
+  const integritySeal = memoryIntegrity.find((entry) => entry.realityId === reality.id)
+    ?? memoryIntegrity.at(-1);
   const usedTokens = useMemo(() => run.events.reduce((total, event) => {
     const metadata = eventMetadata(event);
     return total
@@ -309,7 +359,11 @@ function MissionRunView({
           disabled={busy || Boolean(snapshot.operation) || !snapshot.nextAction}
           onClick={() => snapshot.nextAction && void act(snapshot.nextAction.id)}
         >
-          {snapshot.nextAction?.id === "create_dream" ? <MoonStar size={17} /> : <Play size={17} />}
+          {snapshot.nextAction?.id === "create_dream"
+            ? <MoonStar size={17} />
+            : snapshot.nextAction?.id === "intervene"
+              ? <ShieldAlert size={17} />
+              : <Play size={17} />}
           {busy || snapshot.operation ? "Reality shifting" : snapshot.nextAction?.label ?? "Reality stabilised"}
         </button>
         <button type="button" className="mission-delete" onClick={remove} disabled={busy || Boolean(snapshot.operation)} title="Delete mission and clean up worktrees" aria-label="Delete mission and clean up worktrees">
@@ -331,6 +385,77 @@ function MissionRunView({
             <div><dt>DREAM TIME</dt><dd>{reality.worldState.simulatedMinutes} minutes</dd></div>
             <div><dt>THREAD</dt><dd>{reality.codexThreadId?.startsWith("unbound:") ? "Not started" : reality.codexThreadId?.slice(0, 18)}</dd></div>
           </dl>
+
+          {intervention && interventionContract && (
+            <div className="mission-subsection" data-testid="intervention-ledger">
+              <h3><ShieldAlert size={15} /> Sealed intervention</h3>
+              <article className={`mission-intervention intervention-${intervention.status}`}>
+                <div className="mission-intervention-heading">
+                  <span>
+                    <strong>{adversarialSubject.name} / {adversarialSubject.role}</strong>
+                    <small>{intervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
+                  </span>
+                  <b>{interventionContract.maxChangedFiles} FILES / {interventionContract.maxPatchLines} LINES</b>
+                </div>
+                {intervention.status === "armed" && (
+                  <p>No mutation has run. The operator-owned contract is armed for an explicit action.</p>
+                )}
+                {intervention.status === "sealed" && (
+                  <p>{intervention.changedFileCount ?? 0} changed file{intervention.changedFileCount === 1 ? "" : "s"} sealed. Cause, paths, and private Subject report remain hidden until Kick.</p>
+                )}
+                {intervention.status === "rejected" && (
+                  <p>{intervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>
+                )}
+                {intervention.diagnosis && intervention.status !== "revealed" && (
+                  <p>Investigator diagnosis returned at {Math.round(intervention.diagnosis.confidence * 100)}% model-reported confidence. The exact comparison remains sealed until Kick.</p>
+                )}
+                {intervention.status === "revealed" && intervention.report && intervention.assessment && (
+                  <>
+                    <p>{intervention.report.summary}</p>
+                    <dl>
+                      <div><dt>OUTCOME</dt><dd>{intervention.assessment.outcome.toUpperCase()}</dd></div>
+                      <div><dt>FAULT</dt><dd>{intervention.report.faultClass}</dd></div>
+                      <div><dt>FILES</dt><dd>{intervention.report.changedFiles.join(", ")}</dd></div>
+                    </dl>
+                  </>
+                )}
+              </article>
+            </div>
+          )}
+
+          <div className="mission-subsection" data-testid="memory-integrity">
+            <h3><Fingerprint size={15} /> Reality totem / memory integrity</h3>
+            {integritySeal ? (
+              <article className={`mission-integrity integrity-${integritySeal.verdict}`}>
+                <div className="mission-intervention-heading">
+                  <span>
+                    <strong>{integritySeal.verdict === "verified" ? "Memory verified" : "Memory quarantined"}</strong>
+                    <small>{integritySeal.policyVersion.toUpperCase()} / {integritySeal.checks.filter((check) => check.status === "passed").length} OF {integritySeal.checks.length} CHECKS PASSED</small>
+                  </span>
+                  <b>{integritySeal.descendantSealIds.length} DESCENDANT SEALS</b>
+                </div>
+                <div className="mission-integrity-checks">
+                  {integritySeal.checks.map((check) => (
+                    <span className={`integrity-check is-${check.status}`} key={check.name} title={check.summary}>
+                      {check.status === "passed" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                      {check.name.replaceAll("-", " ")}
+                    </span>
+                  ))}
+                </div>
+                <code>REPORT {integritySeal.reportDigest.slice(0, 16)} / STATE {integritySeal.sourceStateDigest.slice(0, 16)}</code>
+              </article>
+            ) : (
+              <article className="mission-integrity integrity-pending">
+                <div className="mission-intervention-heading">
+                  <span>
+                    <strong>Parent policy armed</strong>
+                    <small>NO MEMORY HAS CROSSED A KICK</small>
+                  </span>
+                  <b>{reality.anchors.length} REALITY ANCHOR{reality.anchors.length === 1 ? "" : "S"}</b>
+                </div>
+              </article>
+            )}
+          </div>
 
           <div className="mission-subsection">
             <h3><UsersRound size={15} /> Subjects</h3>
@@ -453,6 +578,8 @@ export function MissionComposer() {
   const [snapshot, setSnapshot] = useState<MissionSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [targets, setTargets] = useState<TrainingTargetStatus[]>([]);
+  const [targetBusy, setTargetBusy] = useState(false);
 
   const loadIndex = useCallback(async () => {
     const response = await fetch("/api/missions", { cache: "no-store" });
@@ -460,22 +587,65 @@ export function MissionComposer() {
       runs?: MissionSummary[];
       runtime?: RuntimeInfo;
       enabled?: boolean;
-      defaultRepositoryPath?: string;
       error?: string;
     }>(response, "Could not load Mission Composer.");
     if (!response.ok || !body.runtime) throw new Error(body.error ?? "Could not load Mission Composer.");
     setRuntime(body.runtime);
     setRuns(body.runs ?? []);
-    if (body.defaultRepositoryPath) {
+  }, []);
+
+  const loadTargets = useCallback(async () => {
+    const response = await fetch("/api/missions/targets", { cache: "no-store" });
+    const body = await readJson<{
+      targets?: TrainingTargetStatus[];
+      error?: string;
+    }>(response, "Could not inspect the training target.");
+    if (!response.ok) throw new Error(body.error ?? "Could not inspect the training target.");
+    const nextTargets = body.targets ?? [];
+    setTargets(nextTargets);
+    const prepared = nextTargets.find((target) => target.id === "vampi" && target.prepared);
+    if (prepared?.repositoryPath) {
       setComposer((current) => current.repositoryPath
         ? current
-        : { ...current, repositoryPath: body.defaultRepositoryPath! });
+        : { ...current, repositoryPath: prepared.repositoryPath! });
     }
   }, []);
 
   useEffect(() => {
-    void loadIndex().catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
-  }, [loadIndex]);
+    void Promise.all([loadIndex(), loadTargets()])
+      .catch((cause) => setError(cause instanceof Error ? cause.message : String(cause)));
+  }, [loadIndex, loadTargets]);
+
+  const prepareTarget = async () => {
+    setTargetBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/missions/targets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: "vampi" })
+      });
+      const body = await readJson<{
+        target?: TrainingTargetStatus;
+        error?: string;
+      }>(response, "Could not prepare VAmPI.");
+      if (!response.ok || !body.target?.repositoryPath) {
+        throw new Error(body.error ?? "Could not prepare VAmPI.");
+      }
+      setTargets((current) => [
+        body.target!,
+        ...current.filter((target) => target.id !== body.target!.id)
+      ]);
+      setComposer((current) => ({
+        ...current,
+        repositoryPath: body.target!.repositoryPath!
+      }));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setTargetBusy(false);
+    }
+  };
 
   const openRun = async (id: string) => {
     setBusy(true);
@@ -499,7 +669,7 @@ export function MissionComposer() {
 
   const formMission = async () => {
     const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
-    const requiredFields = [
+    const requiredFields: Array<readonly [string, string]> = [
       ["Reality name", composer.name],
       ["Local Git repository", composer.repositoryPath],
       ["Mission", composer.mission],
@@ -508,7 +678,13 @@ export function MissionComposer() {
       ["Constitution constraints", composer.constraints],
       ["Proof name", composer.proofName],
       ["Proof executable", composer.proofExecutable]
-    ] as const;
+    ];
+    if (composer.interventionEnabled) {
+      requiredFields.push(
+        ["Intervention hypothesis", composer.interventionHypothesis],
+        ["Intervention allowed paths", composer.interventionAllowedPaths]
+      );
+    }
     const missingFields = requiredFields
       .filter(([, value]) => !value.trim())
       .map(([label]) => label);
@@ -539,6 +715,21 @@ export function MissionComposer() {
         args: lines(composer.proofArgs)
       }],
       subjects: subjectCharters,
+      intervention: composer.interventionEnabled ? {
+        enabled: true,
+        subject: adversarialSubject,
+        hypothesis: composer.interventionHypothesis.trim(),
+        faultClasses: [composer.interventionFaultClass],
+        allowedPaths: lines(composer.interventionAllowedPaths),
+        protectedPaths: lines(composer.interventionProtectedPaths),
+        maxChangedFiles: composer.interventionMaxChangedFiles,
+        maxPatchLines: composer.interventionMaxPatchLines,
+        tokenBudget: composer.interventionTokenBudget,
+        maxMinutes: composer.interventionMaxMinutes,
+        targetDepth: composer.interventionTargetDepth,
+        revealPolicy: "after-diagnosis",
+        requireRollbackCommit: true
+      } : undefined,
       tokenBudget: composer.tokenBudget,
       maxDreamDepth: composer.maxDreamDepth
     };
@@ -615,6 +806,25 @@ export function MissionComposer() {
               <span><CircleDot size={16} /> WAKING WORLD</span>
               <b>NO CODEX USAGE ON CREATE</b>
             </div>
+            {targets.map((target) => (
+              <article className={`mission-target mission-field-wide ${target.prepared ? "is-prepared" : ""}`} key={target.id} data-testid="training-target">
+                <span className="mission-target-icon"><FolderGit2 size={18} /></span>
+                <div>
+                  <small>CURATED LOCAL TARGET / {target.license}</small>
+                  <strong>{target.name}</strong>
+                  <p>{target.description}</p>
+                  <span className="mission-target-links">
+                    <a href={target.sourceUrl} target="_blank" rel="noreferrer">SOURCE <ExternalLink size={11} /></a>
+                    <a href={target.catalogueUrl} target="_blank" rel="noreferrer">OWASP CATALOGUE <ExternalLink size={11} /></a>
+                    <code>{target.revision.slice(0, 12)}</code>
+                  </span>
+                </div>
+                <button type="button" onClick={() => void prepareTarget()} disabled={targetBusy}>
+                  <FolderGit2 size={15} />
+                  {targetBusy ? "Preparing target" : target.prepared ? "Use prepared target" : "Prepare VAmPI locally"}
+                </button>
+              </article>
+            ))}
             <label>
               <span>Reality name</span>
               <input required value={composer.name} onChange={(event) => setComposer({ ...composer, name: event.target.value })} />
@@ -645,6 +855,72 @@ export function MissionComposer() {
             </label>
 
             <div className="mission-section-title mission-form-divider">
+              <span><ShieldAlert size={16} /> SEALED INTERVENTION</span>
+              <b>OPTIONAL / EXPLICIT ACTION</b>
+            </div>
+            <label className="mission-toggle mission-field-wide">
+              <input
+                type="checkbox"
+                checked={composer.interventionEnabled}
+                onChange={(event) => setComposer({ ...composer, interventionEnabled: event.target.checked })}
+              />
+              <span>Arm one bounded chaos-engineer intervention at Dream depth {composer.interventionTargetDepth}</span>
+            </label>
+            {composer.interventionEnabled && (
+              <>
+                <label className="mission-field-wide">
+                  <span>Diagnosis hypothesis</span>
+                  <textarea value={composer.interventionHypothesis} onChange={(event) => setComposer({ ...composer, interventionHypothesis: event.target.value })} />
+                </label>
+                <label>
+                  <span>Allowed fault class</span>
+                  <select value={composer.interventionFaultClass} onChange={(event) => setComposer({ ...composer, interventionFaultClass: event.target.value as AdversarialFaultClass })}>
+                    <option value="permission">Permission boundary</option>
+                    <option value="boundary-condition">Boundary condition</option>
+                    <option value="dependency-failure">Dependency failure</option>
+                    <option value="concurrency">Concurrency</option>
+                    <option value="state-corruption">State corruption</option>
+                    <option value="performance">Performance</option>
+                  </select>
+                </label>
+                <fieldset>
+                  <legend>Intervention Dream depth</legend>
+                  <div className="mission-segments">
+                    {[1, 2, 3].filter((depth) => depth <= composer.maxDreamDepth).map((depth) => (
+                      <button type="button" className={composer.interventionTargetDepth === depth ? "is-selected" : ""} onClick={() => setComposer({ ...composer, interventionTargetDepth: depth })} key={depth}>
+                        {depth}
+                      </button>
+                    ))}
+                  </div>
+                </fieldset>
+                <label>
+                  <span>Allowed paths / one per line</span>
+                  <textarea value={composer.interventionAllowedPaths} onChange={(event) => setComposer({ ...composer, interventionAllowedPaths: event.target.value })} />
+                </label>
+                <label>
+                  <span>Protected paths / one per line</span>
+                  <textarea value={composer.interventionProtectedPaths} onChange={(event) => setComposer({ ...composer, interventionProtectedPaths: event.target.value })} />
+                </label>
+                <label>
+                  <span>Maximum changed files</span>
+                  <input type="number" min={1} max={20} value={composer.interventionMaxChangedFiles} onChange={(event) => setComposer({ ...composer, interventionMaxChangedFiles: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Maximum patch lines</span>
+                  <input type="number" min={1} max={2_000} value={composer.interventionMaxPatchLines} onChange={(event) => setComposer({ ...composer, interventionMaxPatchLines: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Intervention token limit</span>
+                  <input type="number" min={1_000} max={500_000} step={1_000} value={composer.interventionTokenBudget} onChange={(event) => setComposer({ ...composer, interventionTokenBudget: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>Maximum minutes</span>
+                  <input type="number" min={1} max={60} value={composer.interventionMaxMinutes} onChange={(event) => setComposer({ ...composer, interventionMaxMinutes: Number(event.target.value) })} />
+                </label>
+              </>
+            )}
+
+            <div className="mission-section-title mission-form-divider">
               <span><LockKeyhole size={16} /> IMMUTABLE PROOF</span>
               <b>STRUCTURED EXECUTION</b>
             </div>
@@ -672,7 +948,16 @@ export function MissionComposer() {
               <legend>Maximum Dream depth</legend>
               <div className="mission-segments">
                 {[1, 2, 3].map((depth) => (
-                  <button type="button" className={composer.maxDreamDepth === depth ? "is-selected" : ""} onClick={() => setComposer({ ...composer, maxDreamDepth: depth })} key={depth}>
+                  <button
+                    type="button"
+                    className={composer.maxDreamDepth === depth ? "is-selected" : ""}
+                    onClick={() => setComposer({
+                      ...composer,
+                      maxDreamDepth: depth,
+                      interventionTargetDepth: Math.min(composer.interventionTargetDepth, depth)
+                    })}
+                    key={depth}
+                  >
                     {depth}
                   </button>
                 ))}
@@ -681,7 +966,7 @@ export function MissionComposer() {
             <button
               type="button"
               className="mission-form-submit"
-              disabled={busy || runtime?.mode !== "real"}
+              disabled={busy || targetBusy || runtime?.mode !== "real"}
               onClick={() => void formMission()}
             >
               <GitBranch size={17} /> {busy ? "Forming Reality" : "Form waking Reality"}

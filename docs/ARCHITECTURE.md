@@ -95,7 +95,9 @@ classDiagram
   class Evidence
   class DreamProposal
   class WakeReport
+  class MemoryIntegritySeal
   class RealityAnchor
+  class InterventionLedger
   class RealityEvent
   Reality "1" *-- "1" RealityConstitution
   Reality "1" *-- "1" WorldState
@@ -105,6 +107,9 @@ classDiagram
   Reality "1" *-- "*" DreamProposal
   Reality "1" *-- "*" RealityAnchor
   Reality "0..1" *-- "1" WakeReport
+  WakeReport "1" --> "1" MemoryIntegritySeal
+  MemoryIntegritySeal "*" --> "*" MemoryIntegritySeal : descendant lineage
+  Reality "0..1" --> "1" InterventionLedger
   Reality "0..1" --> "*" Reality : child Dream
   Reality --> "*" RealityEvent
 ```
@@ -113,8 +118,10 @@ classDiagram
 - **Dream:** a child Reality created only from an explicit uncertainty.
 - **Subject:** one direct Codex subagent with an identity-bound charter inside a Reality.
 - **Wake Report:** validated memory containing beliefs, experiences, invariants, artefacts, and uncertainty.
+- **Memory Integrity Seal / Reality Totem:** orchestrator-owned admission record binding one Wake Report to its source state, parent anchors, evidence, artefacts, descendant seals, and intervention verdict.
 - **Reality Anchor:** immutable parent-owned proof; a child inherits it but cannot mutate it.
 - **Kick:** the transition that stops exploration and requests a Wake Report.
+- **Sealed intervention:** optional operator-bounded adversarial mutation applied before investigator Subjects enter; its private ledger is revealed only after diagnosis.
 
 ## Runtime Modes
 
@@ -138,9 +145,26 @@ All Codex responses cross a Zod boundary before persistence. SDK events are proj
 1. a `spawn_agent` completed for the exact `SUBJECT_ID`; and
 2. a terminal `wait` returned that child thread successfully.
 
+Zod validation establishes structure, not truth. Every Kick therefore runs `MemoryIntegrityService` before the parent receives memory:
+
+1. validate the structured Wake Report;
+2. bind its identity to the exact source Reality;
+3. bind the complete report to a SHA-256 digest;
+4. bind the source worktree to a clean Git checkpoint;
+5. compare the child and parent anchor fingerprints;
+6. require every changed belief to cite retained source evidence;
+7. resolve every safe artefact path or self-contained artefact;
+8. require verified seals and unchanged Git sources for all returned descendant memories;
+9. compare any sealed intervention with the investigator diagnosis.
+
+New seals use `memory-integrity/v2`; persisted `v1` seals remain readable for retrospective logs. A failed check produces a durable `quarantined` seal and `memory.quarantined` event. The parent reopens the uncertainty; the Wake Report never enters the admitted memory list. Synthesis rechecks report digests, descendant seal IDs, source `HEAD`, and worktree cleanliness, rejecting stale or altered memory without asking for a human approval click.
+
 Confidence values and Dream costs are labelled as model-reported estimates. Trust is derived from evidence:
 
-- **Unverified:** parent proofs have not run.
+- **Validated:** Codex output has the required shape.
+- **Integrity sealed:** memory passed the automatic parent-owned admission policy.
+- **Quarantined:** at least one identity, anchor, evidence, artefact, lineage, or intervention check failed.
+- **Unverified implementation:** parent proofs have not run.
 - **Proof failed:** at least one immutable proof returned non-zero.
 - **Verified:** every configured proof passed.
 - **Reality stabilised:** validated memory was synthesised and every parent proof passed.
@@ -155,6 +179,8 @@ Canonical, Playwright, and Mission worktrees have distinct roots and branch pref
 | Playwright | `.inception/playwright-worktrees` | `inception-playwright/*` |
 | Mission | `.inception/missions/<id>/worktrees` | `inception-mission-<id>/*` |
 
+Pinned training targets live in `.inception/training-targets`. They are reusable source caches, not Reality worktrees, and are cloned only by an explicit preparation action. Each Mission still receives separate worktrees and owned branches.
+
 This prevents test resets from deleting live worktrees. If a persisted Reality loses its worktree, the canonical orchestrator restores it from parent state and persisted artefacts without consuming Codex.
 
 ## Persistence
@@ -166,3 +192,4 @@ Prisma is the production adapter and SQLite is the portable fallback. Both persi
 - [ADR-0001: One thread and worktree per Reality](./adr/0001-reality-isolation.md)
 - [ADR-0002: Validated memories instead of raw reasoning](./adr/0002-validated-memory.md)
 - [ADR-0003: Deterministic and real runtimes share contracts](./adr/0003-dual-runtime.md)
+- [ADR-0004: Automatic memory integrity and bounded adversarial intervention](./adr/0004-memory-integrity.md)

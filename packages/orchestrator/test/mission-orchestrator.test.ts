@@ -12,6 +12,10 @@ import type {
 
 class FakeMissionWorktrees implements WorktreeManagerPort {
   readonly files = new Map<string, string>();
+  changedFiles: string[] = [];
+  changedDiff = "";
+  restoreCalls = 0;
+  dirtyWorktrees = new Set<string>();
 
   async discoverRepoRoot(): Promise<string> {
     return "/repo";
@@ -38,10 +42,27 @@ class FakeMissionWorktrees implements WorktreeManagerPort {
     return value;
   }
   async listChangedFiles(): Promise<string[]> {
-    return [];
+    return this.changedFiles;
   }
   async diff(): Promise<string> {
-    return "";
+    return this.changedDiff;
+  }
+  async checkpoint(): Promise<string> {
+    return "a".repeat(40);
+  }
+  async currentCommit(): Promise<string> {
+    return "a".repeat(40);
+  }
+  async isClean(worktreePath: string): Promise<boolean> {
+    return !this.dirtyWorktrees.has(worktreePath);
+  }
+  async sealChanges(): Promise<string> {
+    return "b".repeat(40);
+  }
+  async restoreCheckpoint(): Promise<void> {
+    this.restoreCalls += 1;
+    this.changedFiles = [];
+    this.changedDiff = "";
   }
   async run(): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     return { stdout: "passed", stderr: "", exitCode: 0 };
@@ -61,6 +82,7 @@ describe("MissionOrchestrator", () => {
         inspections += 1;
         return mock.inspect(...args);
       },
+      intervene: (...args) => mock.intervene(...args),
       wake: (...args) => mock.wake(...args),
       synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
     };
@@ -131,10 +153,322 @@ describe("MissionOrchestrator", () => {
 
     snapshot = await orchestrator.act(snapshot.run.id, "kick");
     expect(snapshot.activeReality.depth).toBe(1);
+    expect(snapshot.run.memoryIntegrity).toHaveLength(1);
+    expect(snapshot.run.memoryIntegrity[0]).toMatchObject({
+      verdict: "verified",
+      descendantSealIds: []
+    });
+    const nestedSealId = snapshot.run.memoryIntegrity[0]!.id;
     snapshot = await orchestrator.act(snapshot.run.id, "kick");
     expect(snapshot.activeReality.depth).toBe(0);
     expect(snapshot.run.memories).toHaveLength(2);
+    expect(snapshot.run.memoryIntegrity).toHaveLength(2);
+    expect(snapshot.run.memoryIntegrity.find((seal) =>
+      seal.realityId === snapshot.run.memories.find((memory) =>
+        snapshot.run.realities.find((reality) => reality.id === memory.realityId)?.depth === 1
+      )?.realityId
+    )?.descendantSealIds).toContain(nestedSealId);
     expect(snapshot.nextAction?.id).toBe("synthesise");
     expect(await repository.getMissionRun(snapshot.run.id)).not.toBeNull();
+  });
+
+  it("quarantines a memory when its sealed Dream worktree changes after Kick", async () => {
+    const mock = new MockCodexRuntime();
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      {
+        mode: "real",
+        info: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }),
+        activeOperations: () => [],
+        abortAll: () => 0,
+        inspect: (...args) => mock.inspect(...args),
+        intervene: (...args) => mock.intervene(...args),
+        wake: (...args) => mock.wake(...args),
+        synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
+      },
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      name: "Tamper detection",
+      repositoryPath: "/repo",
+      mission: "Prove a sealed memory cannot change after Kick.",
+      scope: "authorization boundary",
+      premise: "Returned evidence remains unchanged.",
+      constraints: ["Use synthetic local evidence."],
+      parentTruths: ["Only integrity-sealed memory may be synthesised."],
+      wakeContract: ["Return reproducible evidence."],
+      proofs: [{ name: "Integrity proof", executable: "npm", args: ["test"] }],
+      subjects: [{ name: "Ariadne", role: "Investigator", mission: "Trace evidence lineage." }],
+      tokenBudget: 50_000,
+      maxDreamDepth: 1
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "kick");
+    const source = snapshot.run.realities.find((reality) =>
+      reality.id === snapshot.run.memories[0]?.realityId
+    )!;
+    worktrees.dirtyWorktrees.add(source.worktreePath!);
+
+    await expect(orchestrator.act(snapshot.run.id, "synthesise"))
+      .rejects.toThrow(/sealed Git source changed/i);
+    const rejected = await orchestrator.snapshot(snapshot.run.id);
+    expect(rejected.run.memoryIntegrity.find((seal) => seal.realityId === source.id))
+      .toMatchObject({
+        verdict: "quarantined",
+        checks: expect.arrayContaining([
+          expect.objectContaining({ name: "source-state", status: "failed" })
+        ])
+      });
+    expect(rejected.run.events.some((event) => event.type === "memory.quarantined")).toBe(true);
+  });
+
+  it("seals a bounded intervention, withholds its private report, and reveals an evidence-derived assessment after Kick", async () => {
+    const mock = new MockCodexRuntime();
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const runtime: CodexRuntime = {
+      mode: "real",
+      info: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }),
+      activeOperations: () => [],
+      abortAll: () => 0,
+      inspect: (...args) => mock.inspect(...args),
+      intervene: async (reality, contract, onEvent) => {
+        worktrees.changedFiles = ["src/sealed-intervention.ts"];
+        worktrees.changedDiff = "diff --git a/src/sealed-intervention.ts b/src/sealed-intervention.ts\n+permission regression\n";
+        return mock.intervene(reality, contract, onEvent);
+      },
+      wake: (...args) => mock.wake(...args),
+      synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
+    };
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      runtime,
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+
+    let snapshot = await orchestrator.create({
+      name: "Authorization boundary",
+      repositoryPath: "/repo",
+      mission: "Prove and repair a cross-user authorization failure.",
+      scope: "API authorization",
+      premise: "A valid token prevents cross-user access.",
+      constraints: ["Use only synthetic local data."],
+      parentTruths: ["Private resources require owner authorization."],
+      wakeContract: ["Return executable evidence."],
+      proofs: [{ name: "Authorization regression", executable: "python3", args: ["tests/security.py"] }],
+      subjects: [
+        { name: "Ariadne", role: "Investigator", mission: "Trace authorization." },
+        { name: "Eames", role: "Test engineer", mission: "Create a regression test." }
+      ],
+      intervention: {
+        enabled: true,
+        subject: {
+          name: "Mal",
+          role: "Bounded chaos engineer",
+          mission: "Inject one reversible permission fault."
+        },
+        hypothesis: "Investigators can diagnose a minimal permission fault from behavior.",
+        faultClasses: ["permission"],
+        allowedPaths: ["src/**"],
+        protectedPaths: ["tests/**"],
+        maxChangedFiles: 1,
+        maxPatchLines: 10,
+        tokenBudget: 10_000,
+        maxMinutes: 5,
+        targetDepth: 1,
+        revealPolicy: "after-diagnosis",
+        requireRollbackCommit: true
+      },
+      tokenBudget: 100_000,
+      maxDreamDepth: 1
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+
+    expect(snapshot.activeReality.subjects).toHaveLength(0);
+    expect(snapshot.nextAction?.id).toBe("intervene");
+    snapshot = await orchestrator.act(snapshot.run.id, "intervene");
+    const sealed = snapshot.run.interventions[0]!;
+    expect(sealed.status).toBe("sealed");
+    expect(sealed.changedFileCount).toBe(1);
+    expect(sealed.report).toBeUndefined();
+    expect(sealed.interventionCommit).toBeUndefined();
+    expect(snapshot.activeReality.subjects).toHaveLength(2);
+    expect(snapshot.nextAction?.id).toBe("inspect");
+
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    expect(snapshot.run.interventions[0]?.diagnosis?.faultClass).toBe("permission");
+    expect(snapshot.nextAction?.id).toBe("kick");
+    snapshot = await orchestrator.act(snapshot.run.id, "kick");
+
+    const revealed = snapshot.run.interventions[0]!;
+    expect(revealed.status).toBe("revealed");
+    expect(revealed.report?.changedFiles).toEqual(["src/sealed-intervention.ts"]);
+    expect(revealed.assessment).toMatchObject({
+      outcome: "detected",
+      faultClassMatched: true,
+      missedFiles: []
+    });
+    expect(snapshot.run.events.some((event) => event.type === "intervention.revealed")).toBe(true);
+  });
+
+  it("restores the Dream baseline when an intervention changes a protected path", async () => {
+    const mock = new MockCodexRuntime();
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const runtime: CodexRuntime = {
+      mode: "real",
+      info: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }),
+      activeOperations: () => [],
+      abortAll: () => 0,
+      inspect: (...args) => mock.inspect(...args),
+      intervene: async (reality, contract, onEvent) => {
+        worktrees.changedFiles = ["tests/protected.py"];
+        worktrees.changedDiff = "+tampered proof\n";
+        const result = await mock.intervene(reality, contract, onEvent);
+        return {
+          ...result,
+          report: {
+            ...result.report,
+            changedFiles: ["tests/protected.py"]
+          }
+        };
+      },
+      wake: (...args) => mock.wake(...args),
+      synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
+    };
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      runtime,
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      name: "Protected proof",
+      repositoryPath: "/repo",
+      mission: "Protect security proofs.",
+      scope: "authorization",
+      premise: "The proof cannot be changed.",
+      constraints: ["Preserve tests."],
+      parentTruths: [],
+      wakeContract: ["Return evidence."],
+      proofs: [{ name: "Proof", executable: "python3", args: ["tests/protected.py"] }],
+      subjects: [],
+      intervention: {
+        enabled: true,
+        subject: { name: "Mal", role: "Bounded chaos engineer", mission: "Inject one fault." },
+        hypothesis: "A bounded fault remains diagnosable.",
+        faultClasses: ["permission"],
+        allowedPaths: ["src/**"],
+        protectedPaths: ["tests/**"],
+        maxChangedFiles: 1,
+        maxPatchLines: 10,
+        tokenBudget: 10_000,
+        maxMinutes: 5,
+        targetDepth: 1,
+        revealPolicy: "after-diagnosis",
+        requireRollbackCommit: true
+      },
+      tokenBudget: 100_000,
+      maxDreamDepth: 1
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+
+    await expect(orchestrator.act(snapshot.run.id, "intervene")).rejects.toThrow(
+      "AdversarialInterventionReportSchema"
+    );
+    const rejected = await orchestrator.snapshot(snapshot.run.id);
+    expect(worktrees.restoreCalls).toBe(1);
+    expect(rejected.run.interventions[0]).toMatchObject({
+      status: "rejected"
+    });
+    expect(rejected.run.events.some((event) => event.type === "intervention.rejected")).toBe(true);
+  });
+
+  it("quarantines a planted memory when Subjects only partially diagnose the sealed fault", async () => {
+    const mock = new MockCodexRuntime();
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const runtime: CodexRuntime = {
+      mode: "real",
+      info: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }),
+      activeOperations: () => [],
+      abortAll: () => 0,
+      inspect: async (reality, onEvent) => {
+        const result = await mock.inspect(reality, onEvent);
+        if (reality.depth > 0 && result.report.adversarialDiagnosis) {
+          result.report.adversarialDiagnosis = {
+            ...result.report.adversarialDiagnosis,
+            suspectedChangedFiles: ["src/wrong-boundary.ts"]
+          };
+        }
+        return result;
+      },
+      intervene: async (reality, contract, onEvent) => {
+        worktrees.changedFiles = ["src/sealed-intervention.ts"];
+        worktrees.changedDiff = "+permission regression\n";
+        return mock.intervene(reality, contract, onEvent);
+      },
+      wake: (...args) => mock.wake(...args),
+      synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
+    };
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      runtime,
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      name: "Memory integrity",
+      repositoryPath: "/repo",
+      mission: "Reject an incompletely diagnosed planted fault.",
+      scope: "API authorization",
+      premise: "A valid token enforces ownership.",
+      constraints: ["Use synthetic local data."],
+      parentTruths: ["Private resources require owner authorization."],
+      wakeContract: ["Return executable evidence."],
+      proofs: [{ name: "Authorization regression", executable: "python3", args: ["tests/security.py"] }],
+      subjects: [{ name: "Ariadne", role: "Investigator", mission: "Trace authorization." }],
+      intervention: {
+        enabled: true,
+        subject: {
+          name: "Mal",
+          role: "Bounded chaos engineer",
+          mission: "Inject one reversible permission fault."
+        },
+        hypothesis: "Investigators can diagnose a minimal permission fault from behavior.",
+        faultClasses: ["permission"],
+        allowedPaths: ["src/**"],
+        protectedPaths: ["tests/**"],
+        maxChangedFiles: 1,
+        maxPatchLines: 10,
+        tokenBudget: 10_000,
+        maxMinutes: 5,
+        targetDepth: 1,
+        revealPolicy: "after-diagnosis",
+        requireRollbackCommit: true
+      },
+      tokenBudget: 100_000,
+      maxDreamDepth: 1
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+    snapshot = await orchestrator.act(snapshot.run.id, "intervene");
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "kick");
+
+    expect(snapshot.activeReality.depth).toBe(0);
+    expect(snapshot.run.memories).toHaveLength(0);
+    expect(snapshot.run.interventions[0]?.assessment?.outcome).toBe("partial");
+    expect(snapshot.run.events.some((event) => event.type === "memory.quarantined")).toBe(true);
+    expect(snapshot.activeReality.proposals.some((proposal) => proposal.status === "open")).toBe(true);
+    expect(snapshot.nextAction?.id).toBe("create_dream");
   });
 });

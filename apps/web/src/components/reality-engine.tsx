@@ -18,6 +18,7 @@ import {
   Eye,
   FileCode2,
   FileDiff,
+  Fingerprint,
   FlaskConical,
   GitBranch,
   History,
@@ -41,7 +42,13 @@ import {
   X,
   XCircle
 } from "lucide-react";
-import type { DreamProposal, Reality, RealityEvent, WakeReport } from "@inception/domain";
+import type {
+  DreamProposal,
+  MemoryIntegritySeal,
+  Reality,
+  RealityEvent,
+  WakeReport
+} from "@inception/domain";
 import type { ActiveRealityOperation, DemoAction, DemoSnapshot } from "@inception/orchestrator";
 
 type LoadingState = "idle" | "acting" | "resetting";
@@ -555,15 +562,32 @@ function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
   );
 }
 
-function MemoryReport({ reality, report }: { reality: Reality; report: WakeReport }) {
+function MemoryReport({
+  reality,
+  report,
+  seal
+}: {
+  reality: Reality;
+  report: WakeReport;
+  seal?: MemoryIntegritySeal;
+}) {
   const changed = report.changedBeliefs[0];
   return (
     <article className="memory-report">
       <header>
         <span className="memory-level">L{reality.depth}</span>
         <div><small>MEMORY RETURNED</small><h3>{reality.name}</h3></div>
-        <span className="validated-badge"><ShieldCheck size={13} /> VALIDATED</span>
+        <span className="validated-badge">
+          {seal?.verdict === "verified" ? <Fingerprint size={13} /> : <ShieldCheck size={13} />}
+          {seal?.verdict === "verified" ? "INTEGRITY SEALED" : "VALIDATED"}
+        </span>
       </header>
+      {seal && (
+        <div className="memory-integrity-strip" data-testid="canonical-memory-seal">
+          <span><Fingerprint size={13} /><b>REALITY TOTEM</b>{seal.checks.filter((check) => check.status === "passed").length}/{seal.checks.length} policy checks</span>
+          <code>{seal.reportDigest.slice(0, 16)} / {seal.descendantSealIds.length} descendant seal{seal.descendantSealIds.length === 1 ? "" : "s"}</code>
+        </div>
+      )}
       {changed && (
         <div className="memory-belief">
           <div><span>ENTERED BELIEVING</span><p>{changed.from}</p></div>
@@ -1527,7 +1551,16 @@ export function RealityEngine() {
         </div>
         <div className="memory-list">
           {memories.length
-            ? memories.slice().reverse().map(({ reality, report }) => <MemoryReport reality={reality} report={report} key={reality.id} />)
+            ? memories.slice().reverse().map(({ reality, report }) => (
+                <MemoryReport
+                  reality={reality}
+                  report={report}
+                  seal={snapshot.session.memoryIntegrity.find((entry) =>
+                    entry.realityId === reality.id
+                  )}
+                  key={reality.id}
+                />
+              ))
             : <EmptyState icon={<ArrowUpFromLine size={19} />}>Kick a Dream to return a validated Wake Report.</EmptyState>}
         </div>
       </section>

@@ -1,6 +1,8 @@
 import { z } from "zod";
 import type {
+  AdversarialInterventionReport,
   InvestigationReport,
+  MissionInterventionContract,
   Reality,
   SynthesisReport,
   Subject,
@@ -66,6 +68,13 @@ export interface CodexWakeResult {
   report: WakeReport;
 }
 
+export interface CodexInterventionResult {
+  coordinatorThreadId: string;
+  subjectThreadId: string;
+  events: CodexRuntimeEvent[];
+  report: AdversarialInterventionReport;
+}
+
 export interface CodexSynthesisResult {
   threadId: string;
   events: CodexRuntimeEvent[];
@@ -79,6 +88,11 @@ export interface CodexRuntime {
   activeOperations(): CodexActiveOperation[];
   abortAll(): number;
   inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult>;
+  intervene(
+    reality: Reality,
+    contract: MissionInterventionContract,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexInterventionResult>;
   wake(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexWakeResult>;
   synthesise(
     reality: Reality,
@@ -101,7 +115,7 @@ export interface WakeReportValidationIssue {
 
 export class CodexOutputValidationError extends Error {
   constructor(
-    readonly contract: "InvestigationReportSchema" | "WakeReportSchema" | "SynthesisReportSchema",
+    readonly contract: "InvestigationReportSchema" | "AdversarialInterventionReportSchema" | "WakeReportSchema" | "SynthesisReportSchema",
     readonly issues: WakeReportValidationIssue[] = []
   ) {
     super(`${contract} failed schema validation.`);

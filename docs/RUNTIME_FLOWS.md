@@ -14,6 +14,7 @@ sequenceDiagram
   participant C as CodexRuntime
   participant S as Codex Subjects
   participant G as Git worktrees
+  participant T as Reality Totem
   participant P as Proof gate
 
   Judge->>UI: Ask Codex to audit password-reset security
@@ -34,9 +35,13 @@ sequenceDiagram
   O->>G: execute returned test
   O->>C: request WakeReport on same thread
   C-->>O: validated memory + test artefact
+  O->>T: seal report, source, anchors, evidence, artefacts
+  T-->>O: verified depth-two memory
   Judge->>UI: Kick parent Dream
   C-->>O: validated parent memory
-  Judge->>UI: Synthesize
+  O->>T: verify depth-two seal and seal parent memory
+  T-->>O: verified descendant chain
+  Judge->>UI: Synthesise
   O->>G: promote returned artefacts
   O->>C: apply memories in waking thread
   Judge->>UI: Run immutable anchors
@@ -72,13 +77,15 @@ flowchart LR
   R0[Waking worktree] -->|tracked diff + untracked evidence| R1[Dream worktree]
   R1 -->|tracked diff + untracked evidence| R2[Nested Dream worktree]
   R2 -->|validated artefacts only| W2[Wake Report]
-  W2 --> R1
+  W2 --> T2[Integrity seal L2]
+  T2 --> R1
   R1 -->|validated memories and artefacts| W1[Wake Report]
-  W1 --> R0
+  W1 --> T1[Integrity seal L1 includes L2]
+  T1 --> R0
   R0 --> Proofs[Immutable anchors + returned regressions]
 ```
 
-Child changes never flow directly into a parent branch. Only a validated Wake Report identifies returnable artefacts; synthesis applies them in the waking worktree.
+Child changes never flow directly into a parent branch. A validated Wake Report is only a memory proposal. The parent receives it after the automatic integrity gate binds report and source digests, confirms its inherited anchors, evidence and artefacts, and verifies every descendant seal. Synthesis applies only currently matching verified seals.
 
 ## Mission Composer
 
@@ -88,8 +95,15 @@ sequenceDiagram
   participant M as Mission Composer
   participant O as MissionOrchestrator
   participant C as Codex GPT-5.6
+  participant S as Native Subjects
   participant G as Target Git repository
 
+  Developer->>M: Choose pinned VAmPI or trusted local repository
+  opt Curated target
+    Developer->>M: Prepare VAmPI locally
+    M->>G: Clone allowlisted pinned revision
+    Note over M,C: No install, server, traffic, or Codex call
+  end
   Developer->>M: Define mission, premise, proofs, depth, Subjects
   M->>O: Form waking Reality
   O->>G: Create isolated root worktree
@@ -100,11 +114,26 @@ sequenceDiagram
     C-->>O: Evidence, belief changes, Dream proposal
     Developer->>O: Create Dream
     O->>G: Fork current Reality state
+    opt Bounded intervention at configured depth
+      Developer->>O: Run sealed intervention
+      O->>G: Retain rollback checkpoint
+      O->>C: Start fresh coordinator
+      C->>S: spawn exact chaos-engineer Subject
+      S-->>C: one bounded reversible mutation
+      O->>G: validate diff and seal private commit
+    end
   end
   Developer->>O: Kick deepest Dream
   C-->>O: Validated Wake Report
+  O->>O: Verify Reality Totem and descendant seals
+  alt Any integrity check fails
+    O-->>M: Memory quarantined; uncertainty reopened
+  else Integrity verified
+    O-->>M: Memory may propagate
+  end
   Developer->>O: Kick remaining Dreams
-  Developer->>O: Synthesize memories
+  Developer->>O: Synthesise memories
+  O->>G: Recheck sealed commit and clean source worktree
   O->>C: Apply validated memories
   Developer->>O: Run immutable proofs
   O->>G: Execute structured proof commands
@@ -125,11 +154,14 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  M[Returned memories] --> S[Synthesis in waking worktree]
+  W[Schema-valid Wake Reports] --> T{Current integrity seals and lineage match?}
+  T -->|No| X[Quarantine memory / reopen uncertainty]
+  T -->|Yes| M[Admitted memories]
+  M --> S[Synthesis in waking worktree]
   S --> A[Run parent-owned anchors]
   A --> R[Run returned regression artefacts]
-  R --> Q{Every proof passes?}
-  Q -->|No| F[Reality fracture / repair action]
+  R --> P{Every proof passes?}
+  P -->|No| F[Reality fracture / repair action]
   F --> S
-  Q -->|Yes| Z[Reality stabilised]
+  P -->|Yes| Z[Reality stabilised]
 ```

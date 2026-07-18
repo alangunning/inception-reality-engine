@@ -50,6 +50,11 @@ class FakeWorktreeManager implements WorktreeManager {
     ];
   }
   async diff(): Promise<string> { return "diff --git a/password-reset.ts b/password-reset.ts\n+layered controls"; }
+  async checkpoint(): Promise<string> { return "a".repeat(40); }
+  async currentCommit(): Promise<string> { return "a".repeat(40); }
+  async isClean(): Promise<boolean> { return true; }
+  async sealChanges(): Promise<string> { return "b".repeat(40); }
+  async restoreCheckpoint(): Promise<void> {}
   async run(_worktreePath: string, _command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     if (args.some((arg) => arg.includes("rotating-ip.attack.spec.ts"))) {
       return { stdout: "1 test failed", stderr: "", exitCode: 1 };
@@ -268,6 +273,16 @@ describe("RealityOrchestrator", () => {
       expect(snapshot.session.anchorResults.every((anchor) => anchor.status === "passed")).toBe(true);
       expect(snapshot.session.finalDiff).toContain("layered controls");
       expect(snapshot.events.some((event) => event.type === "memory.returned")).toBe(true);
+      expect(snapshot.events.filter((event) => event.type === "memory.verified")).toHaveLength(2);
+      expect(snapshot.session.memoryIntegrity).toHaveLength(2);
+      const deepestSeal = snapshot.session.memoryIntegrity.find((seal) =>
+        snapshot.realities.find((reality) => reality.id === seal.realityId)?.depth === 2
+      )!;
+      const parentSeal = snapshot.session.memoryIntegrity.find((seal) =>
+        snapshot.realities.find((reality) => reality.id === seal.realityId)?.depth === 1
+      )!;
+      expect(deepestSeal.verdict).toBe("verified");
+      expect(parentSeal.descendantSealIds).toContain(deepestSeal.id);
       expect(snapshot.realities[0]?.evidence.some((evidence) => evidence.title.startsWith("Memory inherited from "))).toBe(false);
       expect(snapshot.realities[0]?.evidence.some((evidence) => evidence.title.startsWith("Memory returned with "))).toBe(true);
 
