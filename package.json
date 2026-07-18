@@ -1,0 +1,42 @@
+{
+  "name": "inception-reality-engine",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run prepare:repo && npm run dev -w @inception/web",
+    "build": "npm run prepare:repo && npm run build -w @inception/web",
+    "start": "npm run start -w @inception/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "npm run typegen -w @inception/web && tsc -p tsconfig.json --noEmit",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "demo:reset": "tsx scripts/reset-demo.ts",
+    "verify": "npm run test && npm run typecheck && npm run build",
+    "prepare:repo": "node scripts/ensure-git.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.4",
+    "@openai/codex-sdk": "0.144.5",
+    "@prisma/adapter-libsql": "^7.8.0",
+    "@prisma/client": "7.8.0",
+    "zod": "3.25.76",
+    "zod-to-json-schema": "3.24.6"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30",
+    "prisma": "7.8.0",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3",
+    "vitest": "4.1.10"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.5.0"
+  }
+}

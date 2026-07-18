@@ -1,0 +1,12 @@
+{
+  "name": "@inception/orchestrator",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "dependencies": {
+    "@inception/domain": "*",
+    "@prisma/client": "7.8.0"
+  }
+}

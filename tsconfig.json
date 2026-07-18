@@ -1,0 +1,38 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": [
+      "node"
+    ],
+    "jsx": "preserve",
+    "paths": {
+      "@/*": [
+        "apps/web/src/*"
+      ],
+      "@inception/domain": [
+        "packages/domain/src/index.ts"
+      ],
+      "@inception/orchestrator": [
+        "packages/orchestrator/src/index.ts"
+      ],
+      "@inception/codex-runtime": [
+        "packages/codex-runtime/src/index.ts"
+      ],
+      "@inception/worktree-manager": [
+        "packages/worktree-manager/src/index.ts"
+      ]
+    }
+  },
+  "include": [
+    "apps/**/*.ts",
+    "apps/**/*.tsx",
+    "packages/**/*.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    ".inception"
+  ]
+}

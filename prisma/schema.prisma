@@ -1,0 +1,57 @@
+generator client {
+  provider   = "prisma-client-js"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model RealityRecord {
+  id               String   @id
+  parentId         String?
+  depth            Int
+  kind             String
+  name             String
+  status           String
+  premise          String
+  constitutionJson String
+  worldStateJson   String
+  subjectsJson     String
+  beliefsJson      String
+  evidenceJson     String
+  proposalsJson    String
+  anchorsJson      String
+  wakeReportJson   String?
+  codexThreadId    String?
+  worktreePath     String?
+  branchName       String?
+  createdAt        DateTime
+  updatedAt        DateTime
+
+  @@index([parentId])
+  @@index([depth])
+}
+
+model RealityEventRecord {
+  id         String   @id
+  realityId  String
+  type       String
+  summary    String
+  dreamTime  Int
+  payloadJson String
+  occurredAt DateTime
+
+  @@index([realityId])
+  @@index([occurredAt])
+}
+
+model DemoSessionRecord {
+  id                String   @id
+  phase             Int
+  activeRealityId   String?
+  finalDiff          String
+  anchorResultsJson  String
+  createdAt          DateTime
+  updatedAt          DateTime
+}
