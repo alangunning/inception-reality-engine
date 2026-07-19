@@ -860,7 +860,13 @@ function MissionRunView({
         }}
       />
 
-      <RealityTimeline events={run.events} index={timelineIndex} onChange={setTimelineIndex} />
+      <RealityTimeline
+        events={run.events}
+        realities={run.realities}
+        index={timelineIndex}
+        now={now}
+        onChange={setTimelineIndex}
+      />
 
       <RealityMirrorBand run={run} />
       <MemoryAscentBand run={run} />

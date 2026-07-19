@@ -449,8 +449,7 @@ test("Mission API returns concise field validation without raw Zod output", asyn
   ]));
 });
 
-test("timeline replay survives a retained window without the creation event", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "Replay reconstruction needs one browser target.");
+test("timeline replay survives a retained window without the creation event", async ({ page }) => {
   const response = await page.request.get("/api/demo");
   const snapshot = await response.json();
   const root = snapshot.realities[0];
@@ -460,10 +459,62 @@ test("timeline replay survives a retained window without the creation event", as
       id: "retained-inspection",
       realityId: root.id,
       type: "inspection.completed",
-      summary: "Retained inspection milestone.",
+      summary: "Guided real auto mode paused: A new counterfactual premise requires explicit approval.",
       dreamTime: 12,
       payload: {},
       occurredAt: retainedAt
+    },
+    {
+      id: "retained-model",
+      realityId: root.id,
+      type: "codex.progress",
+      summary: "gpt-5.6-sol bound to Waking Reality.",
+      dreamTime: 12,
+      payload: {
+        metadata: {
+          stage: "model",
+          status: "completed",
+          model: "gpt-5.6-sol",
+          sdkVersion: "0.144.6",
+          authSource: "cli"
+        }
+      },
+      occurredAt: new Date(new Date(retainedAt).getTime() + 1_000).toISOString()
+    },
+    {
+      id: "retained-thread",
+      realityId: root.id,
+      type: "codex.progress",
+      summary: "Codex thread entered the Waking Reality worktree.",
+      dreamTime: 12,
+      payload: {
+        metadata: {
+          stage: "thread",
+          status: "started",
+          threadId: "thread-waking-123456"
+        }
+      },
+      occurredAt: new Date(new Date(retainedAt).getTime() + 2_000).toISOString()
+    },
+    {
+      id: "retained-subject",
+      realityId: root.id,
+      type: "subject.started",
+      summary: "Subject entered Codex thread: Ariadne.",
+      dreamTime: 12,
+      payload: {
+        metadata: {
+          stage: "subject",
+          status: "completed",
+          subjectId: "subject-ariadne",
+          subjectName: "Ariadne",
+          subjectRole: "Security investigator",
+          subjectThreadId: "thread-subject-ariadne-123456",
+          subjectState: "started",
+          collaborationTool: "spawn_agent"
+        }
+      },
+      occurredAt: new Date(new Date(retainedAt).getTime() + 3_000).toISOString()
     },
     {
       id: "retained-uncertainty",
@@ -472,7 +523,7 @@ test("timeline replay survives a retained window without the creation event", as
       summary: "Retained uncertainty milestone.",
       dreamTime: 12,
       payload: {},
-      occurredAt: new Date(new Date(retainedAt).getTime() + 1_000).toISOString()
+      occurredAt: new Date(new Date(retainedAt).getTime() + 4_000).toISOString()
     }
   ];
   await page.route("**/api/demo", (route) => route.fulfill({ json: snapshot }));
@@ -484,6 +535,46 @@ test("timeline replay survives a retained window without the creation event", as
   await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(1);
   await expect(page.getByRole("heading", { name: "Uncertainty made explicit" })).toBeVisible();
   await expect(page.locator(".loading-screen")).toHaveCount(0);
+  const timelineSummary = timeline.locator("strong");
+  await expect(timelineSummary).toHaveText("Guided real auto mode paused: A new counterfactual premise requires explicit approval.");
+  expect(await timelineSummary.evaluate((element) =>
+    element.scrollWidth <= element.clientWidth && element.scrollHeight <= element.clientHeight
+  )).toBe(true);
+  await timeline.getByRole("button", {
+    name: "Inspect replay milestone: Guided real auto mode paused: A new counterfactual premise requires explicit approval."
+  }).click();
+  await expect(page.getByTestId("event-detail")).toContainText(
+    "Guided real auto mode paused: A new counterfactual premise requires explicit approval."
+  );
+  await page.getByRole("button", { name: "Close event details" }).click();
+
+  await timeline.locator('input[type="range"]').fill("1");
+  await timeline.getByRole("button", { name: "Inspect replay milestone: gpt-5.6-sol bound to Waking Reality." }).click();
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("MODEL");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("gpt-5.6-sol");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("SDK");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("AUTH");
+  await page.getByRole("button", { name: "Close event details" }).click();
+
+  await timeline.locator('input[type="range"]').fill("2");
+  await timeline.getByRole("button", { name: "Inspect replay milestone: Codex thread entered the Waking Reality worktree." }).click();
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("REALITY THREAD");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("thread-waking-123456");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("WORKTREE");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("GIT BRANCH");
+  await page.getByRole("button", { name: "Close event details" }).click();
+
+  await timeline.locator('input[type="range"]').fill("3");
+  await timeline.getByRole("button", { name: "Inspect replay milestone: Subject entered Codex thread: Ariadne." }).click();
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("SUBJECT THREAD");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("thread-subject-ariadne-123456");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("SUBJECT STATE");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("CODEX COLLABORATION");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("spawn_agent");
+  await page.getByRole("button", { name: "Close event details" }).click();
+
+  await timeline.getByRole("button", { name: "Play adaptive timeline replay" }).click();
+  await expect(timeline).toContainText("LIVE REALITY TIMELINE", { timeout: 5_000 });
 });
 
 test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ page }) => {
@@ -1077,6 +1168,10 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.getByTestId("event-row").filter({ hasText: "Subject entered Codex thread: Ariadne." }).click();
   await expect(page.getByTestId("event-execution-evidence")).toContainText("SUBJECT THREAD");
   await expect(page.getByTestId("event-execution-evidence")).toContainText("thread-subject-1-123456");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("SUBJECT STATE");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("started");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("CODEX COLLABORATION");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("spawn_agent");
   await page.getByRole("button", { name: "Close event details" }).click();
   await expect(page.getByTestId("memory-integrity")).toContainText("Parent policy armed");
   await expect(page.getByTestId("mission-action-dock")).toContainText("Kick Cross-user book secret");

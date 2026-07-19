@@ -24,7 +24,7 @@ For offline product inspection or a credential-free deterministic fallback:
 npm run record:demo
 ```
 
-Recording mode exercises the same domain and presentation contracts, but live mode is the technical-evaluation path. The recommended submitted-video workflow is to finish one fresh real run, export its safe history, and record the completed UI using adaptive timeline playback while opening model, Reality-thread, and native Subject evidence. Docker and a prebuilt image are not required.
+Recording mode exercises the same domain and presentation contracts, but live mode is the technical-evaluation path. The recommended submitted-video workflow is to finish one fresh real run, export its safe history, and record the completed UI using adaptive timeline playback. Its eye control pauses on the current milestone and opens model, Reality-thread, native Subject, containment, or proof evidence directly; playback returns to Live after the final stabilisation hold. Docker and a prebuilt image are not required.
 
 ## Three-Minute Demo Script
 

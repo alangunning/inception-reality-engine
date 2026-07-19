@@ -128,7 +128,7 @@ Show:
 - final proof results;
 - **Reveal code** for the waking Git diff;
 - timestamped, searchable events with inspectable metadata;
-- the Reality Timeline **Play** control replaying high-signal milestones at adaptive pacing and returning to **Live**;
+- the Reality Timeline **Play** control replaying high-signal milestones at adaptive pacing and returning to **Live** after the final stabilisation hold;
 - the measured outcome: **12/12** deliveries before, **3/12** after, **1** planted mutation rolled back, **0** injected files ascended, **4/4** parent requirements passed.
 
 Say: “Good evidence and tested artefacts can wake into Reality. Unsupported assumptions, stale lineage, and planted changes are quarantined before they cross a Kick boundary.”
@@ -137,7 +137,7 @@ If time permits, open **Mission Control** and show the generalized VAmPI preset,
 
 ## Replay Evidence Shot
 
-On the completed live run, press **Play** in the Reality Timeline. Pause on:
+On the completed live run, press **Play** in the Reality Timeline. Each milestone receives an evidence-sensitive dwell rather than a constant slider speed. Press the eye icon to pause and inspect the current milestone, then resume playback. Open:
 
 1. the model-binding event to show `gpt-5.6-sol` and the SDK version;
 2. a Reality thread event to show the persisted thread, worktree, and Git branch;

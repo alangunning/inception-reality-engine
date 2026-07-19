@@ -532,10 +532,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .reality-timeline small { color: var(--cyan); font-size: 0.51rem; font-weight: 800; }
 .reality-timeline strong {
   margin-top: 4px;
-  overflow: hidden;
   font-size: 0.62rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .reality-timeline input { width: 100%; accent-color: var(--cyan); }
 .timeline-position { color: var(--muted); font: 0.53rem ui-monospace, SFMono-Regular, Menlo, monospace; white-space: nowrap; }
@@ -554,6 +554,17 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 }
 .reality-timeline button:disabled { opacity: 0.35; cursor: default; }
 .reality-timeline .timeline-play { color: var(--cyan); }
+.reality-timeline .timeline-inspect {
+  width: 32px;
+  flex: 0 0 32px;
+  margin-left: auto;
+  padding: 0;
+  color: var(--muted);
+}
+.reality-timeline .timeline-inspect:hover:not(:disabled) {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
 
 .topology-workspace {
   display: grid;

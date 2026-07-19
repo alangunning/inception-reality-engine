@@ -1377,6 +1377,8 @@ function EventDetailDialog({
       ? `${metadata.subjectName}${metadata.subjectRole ? ` / ${metadata.subjectRole}` : ""}`
       : undefined],
     ["SUBJECT THREAD", metadata.subjectThreadId],
+    ["SUBJECT STATE", metadata.subjectState],
+    ["CODEX COLLABORATION", metadata.collaborationTool],
     ["WORKTREE", reality?.worktreePath],
     ["GIT BRANCH", reality?.branchName],
     ["SDK", metadata.sdkVersion],
@@ -1988,12 +1990,15 @@ function adaptiveReplayDelay(event: RealityEvent | undefined): number {
   return 700;
 }
 
-export function RealityTimeline({ events, index, onChange }: {
+export function RealityTimeline({ events, realities, index, now, onChange }: {
   events: RealityEvent[];
+  realities: Reality[];
   index: number | null;
+  now: number;
   onChange: (index: number | null) => void;
 }) {
   const [playing, setPlaying] = useState(false);
+  const [inspectedEventId, setInspectedEventId] = useState<string | null>(null);
   const milestoneIndexes = events.reduce<number[]>((indexes, event, eventIndex) => {
     if (isTimelineMilestone(event)) indexes.push(eventIndex);
     return indexes;
@@ -2007,14 +2012,19 @@ export function RealityTimeline({ events, index, onChange }: {
     : Math.max(0, firstLaterMilestone - 1);
   const selectedIndex = milestoneIndexes[position] ?? 0;
   const selected = events[selectedIndex];
+  const inspectedEvent = events.find((event) => event.id === inspectedEventId) ?? null;
+  const inspectedReality = inspectedEvent
+    ? realities.find((reality) => reality.id === inspectedEvent.realityId) ?? null
+    : null;
 
   useEffect(() => {
     if (!playing) return;
-    if (position >= maximum) {
-      setPlaying(false);
-      return;
-    }
     const timer = window.setTimeout(() => {
+      if (position >= maximum) {
+        setPlaying(false);
+        onChange(null);
+        return;
+      }
       onChange(milestoneIndexes[position + 1] ?? null);
     }, adaptiveReplayDelay(selected));
     return () => window.clearTimeout(timer);
@@ -2025,6 +2035,7 @@ export function RealityTimeline({ events, index, onChange }: {
       setPlaying(false);
       return;
     }
+    setInspectedEventId(null);
     if (index === null || position >= maximum) {
       onChange(milestoneIndexes[0] ?? 0);
     }
@@ -2039,6 +2050,19 @@ export function RealityTimeline({ events, index, onChange }: {
           <small>{playing ? "ADAPTIVE REPLAY / HIGH-SIGNAL PACING" : index === null ? "LIVE REALITY TIMELINE" : "REPLAYING VALIDATED EXPERIENCE"}</small>
           <strong>{selected?.summary ?? "Waking Reality formed"}</strong>
         </span>
+        <button
+          type="button"
+          className="timeline-inspect"
+          disabled={!selected}
+          onClick={() => {
+            setPlaying(false);
+            setInspectedEventId(selected?.id ?? null);
+          }}
+          aria-label={selected ? `Inspect replay milestone: ${selected.summary}` : "Inspect replay milestone"}
+          title="Inspect current milestone"
+        >
+          <Eye size={14} />
+        </button>
       </div>
       <input
         type="range"
@@ -2048,6 +2072,7 @@ export function RealityTimeline({ events, index, onChange }: {
         disabled={milestoneIndexes.length < 2}
         onChange={(event) => {
           setPlaying(false);
+          setInspectedEventId(null);
           onChange(milestoneIndexes[Number(event.target.value)] ?? 0);
         }}
         aria-label="Replay Reality timeline"
@@ -2067,10 +2092,19 @@ export function RealityTimeline({ events, index, onChange }: {
       </button>
       <button type="button" onClick={() => {
         setPlaying(false);
+        setInspectedEventId(null);
         onChange(null);
       }} disabled={index === null}>
         <Radio size={13} /> Live
       </button>
+      {inspectedEvent && (
+        <EventDetailDialog
+          event={inspectedEvent}
+          reality={inspectedReality}
+          now={now}
+          onClose={() => setInspectedEventId(null)}
+        />
+      )}
     </section>
   );
 }
@@ -3040,7 +3074,13 @@ export function RealityEngine() {
 
       <WakeTransition stage={wakeStage} realityName={wakeRealityName} />
 
-      <RealityTimeline events={snapshot.events} index={timelineIndex} onChange={setTimelineIndex} />
+      <RealityTimeline
+        events={snapshot.events}
+        realities={snapshot.realities}
+        index={timelineIndex}
+        now={now}
+        onChange={setTimelineIndex}
+      />
 
       <RealityWorkspace
         realities={replayedRealities}
