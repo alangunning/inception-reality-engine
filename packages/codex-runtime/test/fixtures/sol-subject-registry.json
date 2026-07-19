@@ -1,0 +1,19 @@
+{
+  "parentThreadId": "parent-sol-thread",
+  "children": [
+    {
+      "threadId": "child-source-thread",
+      "agentPath": "/root/reset_source_audit",
+      "agentNickname": "Source reviewer",
+      "reportName": "reset_source_audit",
+      "reportRole": "Read-only implementation and security auditor"
+    },
+    {
+      "threadId": "child-test-thread",
+      "agentPath": "/root/reset_test_audit",
+      "agentNickname": "Test reviewer",
+      "reportName": "reset_test_audit",
+      "reportRole": "Decisive-test investigator"
+    }
+  ]
+}

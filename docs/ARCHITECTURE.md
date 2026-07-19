@@ -151,10 +151,10 @@ The topology is a real parent-child graph layout, not a depth meter. Every sibli
 | Canonical flow | Complete | Complete |
 | SDK thread per Reality | Deterministic equivalent | Persisted SDK/CLI thread |
 | Git worktree per Reality | Yes | Yes |
-| Subject events | Labelled synthetic trace | Native `spawn_agent` and terminal `wait` evidence |
+| Subject events | Labelled synthetic trace | Native SDK collaboration items or Codex thread-registry evidence |
 | File writes | Deterministic fixture | Unrestricted inside Reality worktree |
 | Mission Composer | Disabled | Enabled |
-| Default model | Deterministic mock | `gpt-5.6`, high reasoning |
+| Default model | Deterministic mock | `gpt-5.6-sol`, high reasoning |
 
 Real mode is intentionally powerful. Its Codex thread options use `danger-full-access`, `approvalPolicy: never`, network access, live web search, and the Reality worktree as the working directory. This is a trusted local execution model, not a hosted multi-tenant service.
 
@@ -162,12 +162,12 @@ Real mode is intentionally powerful. Its Codex thread options use `danger-full-a
 
 ## Data and Trust
 
-All Codex responses cross a Zod boundary before persistence. SDK events are projected into an allowlisted metadata schema; raw reasoning, raw Subject messages, raw agent messages, and unrestricted SDK payloads are discarded. Plan events retain at most 20 compact, credential-redacted step labels and their completed/pending status, allowing the event inspector and exported history to reconstruct the operational plan at that exact milestone without retaining chain of thought. Subject evidence is accepted only when native collaboration events prove both:
+All Codex responses cross a Zod boundary before persistence. SDK events are projected into an allowlisted metadata schema; raw reasoning, raw Subject messages, raw agent messages, and unrestricted SDK payloads are discarded. Plan events retain at most 20 compact, credential-redacted step labels and their completed/pending status, allowing the event inspector and exported history to reconstruct the operational plan at that exact milestone without retaining chain of thought. Subject evidence is accepted only when one of two native evidence paths proves a completed child thread:
 
-1. a `spawn_agent` completed for the exact `SUBJECT_ID`; and
-2. a terminal `wait` returned that child thread successfully.
+1. SDK collaboration items contain a completed `spawn_agent` and completed terminal `wait` or `close_agent`; or
+2. Codex's own thread registry binds the parent to the child and the child's session contains a structural `task_complete` event.
 
-When a Reality has no pre-chartered Subjects, Codex may still delegate bounded independent work. Each opportunistic Subject must use its returned native child thread ID as the report identity. The runtime binds that report to completed `spawn_agent` and terminal `wait` evidence before the orchestrator creates a returned Subject in the Reality.
+The registry adapter reads only thread identity, task path, worktree, timestamps, terminal event types, and an exact `SUBJECT_ID` marker extracted from the first prompt when a parent charter exists. It discards all other prompt content and does not read or persist Subject response bodies or reasoning. When a Reality has no pre-chartered Subjects, Codex may still delegate bounded independent work. Each opportunistic Subject must use the identity returned by the current turn's native collaboration path. The runtime binds that report to a completed native child before the orchestrator creates a returned Subject in the Reality.
 
 Mission inspection is a Git transaction. The orchestrator checkpoints the Reality before Codex enters it, persists the primary SDK thread as soon as `thread.started` arrives, and rolls back on runtime or contract failure. A successful waking inspection also restores the checkpoint so evidence may enter the waking Reality while implementation changes wait for Dream synthesis. Dream inspections retain validated world-local changes.
 

@@ -75,7 +75,7 @@ The immutable password-reset **Demo Mission** is the fastest complete story:
 Judges can inspect:
 
 - one persisted Codex SDK thread and Git worktree per Reality;
-- native `spawn_agent` and terminal `wait` evidence for Subjects;
+- native Subject evidence from SDK collaboration items or Codex's thread registry and structural task completion;
 - branching topology, sibling comparison, staged Kicks, and memory ascent;
 - automatic intervention rollback, artefact exclusion, and memory quarantine;
 - cursor-paged live events, exact plan snapshots, usage evidence, and replay;

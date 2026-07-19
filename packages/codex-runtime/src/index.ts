@@ -4,3 +4,4 @@ export * from "./mock-codex-runtime";
 export * from "./real-codex-runtime";
 export * from "./codex-process-control";
 export * from "./codex-execution-environment";
+export * from "./codex-subject-registry";

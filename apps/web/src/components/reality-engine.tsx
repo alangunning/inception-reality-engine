@@ -98,7 +98,7 @@ interface SafeEventMetadata {
   subjectRole?: string;
   subjectThreadId?: string;
   subjectState?: "started" | "completed" | "failed";
-  collaborationTool?: "spawn_agent" | "wait";
+  collaborationTool?: "spawn_agent" | "wait" | "close_agent" | "thread_registry";
 }
 
 interface CodexProcess {
@@ -589,11 +589,12 @@ export function WakeTransition({
   );
 }
 
-export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
+export function RealityGraph({ realities, locusId, selectedId, pulseId, operation, onSelect }: {
   realities: Reality[];
   locusId: string | null;
   selectedId: string | null;
   pulseId: string | null;
+  operation?: PresentedRealityOperation | null;
   onSelect: (id: string) => void;
 }) {
   const collapsed = realities.length === 1 && realities[0]?.status === "stabilised";
@@ -659,7 +660,7 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect
           return (
             <button
               type="button"
-              className={`reality-node depth-node-${reality.depth} ${selected ? "is-selected" : ""} ${locus ? "is-locus" : ""} ${pulseId === reality.id ? "is-waking" : ""}`}
+              className={`reality-node depth-node-${reality.depth} ${selected ? "is-selected" : ""} ${locus ? "is-locus" : ""} ${pulseId === reality.id ? "is-waking" : ""} ${operation?.realityId === reality.id ? "is-operating" : ""}`}
               style={{ left: position.x, top: position.y }}
               key={reality.id}
               onClick={() => onSelect(reality.id)}
@@ -667,8 +668,11 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect
             >
               <span className="node-kicker">
                 <span>L{reality.depth}</span>
-                {locus && <b><Radio size={10} /> LOCUS</b>}
-                {!locus && <b>{statusLabel(reality.status)}</b>}
+                {operation?.realityId === reality.id
+                  ? <b><Radio size={10} /> CODEX ACTIVE</b>
+                  : locus
+                    ? <b><Radio size={10} /> LOCUS</b>
+                    : <b>{statusLabel(reality.status)}</b>}
               </span>
               <strong>{reality.name}</strong>
               <small>{reality.worldState.currentFocus}</small>
@@ -1963,7 +1967,11 @@ export function RealityWorkspace({
 
   const root = realities.find((reality) => reality.depth === 0);
   const proposals = realities.flatMap((reality) =>
-    reality.proposals.map((proposal) => ({ ...proposal, owner: reality.name }))
+    reality.proposals.map((proposal) => ({
+      ...proposal,
+      owner: reality.name,
+      ownerId: reality.id
+    }))
   );
   const memories = realities.flatMap((reality) =>
     reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []
@@ -1971,6 +1979,14 @@ export function RealityWorkspace({
   const initialBelief = root?.beliefs.find((belief) => belief.origin === "initial")
     ?? root?.beliefs[0];
   const finalBelief = root?.beliefs.at(-1);
+  const dreamCount = realities.filter((reality) => reality.depth > 0).length;
+  const hiddenRealityCount = realities.length - graphRealities.length;
+  const activeProposal = proposals.find((proposal) =>
+    proposal.status === "open"
+    && !realities.some((reality) =>
+      reality.name === proposal.title || reality.premise === proposal.premise
+    )
+  );
   const displayedAnchors: Array<{
     anchorId: string;
     name: string;
@@ -1995,11 +2011,40 @@ export function RealityWorkspace({
             title="Counterfactual world graph"
             meta={<span className="locus-key"><Radio size={11} /> LOCUS: {sourceRealities.find((entry) => entry.id === activeRealityId)?.name}</span>}
           />
+          <div
+            className={`topology-state ${operation ? "is-active" : activeProposal ? "is-proposed" : ""}`}
+            data-testid="topology-state"
+            role="status"
+            aria-live="polite"
+          >
+            {operation ? <Radio size={15} /> : activeProposal ? <CircleDot size={15} /> : <Network size={15} />}
+            <span>
+              <small>
+                {operation
+                  ? `CODEX ACTIVE / ${realities.length} ${realities.length === 1 ? "REALITY" : "REALITIES"} / ${dreamCount} ${dreamCount === 1 ? "DREAM" : "DREAMS"}`
+                  : activeProposal
+                    ? "DREAM PROPOSED / NOT LAUNCHED"
+                    : `TOPOLOGY / ${realities.length} ${realities.length === 1 ? "REALITY" : "REALITIES"} / ${dreamCount} ${dreamCount === 1 ? "DREAM" : "DREAMS"}${hiddenRealityCount ? ` / ${hiddenRealityCount} HIDDEN` : ""}`}
+              </small>
+              <strong>
+                {operation
+                  ? `${operation.label} is running inside ${sourceRealities.find((entry) => entry.id === operation.realityId)?.name ?? "the current Reality"}; no child Reality has been created.`
+                  : activeProposal
+                    ? `${activeProposal.title} is awaiting confirmation before its thread and worktree enter the graph.`
+                    : hiddenRealityCount > 0
+                      ? `${hiddenRealityCount} returned Dream ${hiddenRealityCount === 1 ? "node is" : "nodes are"} collapsed; validated memories remain in the Waking Reality.`
+                    : dreamCount === 0
+                      ? "No Dream launched; the Waking Reality is idle."
+                      : "Every node is a formed Reality with its own Codex thread and Git worktree."}
+              </strong>
+            </span>
+          </div>
           <RealityGraph
             realities={graphRealities}
             locusId={activeRealityId}
             selectedId={selectedReality.id}
             pulseId={pulseRealityId}
+            operation={operation}
             onSelect={onSelectReality}
           />
           <div className="map-footer">
@@ -2293,7 +2338,7 @@ export function RealityEngine() {
       runtime: current?.runtime ?? {
         codexMode: "mock",
         persistence: "sqlite-fallback",
-        model: "gpt-5.6",
+        model: "gpt-5.6-sol",
         sdkVersion: "unknown"
       }
     }));

@@ -39,7 +39,7 @@ The human owner made the decisions that define the product:
 
 ## GPT-5.6 at Runtime
 
-Real Reality threads default to `gpt-5.6` with high reasoning effort. The model is explicitly surfaced in the UI, Admin API, event stream, and runtime tests. `INCEPTION_CODEX_MODEL` exists for controlled compatibility testing; the submission default is GPT-5.6.
+Real Reality threads default to the exact `gpt-5.6-sol` slug with high reasoning effort. The model is explicitly surfaced in the UI, Admin API, event stream, and runtime tests. `INCEPTION_CODEX_MODEL` exists for controlled compatibility testing; the submission default remains the GPT-5.6 family.
 
 Codex is given the Reality constitution, history, evidence, anchors, Subject charters, and JSON output schema. It receives unrestricted file and command capability only inside the Reality worktree. The orchestrator, not the model, owns Dream creation, memory admission, artefact promotion, and stabilisation.
 

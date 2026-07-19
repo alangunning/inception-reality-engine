@@ -3,7 +3,12 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { CodexProcessControl, MockCodexRuntime, RealCodexRuntime } from "@inception/codex-runtime";
+import {
+  CodexProcessControl,
+  DEFAULT_CODEX_MODEL,
+  MockCodexRuntime,
+  RealCodexRuntime
+} from "@inception/codex-runtime";
 import {
   type CodexRuntime,
   InMemoryRealityEventBus,
@@ -41,7 +46,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.1";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.4";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,
@@ -55,7 +60,7 @@ function upgradeRuntimeCapabilities(
   legacy.info ??= () => ({
     mode,
     model: mode === "real"
-      ? process.env.INCEPTION_CODEX_MODEL?.trim() || "gpt-5.6"
+      ? process.env.INCEPTION_CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL
       : "deterministic-mock",
     sdkVersion: "0.144.6"
   });

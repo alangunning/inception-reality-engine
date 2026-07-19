@@ -631,6 +631,10 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .reality-node:hover { border-color: #647178; background: var(--surface); }
 .reality-node.is-selected { border-color: var(--cyan); box-shadow: inset 3px 0 0 var(--cyan); }
 .reality-node.is-locus { background: #0d1718; }
+.reality-node.is-operating {
+  border-color: var(--green);
+  box-shadow: inset 3px 0 0 var(--green), 0 0 24px rgba(115, 214, 158, 0.16);
+}
 .reality-map.is-collapsed .reality-node {
   border-color: var(--green);
   background: #0b1710;
@@ -662,6 +666,31 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .wake-flash { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .wake-flash span { position: absolute; inset: 50% auto auto 50%; width: 4px; height: 4px; border: 1px solid var(--amber); border-radius: 50%; animation: wakeWave 1.4s ease-out forwards; }
 .wake-flash span:last-child { animation-delay: 160ms; }
+
+.topology-state {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 9px 18px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  background: #0a0d0f;
+}
+.topology-state > span { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.topology-state small { color: var(--text-soft); font-size: 0.53rem; font-weight: 800; }
+.topology-state strong {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.59rem;
+  font-weight: 550;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.topology-state.is-active { color: var(--green); background: #0b1512; }
+.topology-state.is-proposed { color: var(--amber); background: #151109; }
 
 .map-footer {
   min-height: 66px;
@@ -1790,6 +1819,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   .heading-meta { display: none; }
   .reality-map { max-height: 560px; }
   .reality-node { width: 200px; height: 126px; }
+  .topology-state strong { white-space: normal; }
   .map-footer { flex-wrap: wrap; gap: 9px 16px; }
   .map-footer small { display: none; }
   .world-ledger, .proof-workspace { grid-template-columns: 1fr; }

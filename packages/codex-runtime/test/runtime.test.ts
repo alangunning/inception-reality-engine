@@ -7,6 +7,7 @@ import {
   buildSubjectOrchestrationPrompt,
   codexThreadOptions,
   configuredCodexModel,
+  CodexSubjectRegistryTrace,
   CodexRuntimeEventSchema,
   MockCodexRuntime,
   normaliseCodexExecutionError,
@@ -16,6 +17,8 @@ import {
   WakeReportParser,
   WakeReportValidationError
 } from "../src";
+
+const { DatabaseSync } = process.getBuiltinModule("node:sqlite") as typeof import("node:sqlite");
 
 const constitution = {
   mission: "Test password reset",
@@ -34,7 +37,7 @@ describe("Codex runtime", () => {
     fs.mkdirSync(path.join(sourceHome, "sessions"));
     fs.writeFileSync(path.join(sourceHome, "auth.json"), '{"auth_mode":"test"}');
     fs.writeFileSync(path.join(sourceHome, "config.toml"), '[plugins."linear"]\nenabled=true\n');
-    fs.writeFileSync(path.join(sourceHome, "models_cache.json"), '{"models":["gpt-5.6"]}\n');
+    fs.writeFileSync(path.join(sourceHome, "models_cache.json"), '{"models":["gpt-5.6-sol"]}\n');
     fs.writeFileSync(path.join(sourceHome, "sessions", "existing-thread.jsonl"), "{}\n");
 
     try {
@@ -61,7 +64,7 @@ describe("Codex runtime", () => {
         path.join(runtimeHome, "sessions", "existing-thread.jsonl"),
         "utf8"
       )).toBe("{}\n");
-      expect(fs.readFileSync(path.join(runtimeHome, "models_cache.json"), "utf8")).toContain("gpt-5.6");
+      expect(fs.readFileSync(path.join(runtimeHome, "models_cache.json"), "utf8")).toContain("gpt-5.6-sol");
       expect(fs.existsSync(path.join(runtimeHome, "config.toml"))).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -316,6 +319,7 @@ describe("Codex runtime", () => {
     expect(prompt).toContain("spawn one direct subagent for each Subject");
     expect(prompt).toContain("Ariadne (Attacker): Probe rotating-source abuse.");
     expect(prompt).toContain("wait for every Subject to return");
+    expect(prompt).toContain("close a Subject only after its native terminal status is completed");
     expect(prompt).toContain("must not spawn further subagents");
   });
 
@@ -328,7 +332,8 @@ describe("Codex runtime", () => {
       premise: constitution.premise,
       constitution
     }).snapshot());
-    expect(prompt).toContain("native child thread ID");
+    expect(prompt).toContain("native identity returned by the current turn");
+    expect(prompt).toContain("Do not reuse a Subject");
 
     const enteredLaplace = trace.observe({
       type: "item.completed",
@@ -436,6 +441,147 @@ describe("Codex runtime", () => {
     expect(JSON.stringify([...enteredLaplace, ...enteredHume, ...returned])).not.toContain("raw Subject response");
   });
 
+  it("replays Sol task-path Subjects from the native thread registry", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-sol-subjects-"));
+    const sessions = path.join(root, "sessions");
+    const worktree = path.join(root, "worktree");
+    fs.mkdirSync(sessions);
+    fs.mkdirSync(worktree);
+    const fixture = JSON.parse(fs.readFileSync(
+      new URL("./fixtures/sol-subject-registry.json", import.meta.url),
+      "utf8"
+    )) as {
+      parentThreadId: string;
+      children: Array<{
+        threadId: string;
+        agentPath: string;
+        agentNickname: string;
+        reportName: string;
+        reportRole: string;
+      }>;
+    };
+    const database = new DatabaseSync(path.join(root, "state_5.sqlite"));
+    database.exec(`
+      CREATE TABLE thread_spawn_edges (
+        parent_thread_id TEXT NOT NULL,
+        child_thread_id TEXT NOT NULL PRIMARY KEY,
+        status TEXT NOT NULL
+      );
+      CREATE TABLE threads (
+        id TEXT PRIMARY KEY,
+        agent_path TEXT,
+        agent_nickname TEXT,
+        agent_role TEXT,
+        first_user_message TEXT NOT NULL,
+        rollout_path TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL
+      );
+    `);
+    const createdAtMs = Date.now();
+    const insertEdge = database.prepare(
+      "INSERT INTO thread_spawn_edges (parent_thread_id, child_thread_id, status) VALUES (?, ?, ?)"
+    );
+    const insertThread = database.prepare(`
+      INSERT INTO threads (
+        id, agent_path, agent_nickname, agent_role, first_user_message,
+        rollout_path, cwd, created_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const rolloutPaths = new Map<string, string>();
+    try {
+      for (const child of fixture.children) {
+        const rolloutPath = path.join(sessions, `${child.threadId}.jsonl`);
+        rolloutPaths.set(child.threadId, rolloutPath);
+        fs.writeFileSync(rolloutPath, JSON.stringify({
+          type: "response_item",
+          payload: {
+            type: "message",
+            content: "raw Subject message must not cross the registry boundary"
+          }
+        }));
+        insertEdge.run(fixture.parentThreadId, child.threadId, "open");
+        insertThread.run(
+          child.threadId,
+          child.agentPath,
+          child.agentNickname,
+          null,
+          "Bounded independent investigation.",
+          rolloutPath,
+          worktree,
+          createdAtMs
+        );
+      }
+      database.close();
+
+      const reality = RealityEntity.create({
+        depth: 0,
+        kind: "waking",
+        name: "Waking Reality",
+        premise: constitution.premise,
+        constitution
+      }).bindRuntime(fixture.parentThreadId, worktree, "inception/reality").snapshot();
+      const trace = new CodexSubjectRegistryTrace({
+        codexHome: root,
+        sqliteHome: root,
+        reality,
+        subjects: [],
+        startedAtMs: createdAtMs
+      });
+      const events = trace.observe(fixture.parentThreadId);
+      const reports = fixture.children.map((child) => ({
+        subjectId: child.agentPath,
+        name: child.reportName,
+        role: child.reportRole,
+        findings: ["One bounded finding."],
+        artefactPaths: []
+      }));
+
+      expect(events.filter((event) => event.metadata?.subjectState === "started")).toHaveLength(2);
+      expect(events.filter((event) => event.metadata?.subjectState === "completed")).toHaveLength(0);
+      expect(events.every((event) =>
+        event.metadata?.collaborationTool === "thread_registry"
+      )).toBe(true);
+      expect(JSON.stringify(events)).not.toContain("raw Subject message");
+      expect(() => trace.bindReports(fixture.parentThreadId, reports)).toThrowError(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({ code: "missing_codex_return_evidence" })
+          ])
+        })
+      );
+
+      for (const child of fixture.children) {
+        fs.appendFileSync(rolloutPaths.get(child.threadId)!, `\n${JSON.stringify({
+          type: "event_msg",
+          payload: { type: "task_complete", last_agent_message: "hidden output" }
+        })}`);
+      }
+      const completedEvents = trace.observe(fixture.parentThreadId);
+      expect(completedEvents.filter(
+        (event) => event.metadata?.subjectState === "completed"
+      )).toHaveLength(2);
+      expect(JSON.stringify(completedEvents)).not.toContain("hidden output");
+      expect(trace.bindReports(fixture.parentThreadId, reports)).toEqual(
+        fixture.children.map((child) => ({
+          id: child.agentPath,
+          name: child.reportName,
+          role: child.reportRole,
+          mission: "Bounded independent investigation selected by Codex.",
+          threadId: child.threadId
+        }))
+      );
+    } finally {
+      try {
+        database.close();
+      } catch {
+        // The success path closes before the registry opens the database read-only.
+      }
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects opportunistic Subject reports without matching native return evidence", () => {
     const trace = new SubjectCollaborationTrace([]);
     trace.observe({
@@ -484,6 +630,24 @@ describe("Codex runtime", () => {
     });
   });
 
+  it("does not misclassify fallback model metadata as a failed turn", () => {
+    expect(toSafeCodexRuntimeEvent({
+      type: "item.completed",
+      item: {
+        id: "model-metadata",
+        type: "error",
+        message: "Model metadata for `gpt-5.6` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."
+      }
+    }, "Waking Reality", "password-reset review")).toMatchObject({
+      type: "decision",
+      summary: "Codex continued with fallback model metadata.",
+      metadata: {
+        stage: "model",
+        status: "updated"
+      }
+    });
+  });
+
   it("pins real Reality threads to GPT-5.6 with the full worktree capability", () => {
     const previousModel = process.env.INCEPTION_CODEX_MODEL;
     delete process.env.INCEPTION_CODEX_MODEL;
@@ -496,9 +660,9 @@ describe("Codex runtime", () => {
         constitution
       }).bindRuntime("thread-1", "/tmp/reality-worktree", "inception/reality").snapshot();
 
-      expect(configuredCodexModel()).toBe("gpt-5.6");
+      expect(configuredCodexModel()).toBe("gpt-5.6-sol");
       expect(codexThreadOptions(reality)).toMatchObject({
-        model: "gpt-5.6",
+        model: "gpt-5.6-sol",
         modelReasoningEffort: "high",
         workingDirectory: "/tmp/reality-worktree",
         sandboxMode: "danger-full-access",
@@ -568,6 +732,93 @@ describe("Codex runtime", () => {
     expect(JSON.stringify([...entered, ...returned])).not.toContain("secret task detail");
     expect(JSON.stringify([...entered, ...returned])).not.toContain("raw Subject response");
     expect(() => trace.requireComplete()).not.toThrow();
+  });
+
+  it("accepts a completed native close as Subject return evidence", () => {
+    const trace = new SubjectCollaborationTrace([{
+      id: "subject-reviewer",
+      realityId: "reality-1",
+      name: "Ariadne",
+      role: "Boundary reviewer",
+      mission: "Inspect one independent boundary.",
+      status: "entered",
+      findings: []
+    }]);
+    trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["thread-subject-close"],
+        prompt: "SUBJECT_ID:subject-reviewer",
+        status: "completed"
+      }
+    });
+
+    const returned = trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "close_agent",
+        receiver_thread_ids: [],
+        agents_states: {
+          "thread-subject-close": {
+            status: "completed",
+            message: "raw Subject response must never be persisted"
+          }
+        },
+        status: "completed"
+      }
+    });
+
+    expect(returned).toEqual([
+      expect.objectContaining({
+        type: "subject",
+        metadata: expect.objectContaining({
+          subjectId: "subject-reviewer",
+          subjectState: "completed",
+          collaborationTool: "close_agent"
+        })
+      })
+    ]);
+    expect(JSON.stringify(returned)).not.toContain("raw Subject response");
+    expect(() => trace.requireComplete()).not.toThrow();
+  });
+
+  it("does not accept closing a running Subject as return evidence", () => {
+    const trace = new SubjectCollaborationTrace([{
+      id: "subject-running",
+      realityId: "reality-1",
+      name: "Eames",
+      role: "Test engineer",
+      mission: "Run one decisive proof.",
+      status: "entered",
+      findings: []
+    }]);
+    trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["thread-subject-running"],
+        prompt: "SUBJECT_ID:subject-running",
+        status: "completed"
+      }
+    });
+    trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "close_agent",
+        receiver_thread_ids: ["thread-subject-running"],
+        agents_states: {
+          "thread-subject-running": { status: "running" }
+        },
+        status: "completed"
+      }
+    });
+
+    expect(() => trace.requireComplete()).toThrow(/missing_codex_return_evidence/);
   });
 
   it("rejects a Subject report when no native Codex return is observed", () => {

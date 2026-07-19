@@ -87,7 +87,7 @@ They exclude raw reasoning, unrestricted SDK event payloads, raw Subject message
 | Variable | Purpose |
 | --- | --- |
 | `INCEPTION_CODEX_MODE` | `mock` or `real` |
-| `INCEPTION_CODEX_MODEL` | Real-mode model override; default `gpt-5.6` |
+| `INCEPTION_CODEX_MODEL` | Real-mode model override; default `gpt-5.6-sol` |
 | `INCEPTION_CODEX_RUNTIME_HOME` | Optional isolated runtime-home path; default `.inception/codex-home` |
 | `INCEPTION_CODEX_INHERIT_USER_CONFIG` | Opt in to personal Codex config, plugins, and MCPs; default `false` |
 | `CODEX_HOME` | Source home for non-standard Codex CLI authentication |

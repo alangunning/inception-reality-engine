@@ -51,7 +51,7 @@ npm run codex:check
 npm run dev:real
 ```
 
-Or set `CODEX_API_KEY`/`OPENAI_API_KEY` in an ignored `.env`. Real mode pins `gpt-5.6` unless `INCEPTION_CODEX_MODEL` is explicitly set. It grants Codex unrestricted access inside Reality-owned worktrees and enables network access.
+Or set `CODEX_API_KEY`/`OPENAI_API_KEY` in an ignored `.env`. Real mode pins the exact `gpt-5.6-sol` model slug unless `INCEPTION_CODEX_MODEL` is explicitly set. It grants Codex unrestricted access inside Reality-owned worktrees and enables network access.
 
 Reality Engine reuses the judge's CLI authentication while isolating personal Codex plugins and MCPs by default. This makes the evaluation reproducible even when the judge has unrelated integrations configured; `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` is an explicit opt-in for missions that need them.
 

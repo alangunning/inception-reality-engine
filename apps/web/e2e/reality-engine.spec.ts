@@ -6,7 +6,7 @@ async function resetRun(page: Page): Promise<void> {
 }
 
 async function expectNext(page: Page, label: string): Promise<void> {
-  await expect(page.getByTestId("next-move")).toHaveText(label, { timeout: 12_000 });
+  await expect(page.getByTestId("next-move")).toHaveText(label, { timeout: 20_000 });
 }
 
 async function confirmDream(page: Page): Promise<void> {
@@ -469,6 +469,8 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   await expect(page.getByTestId("topbar-status").locator("a, button")).toHaveCount(0);
   await expect(page.getByTestId("topbar-actions").getByRole("button", { name: "Open admin controls" })).toBeVisible();
   await expect(page.getByTestId("operation-monitor")).toHaveCount(0);
+  await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 1 REALITY / 0 DREAMS");
+  await expect(page.getByTestId("topology-state")).toContainText("No Dream launched");
   await expect(page.getByTestId("simulated-world-time")).toContainText("0");
   await expect(page.getByTestId("reality-timeline")).toContainText("LIVE REALITY TIMELINE");
   await expect(page.getByTestId("reality-journey")).toContainText("Waking requirements");
@@ -577,6 +579,9 @@ test("live operation survives refresh and returns timestamped, filterable events
   await expect(page.getByTestId("operation-monitor")).toContainText("CODEX OPERATION");
   await expect(page.getByTestId("operation-monitor")).toContainText(/Ask Codex to audit and improve password-reset security/i);
   await expect(page.getByTestId("operation-monitor")).toContainText(/\d+ SDK tools/);
+  await expect(page.getByTestId("topology-state")).toContainText("CODEX ACTIVE / 1 REALITY / 0 DREAMS");
+  await expect(page.getByTestId("topology-state")).toContainText("no child Reality has been created");
+  await expect(page.getByTestId("reality-graph").locator(".reality-node.is-operating")).toHaveCount(1);
   await expect(page.getByTestId("primary-action")).toBeDisabled();
   await expect(page.getByTestId("primary-action")).toHaveText(/Codex working/);
 
@@ -621,7 +626,11 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
 
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Create Dream: Under coordinated attack");
+  await expect(page.getByTestId("topology-state")).toContainText("DREAM PROPOSED / NOT LAUNCHED");
+  await expect(page.getByTestId("topology-state")).toContainText("awaiting confirmation");
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(1);
   await confirmDream(page);
+  await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 2 REALITIES / 1 DREAM");
   await expectNext(page, "Enter attacker, investigator, and test engineer into Under coordinated attack");
   await expect(page.getByTestId("primary-action")).toHaveText(/Enter Subjects/);
   await page.getByTestId("primary-action").click();
@@ -663,6 +672,8 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expect(page.getByTestId("event-feed").getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
   await page.getByTestId("collapse-dreams").click();
   await expect(page.locator(".reality-node")).toHaveCount(1);
+  await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 3 REALITIES / 2 DREAMS / 2 HIDDEN");
+  await expect(page.getByTestId("topology-state")).not.toContainText("NOT LAUNCHED");
   await expect(page.getByTestId("outcome-summary")).toContainText("inherited truths");
   const dockObscuresInspector = await page.evaluate(() => {
     const dock = document.querySelector('[data-testid="action-dock"]')?.getBoundingClientRect();

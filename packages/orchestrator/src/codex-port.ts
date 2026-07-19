@@ -36,7 +36,7 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   subjectRole: z.string().min(1).max(100).optional(),
   subjectThreadId: z.string().min(1).max(100).optional(),
   subjectState: z.enum(["started", "completed", "failed"]).optional(),
-  collaborationTool: z.enum(["spawn_agent", "wait"]).optional()
+  collaborationTool: z.enum(["spawn_agent", "wait", "close_agent", "thread_registry"]).optional()
 }).strict();
 
 export const CodexRuntimeEventSchema = z.object({

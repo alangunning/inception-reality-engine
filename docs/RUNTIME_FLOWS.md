@@ -59,16 +59,16 @@ The nested attack artefact is not prewritten in real mode. The nested Reality mu
 stateDiagram-v2
   [*] --> Chartered
   Chartered --> Entered: Reality owns Subject
-  Entered --> NativeThread: completed spawn_agent with SUBJECT_ID
+  Entered --> NativeThread: SDK or thread-registry child identity
   NativeThread --> Investigating
-  Investigating --> Returned: terminal wait = completed
-  Investigating --> Failed: terminal wait = errored/interrupted
+  Investigating --> Returned: native task state = completed
+  Investigating --> Failed: native task state = failed
   Returned --> ValidatedReport: identity-bound SubjectReport
   Failed --> Rejected
   ValidatedReport --> [*]
 ```
 
-The safe event stream exposes Subject name, role, state, collaboration tool, and child thread ID. It never exposes the spawn prompt, Subject raw response, or hidden reasoning.
+The safe event stream exposes Subject name, role, state, collaboration evidence source, and child thread ID. The runtime prefers SDK collaboration items and falls back to Codex's own parent-child thread registry when `codex exec --experimental-json` omits those items. The fallback reads structural task state plus an exact parent-charter `SUBJECT_ID` marker and discards all other prompt content; neither path exposes the spawn prompt, Subject raw response, or hidden reasoning.
 
 ## Worktree Inheritance
 

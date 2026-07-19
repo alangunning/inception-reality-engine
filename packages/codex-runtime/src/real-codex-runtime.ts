@@ -33,11 +33,13 @@ import {
   prepareCodexExecutionEnvironment,
   type CodexExecutionEnvironmentOptions
 } from "./codex-execution-environment";
+import { CodexSubjectRegistryTrace } from "./codex-subject-registry";
 
 const CODEX_SDK_VERSION = "0.144.6";
+export const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
 
 export function configuredCodexModel(): string {
-  return process.env.INCEPTION_CODEX_MODEL?.trim() || "gpt-5.6";
+  return process.env.INCEPTION_CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL;
 }
 
 export function codexThreadOptions(reality: Reality): ThreadOptions {
@@ -234,9 +236,13 @@ export class SubjectCollaborationTrace {
       })];
     }
 
-    if (item.tool !== "wait") return [];
+    if (item.tool !== "wait" && item.tool !== "close_agent") return [];
     const events: CodexRuntimeEvent[] = [];
-    for (const threadId of item.receiver_thread_ids) {
+    const terminalThreadIds = new Set([
+      ...item.receiver_thread_ids,
+      ...Object.keys(item.agents_states ?? {})
+    ]);
+    for (const threadId of terminalThreadIds) {
       const subjectId = this.subjectByThread.get(threadId);
       const subject = subjectId ? this.subjects.get(subjectId) : undefined;
       if (!subject) continue;
@@ -254,7 +260,7 @@ export class SubjectCollaborationTrace {
             subjectRole: subject.role,
             subjectThreadId: threadId,
             subjectState: "failed",
-            collaborationTool: "wait"
+            collaborationTool: item.tool
           }
         }));
       } else if (state === "completed") {
@@ -270,7 +276,7 @@ export class SubjectCollaborationTrace {
             subjectRole: subject.role,
             subjectThreadId: threadId,
             subjectState: "completed",
-            collaborationTool: "wait"
+            collaborationTool: item.tool
           }
         }));
       }
@@ -327,6 +333,10 @@ export class SubjectCollaborationTrace {
     }
     return undefined;
   }
+
+  hasSpawnEvidence(): boolean {
+    return this.spawned.size > 0;
+  }
 }
 
 export function buildSubjectOrchestrationPrompt(reality: Reality): string {
@@ -336,7 +346,8 @@ export function buildSubjectOrchestrationPrompt(reality: Reality): string {
   if (!activeSubjects.length) {
     return `SUBJECT ORCHESTRATION
 Delegate only when you identify at least two bounded, independent investigations that can run concurrently. When that condition is met, use Codex subagent collaboration tools, wait for every Subject to return, and incorporate only concise findings and evidence. Keep sequential or tightly coupled work in this thread.
-For every opportunistic Subject, use the native child thread ID returned by spawn_agent as subjectReports[].subjectId and return exactly one Subject report after that thread reaches a completed terminal state.`;
+For every opportunistic Subject, use the native identity returned by the current turn's spawn_agent operation as subjectReports[].subjectId and return exactly one Subject report after that thread reaches a completed terminal state.
+Do not reuse a Subject or subjectReports entry from an earlier rejected turn. If this turn does not spawn a Subject, return an empty subjectReports array.`;
   }
 
   const charters = activeSubjects
@@ -346,6 +357,8 @@ For every opportunistic Subject, use the native child thread ID returned by spaw
 Use Codex subagent collaboration tools to spawn one direct subagent for each Subject below. Run them in parallel when capacity allows, keep every investigation bounded to its charter, and wait for every Subject to return before synthesis.
 ${charters}
 Include the exact SUBJECT_ID marker in each spawn_agent task so the returned child thread can be bound to its charter. Use wait_agent with timeout_ms=3600000 and wait again until every Subject is terminal.
+You may close a Subject only after its native terminal status is completed; a running, interrupted, errored, or missing Subject is not return evidence.
+Do not reuse a Subject or subjectReports entry from an earlier rejected turn. Every report must be backed by a Subject spawned in this turn.
 Subjects inherit this Reality's worktree, constitution, model, and immutable anchors. They must return concise evidence and artefacts only, and must not spawn further subagents.`;
 }
 
@@ -535,13 +548,25 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
   }
 
   if (item.type === "error") {
+    const detail = compact(item.message, 220);
+    if (detail && /Model metadata for .+ not found\..*fallback metadata/i.test(detail)) {
+      return CodexRuntimeEventSchema.parse({
+        type: "decision",
+        summary: "Codex continued with fallback model metadata.",
+        metadata: {
+          stage: "model",
+          status: "updated",
+          detail
+        }
+      });
+    }
     return CodexRuntimeEventSchema.parse({
       type: "decision",
       summary: "Codex reported an operation error.",
       metadata: {
         stage: "turn",
         status: "failed",
-        detail: compact(item.message, 220)
+        detail
       }
     });
   }
@@ -553,6 +578,8 @@ export class RealCodexRuntime implements CodexRuntime {
   readonly mode = "real" as const;
   private readonly codex: Codex;
   private readonly parser = new WakeReportParser();
+  private readonly codexHome: string;
+  private readonly sqliteHome: string;
   private readonly operations = new Map<string, {
     controller: AbortController;
     realityId: string;
@@ -562,6 +589,9 @@ export class RealCodexRuntime implements CodexRuntime {
 
   constructor(options: CodexExecutionEnvironmentOptions = {}) {
     const executionEnvironment = prepareCodexExecutionEnvironment(options);
+    this.codexHome = executionEnvironment.codexHome;
+    this.sqliteHome = executionEnvironment.env.CODEX_SQLITE_HOME
+      ?? executionEnvironment.codexHome;
     const apiKey = executionEnvironment.env.CODEX_API_KEY?.trim()
       || executionEnvironment.env.OPENAI_API_KEY?.trim();
     this.codex = new Codex({
@@ -631,13 +661,20 @@ ${reality.depth === 0 && reality.constitution.dreamStrategy === "competing-sibli
       subject.status === "entered" || subject.status === "investigating"
     );
     const subjectTrace = new SubjectCollaborationTrace(activeSubjects);
+    const registryTrace = new CodexSubjectRegistryTrace({
+      codexHome: this.codexHome,
+      sqliteHome: this.sqliteHome,
+      reality,
+      subjects: activeSubjects
+    });
     const { thread, events, finalResponse } = await this.streamStructured(
       reality,
       operationLabel,
       prompt,
       outputSchema,
       onEvent,
-      subjectTrace
+      subjectTrace,
+      registryTrace
     );
     const report = parseStructuredJson<InvestigationReport>(
       finalResponse,
@@ -650,10 +687,13 @@ ${reality.depth === 0 && reality.constitution.dreamStrategy === "competing-sibli
         code: "identity_mismatch"
       }]);
     }
-    const observedSubjects = subjectTrace.bindReports(report.subjectReports);
+    const threadId = this.requireThreadId(thread);
+    const observedSubjects = registryTrace.hasNativeEvidence()
+      ? registryTrace.bindReports(threadId, report.subjectReports)
+      : subjectTrace.bindReports(report.subjectReports);
 
     return {
-      threadId: this.requireThreadId(thread),
+      threadId,
       events,
       summary: report.summary,
       report,
@@ -679,6 +719,12 @@ ${reality.depth === 0 && reality.constitution.dreamStrategy === "competing-sibli
       }]
     };
     const subjectTrace = new SubjectCollaborationTrace(subjectReality.subjects);
+    const registryTrace = new CodexSubjectRegistryTrace({
+      codexHome: this.codexHome,
+      sqliteHome: this.sqliteHome,
+      reality: subjectReality,
+      subjects: subjectReality.subjects
+    });
     const outputSchema = zodToJsonSchema(AdversarialInterventionReportSchema, {
       target: "openAi",
       $refStrategy: "none"
@@ -706,6 +752,7 @@ Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contr
       outputSchema,
       onEvent,
       subjectTrace,
+      registryTrace,
       false,
       contract.maxMinutes * 60_000
     );
@@ -730,8 +777,17 @@ Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contr
         code: "fault_class_outside_contract"
       }]);
     }
-    subjectTrace.requireComplete();
-    const subjectThreadId = subjectTrace.threadIdFor(contract.subject.id);
+    const coordinatorThreadId = this.requireThreadId(thread);
+    let subjectThreadId: string | undefined;
+    if (registryTrace.hasNativeEvidence()) {
+      subjectThreadId = registryTrace.requireSubject(
+        coordinatorThreadId,
+        contract.subject.id
+      );
+    } else {
+      subjectTrace.requireComplete();
+      subjectThreadId = subjectTrace.threadIdFor(contract.subject.id);
+    }
     if (!subjectThreadId) {
       throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
         path: "subjectId",
@@ -739,7 +795,7 @@ Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contr
       }]);
     }
     return {
-      coordinatorThreadId: this.requireThreadId(thread),
+      coordinatorThreadId,
       subjectThreadId,
       events,
       report
@@ -847,6 +903,7 @@ Return only the structured synthesis report after the implementation and tests a
     outputSchema: Record<string, unknown>,
     onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>,
     subjectTrace?: SubjectCollaborationTrace,
+    registryTrace?: CodexSubjectRegistryTrace,
     forceNewThread = false,
     timeoutMilliseconds?: number
   ): Promise<{ thread: Thread; events: CodexRuntimeEvent[]; finalResponse: string }> {
@@ -897,8 +954,15 @@ Return only the structured synthesis report after the implementation and tests a
         ) {
           finalResponse = raw.item.text;
         }
-        for (const subjectEvent of subjectTrace?.observe(rawEvent) ?? []) {
-          await emit(subjectEvent);
+        if (!registryTrace?.hasNativeEvidence()) {
+          for (const subjectEvent of subjectTrace?.observe(rawEvent) ?? []) {
+            await emit(subjectEvent);
+          }
+        }
+        if (!subjectTrace?.hasSpawnEvidence() && thread.id) {
+          for (const subjectEvent of registryTrace?.observe(thread.id) ?? []) {
+            await emit(subjectEvent);
+          }
         }
         const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, scope);
         if (event) {
@@ -909,6 +973,11 @@ Return only the structured synthesis report after the implementation and tests a
             lastRuntimeFailure = event.metadata.detail;
           }
           await emit(event);
+        }
+      }
+      if (!subjectTrace?.hasSpawnEvidence() && thread.id) {
+        for (const subjectEvent of registryTrace?.observe(thread.id) ?? []) {
+          await emit(subjectEvent);
         }
       }
       return { thread, events, finalResponse };

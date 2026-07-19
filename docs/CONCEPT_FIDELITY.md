@@ -15,7 +15,7 @@ This document tracks the Reality Engine against the canonical product conversati
 
 - One persisted/resumable Codex SDK thread and one worktree per Reality.
 - Schema-constrained Investigation, Subject, Wake, and Synthesis reports with exact Reality identity.
-- Native opportunistic Subjects are admitted only when their reports bind to completed `spawn_agent` and terminal `wait` thread evidence.
+- Native opportunistic Subjects are admitted only when their reports bind to a completed child through SDK collaboration items or Codex's thread registry and structural task completion.
 - Real Codex inspection and synthesis; deterministic mock behavior behind the same ports.
 - Transactional waking inspection restores its isolated Git checkpoint after returning knowledge; rejected turns restore the checkpoint while retaining the resumable Reality thread.
 - Parent filesystem snapshot inheritance, including tracked changes, deletions, and untracked evidence.
