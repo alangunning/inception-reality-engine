@@ -4,12 +4,12 @@
 **Target track:** Developer Tools
 **Last reviewed:** 2026-07-18
 
-## Fastest Reliable Evaluation
+## Fastest Reliable Evaluation — No Docker Required
 
-Requirements: Node.js 22.5+, npm, and Git.
+The recommended evaluation path requires Node.js 22.5+, npm, and Git:
 
 ```bash
-git clone <submission-repository>
+git clone https://github.com/alangunning/inception-reality-engine.git
 cd inception-reality-engine
 npm ci
 npm run dev:mock
@@ -17,14 +17,11 @@ npm run dev:mock
 
 Open `http://localhost:3000`. No account, key, Codex usage, Prisma generation, or external service is required. Opening and refreshing the app never launches Codex.
 
-For a container release:
+Docker and a published container image are not required. Judges who prefer an isolated container can build the same deterministic mock experience locally:
 
 ```bash
-docker run --rm -p 3000:3000 \
-  ghcr.io/<repository-owner>/inception-reality-engine:v0.1.0
+docker compose up --build
 ```
-
-The release workflow publishes tagged multi-architecture images. Until the public repository and owner are assigned, build the identical image locally with `docker compose up --build`.
 
 ## Three-Minute Demo Script
 
@@ -103,4 +100,3 @@ Reality Engine is not a multi-agent dashboard. Its novel unit is the counterfact
 - Description naming Developer Tools track.
 - README with setup, sample scenario, Codex/GPT-5.6 collaboration, supported platforms, and judge instructions.
 - `/feedback` Codex Session ID from the primary build session in the Devpost form. This is a manual submission field and is intentionally not inferred from application Reality thread IDs.
-- Tagged `v0.1.0` release and matching container image.

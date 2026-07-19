@@ -23,11 +23,13 @@ Reality Engine separates those responsibilities:
 
 The immutable Demo Mission exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. **Mission Control** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, observed SDK token ceiling, and Dream depth.
 
-## Run in Two Commands
+## Clone and Run — No Docker Required
 
-Requires Node.js 22.5 or newer, npm, and Git.
+The recommended judge path requires only Node.js 22.5 or newer, npm, and Git:
 
 ```bash
+git clone https://github.com/alangunning/inception-reality-engine.git
+cd inception-reality-engine
 npm ci
 npm run dev:mock
 ```
@@ -36,13 +38,11 @@ Open `http://localhost:3000`. Mock mode is deterministic, persists to portable S
 
 Opening, refreshing, replaying the timeline, or forming a Mission never starts Codex. Usage begins only after an explicit action whose label states that Codex will act.
 
-Container:
+Docker is not required for local evaluation. An optional container packages the same deterministic mock experience for environments that prefer container isolation:
 
 ```bash
 docker compose up --build
 ```
-
-Tagged releases publish `ghcr.io/<repository-owner>/inception-reality-engine:v0.1.0` for judge testing without a local Node toolchain.
 
 ## Canonical Demo
 
@@ -57,7 +57,7 @@ Tagged releases publish `ghcr.io/<repository-owner>/inception-reality-engine:v0.
 9. Hidden anchors and the inherited regression suite run.
 10. Final beliefs, memories, proof results, Reality tree, and Git diff remain replayable.
 
-The deterministic path is rehearsable in under three minutes. The [judge guide](./docs/JUDGING.md) contains the exact video flow.
+The deterministic Demo Mission completes in under three minutes. The [judge guide](./docs/JUDGING.md) contains the exact video flow.
 
 ## Real GPT-5.6 and Codex
 

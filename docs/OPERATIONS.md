@@ -8,7 +8,7 @@
 | Platform | Status |
 | --- | --- |
 | macOS 12.7+ x64/arm64 | Tested locally |
-| Linux x64/arm64 | Supported by Node/Git and release container; verify in CI |
+| Linux x64/arm64 | Supported by Node and Git; verify in CI |
 | Windows native | Not verified |
 | Windows via WSL2 | Expected; not verified |
 | Browser | Current Chromium; responsive desktop/mobile Playwright coverage |
@@ -17,9 +17,12 @@ Runtime prerequisites are Node.js 22.5 or newer, npm, and Git with worktree supp
 
 ## Modes and Authentication
 
-Mock mode is the default:
+Clone and run mock mode without Docker:
 
 ```bash
+git clone https://github.com/alangunning/inception-reality-engine.git
+cd inception-reality-engine
+npm ci
 npm run dev:mock
 ```
 
@@ -95,7 +98,9 @@ They exclude raw reasoning, unrestricted SDK event payloads, raw Subject message
 | `INCEPTION_WORKTREE_ROOT` | Canonical worktree root |
 | `INCEPTION_BRANCH_PREFIX` | Canonical branch prefix |
 
-## Release
+## Optional Container Packaging
+
+Docker is not required for judges, contributors, mock mode, or real Codex mode. The container is an optional packaging path for an isolated production build of the deterministic mock experience.
 
 Run:
 
@@ -106,4 +111,4 @@ docker build -t inception-reality-engine:0.1.0 .
 docker run --rm -p 3000:3000 inception-reality-engine:0.1.0
 ```
 
-Push tag `v0.1.0` to publish the GHCR image through `.github/workflows/release-image.yml`.
+If a container release is useful, pushing tag `v0.1.0` publishes the GHCR image through `.github/workflows/release-image.yml`. The image is not part of the required judge setup.
