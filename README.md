@@ -21,7 +21,7 @@ Reality Engine separates those responsibilities:
 5. synthesise what generalises in the waking worktree;
 6. require immutable parent-owned proof before stabilisation.
 
-The immutable rehearsed Mission exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. **Mission Control** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, observed SDK token ceiling, and Dream depth.
+The immutable Demo Mission exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. **Mission Control** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, observed SDK token ceiling, and Dream depth.
 
 ## Run in Two Commands
 
@@ -97,7 +97,7 @@ Real mode is intentionally not read-only. See [Security](./SECURITY.md) before e
 
 ## Mission Control
 
-Open **Mission Control** from any active Reality or visit `/missions`. The rehearsed password-reset run has the stable route `/missions/password-reset`; user-created runs use `/missions/{missionId}`. The legacy `/missions/new` route redirects to Mission Control.
+Open **Mission Control** from any active Reality or visit `/missions`. The password-reset Demo Mission has the stable route `/missions/password-reset`; user-created runs use `/missions/{missionId}`. The legacy `/missions/new` route redirects to Mission Control.
 
 Define:
 
@@ -161,7 +161,7 @@ npm run db:push
 
 The app selects Prisma when generated models are available and otherwise uses the portable SQLite adapter. Both persist validated state and retrospective logs.
 
-Rehearsed, Playwright, and user-created Mission worktrees have separate roots and branch prefixes. Full reset cleans only rehearsal-owned Git state. Missing persisted worktrees are reconstructed from parent state and returned artefacts without consuming Codex.
+Demo, Playwright, and user-created Mission worktrees have separate roots and branch prefixes. Full reset cleans only Demo Mission-owned Git state. Missing persisted worktrees are reconstructed from parent state and returned artefacts without consuming Codex.
 
 ## Verification
 
@@ -177,7 +177,7 @@ Playwright uses production rendering, a dedicated SQLite database, mock mode, an
 
 ## Codex Collaboration
 
-Codex and GPT-5.6 were used throughout architecture audit, implementation, SDK integration, root-cause analysis, testing, and visual QA. The human owner made the core product decisions around full-power real mode, explicit usage, parent-owned anchors, native Subject proof, rehearsed and user-created Mission flows, and safe event semantics.
+Codex and GPT-5.6 were used throughout architecture audit, implementation, SDK integration, root-cause analysis, testing, and visual QA. The human owner made the core product decisions around full-power real mode, explicit usage, parent-owned anchors, native Subject proof, Demo and user-created Mission flows, and safe event semantics.
 
 The full collaboration account and submission evidence are in [Codex and GPT-5.6 Collaboration](./docs/CODEX_COLLABORATION.md). The Devpost `/feedback` Session ID must be taken manually from the primary Codex build session; application Reality thread IDs are not substitutes.
 

@@ -53,7 +53,7 @@ export async function GET(): Promise<Response> {
       runs: savedRuns,
       library: [{
         id: "password-reset",
-        kind: "rehearsed" as const,
+        kind: "demo" as const,
         name: "Password Reset Under Coordinated Attack",
         scope: "Password-reset abuse resistance and privacy",
         status: rootReality?.status ?? "forming",

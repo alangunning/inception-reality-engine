@@ -22,7 +22,7 @@ Results:
 - 0 dependency vulnerabilities
 - no OpenAI credential was required
 
-## Deterministic rehearsal
+## Deterministic Demo Mission
 
 The complete ten-action API sequence was executed against production code with real Git worktrees and Vitest commands.
 

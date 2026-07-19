@@ -128,7 +128,7 @@ interface RunLogSummary {
 
 interface SavedMissionSummary {
   id: string;
-  kind: "rehearsed" | "saved";
+  kind: "demo" | "saved";
   name: string;
   scope: string;
   status: string;
@@ -1151,7 +1151,7 @@ export function AdminDrawer({
 
   const cleanup = async () => {
     const confirmed = mission
-      ? window.confirm(`Delete Mission "${mission.name}" and clean up every Mission-owned worktree and branch? Other saved Missions and the rehearsed password-reset Mission are not changed.`)
+      ? window.confirm(`Delete Mission "${mission.name}" and clean up every Mission-owned worktree and branch? Other saved Missions and the password-reset Demo Mission are not changed.`)
       : window.confirm("Full reset stops active Codex CLI executions, archives the validated run log, deletes active Reality state, removes registered and orphaned worktrees, prunes Inception branches, and starts a clean waking Reality. Continue?");
     if (!confirmed) return;
     setBusy("resetting");
@@ -1210,8 +1210,8 @@ export function AdminDrawer({
   };
 
   const resetSavedMission = async (saved: SavedMissionSummary) => {
-    const detail = saved.kind === "rehearsed"
-      ? "The current validated run will be archived and the rehearsed waking Reality will be formed again."
+    const detail = saved.kind === "demo"
+      ? "The current validated run will be archived and the Demo Mission waking Reality will be formed again."
       : "A clean waking Reality will be formed from the same definition, then the previous Mission worktrees and history will be removed.";
     if (!window.confirm(`Reset Mission "${saved.name}"? ${detail}`)) return;
     setBusy("managing-mission");
@@ -1229,7 +1229,7 @@ export function AdminDrawer({
         throw new Error(body.error ?? "Could not reset the Mission.");
       }
       await loadMissions();
-      if (saved.kind === "rehearsed" && body.session) {
+      if (saved.kind === "demo" && body.session) {
         onFullReset?.(body as PresentedDemoSnapshot);
         await onStateChanged();
         return;
@@ -1276,7 +1276,7 @@ export function AdminDrawer({
 
   const deleteAllSavedMissions = async () => {
     const deletableMissions = savedMissions.filter((saved) => saved.canDelete);
-    if (!window.confirm(`Delete all ${deletableMissions.length} user-created Mission${deletableMissions.length === 1 ? "" : "s"} and clean up every Mission-owned worktree and branch? The rehearsed password-reset Mission is not changed.`)) return;
+    if (!window.confirm(`Delete all ${deletableMissions.length} user-created Mission${deletableMissions.length === 1 ? "" : "s"} and clean up every Mission-owned worktree and branch? The password-reset Demo Mission is not changed.`)) return;
     setBusy("managing-mission");
     setAdminError(null);
     try {
@@ -1367,11 +1367,11 @@ export function AdminDrawer({
                   href={saved.href}
                   title={`Open ${saved.name}`}
                 >
-                  {saved.kind === "rehearsed" ? <LockKeyhole size={13} /> : <GitBranch size={13} />}
+                  {saved.kind === "demo" ? <LockKeyhole size={13} /> : <GitBranch size={13} />}
                   <span>
                     <strong>{saved.name}</strong>
                     <small>
-                      {saved.kind === "rehearsed" ? "IMMUTABLE / " : ""}
+                      {saved.kind === "demo" ? "DEMO / IMMUTABLE / " : ""}
                       {saved.status.toUpperCase()} / {saved.realityCount} REALITIES
                     </small>
                   </span>
@@ -1407,7 +1407,7 @@ export function AdminDrawer({
                   <span
                     className="saved-mission-locked"
                     aria-label={`${saved.name} cannot be deleted`}
-                    title="Built-in rehearsed Mission cannot be deleted"
+                    title="Built-in Demo Mission cannot be deleted"
                   >
                     <LockKeyhole size={13} />
                   </span>
@@ -1479,7 +1479,7 @@ export function AdminDrawer({
                     onClick={() => void loadArchive(archive)}
                     disabled={busy !== "idle" || !onLoadArchive}
                     aria-label={`Open saved password-reset timeline from ${new Date(archive.archivedAt).toLocaleString()}`}
-                    title={onLoadArchive ? "Open saved password-reset timeline" : "Open the rehearsed password-reset Mission to view this timeline"}
+                    title={onLoadArchive ? "Open saved password-reset timeline" : "Open the password-reset Demo Mission to view this timeline"}
                   >
                     <History size={13} />
                     <span>Phase {archive.phase} / {archive.eventCount} events</span>
@@ -1505,7 +1505,7 @@ export function AdminDrawer({
           </div>
           <p>
             {mission
-              ? "Deletes this saved Mission and removes its isolated Reality worktrees and branches. Other Missions and the rehearsed password-reset Mission remain unchanged."
+              ? "Deletes this saved Mission and removes its isolated Reality worktrees and branches. Other Missions and the password-reset Demo Mission remain unchanged."
               : "Stops Codex, archives safe telemetry, deletes active state, removes all Inception worktrees and branches, then forms one clean waking Reality."}
           </p>
           <button type="button" onClick={cleanup} disabled={busy !== "idle"}>
@@ -1624,7 +1624,7 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
   const complete = snapshot.session.phase === 10 && !next;
   const runsCodex = (operation?.executor ?? next?.executor) === "codex";
   const runtimeLabel = runsCodex
-    ? snapshot.runtime.codexMode === "real" ? "STARTS REAL CODEX CLI IN THE ACTIVE WORKTREE" : "RUNS REHEARSED CODEX RUNTIME"
+    ? snapshot.runtime.codexMode === "real" ? "STARTS REAL CODEX CLI IN THE ACTIVE WORKTREE" : "RUNS DEMO CODEX RUNTIME"
     : "ORCHESTRATED REALITY ACTION";
   const primaryCommand = (() => {
     switch (next?.id) {
@@ -2185,7 +2185,7 @@ export function RealityEngine() {
         eyebrow={loadedArchive
           ? "SAVED SCENARIO / PASSWORD RESET"
           : timelineIndex === null
-            ? "REHEARSED MISSION / PASSWORD RESET"
+            ? "DEMO MISSION / PASSWORD RESET"
             : "TIMELINE REPLAY / VALIDATED MEMORY"}
         title={phaseTitle(displayedPhase)}
         steps={stages.map((stage, index) => {

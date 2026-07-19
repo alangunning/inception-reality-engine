@@ -265,7 +265,7 @@ test.beforeEach(async ({ page }) => {
   await resetRun(page);
 });
 
-test("Mission Library keeps the rehearsed password-reset Mission immutable", async ({ page }, testInfo) => {
+test("Mission Library keeps the password-reset Demo Mission immutable", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "The library API contract needs one browser target.");
   const initialResponse = await page.request.get("/api/missions");
   expect(initialResponse.ok()).toBe(true);
@@ -396,7 +396,7 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   await expectNext(page, "Ask Codex to audit and improve password-reset security");
   await expect(page.getByTestId("primary-action")).toHaveText(/Run Codex audit/);
   await expect(page.getByTestId("primary-action")).not.toContainText("password-reset security");
-  await expect(page.getByTestId("action-dock")).toContainText("REHEARSED CODEX RUNTIME");
+  await expect(page.getByTestId("action-dock")).toContainText("DEMO CODEX RUNTIME");
   await expect(page.getByTestId("reset-run")).toHaveText(/Full reset/);
   await expect(page.getByTestId("topbar-status").locator("a, button")).toHaveCount(0);
   await expect(page.getByTestId("topbar-actions").getByRole("button", { name: "Open admin controls" })).toBeVisible();
@@ -493,7 +493,7 @@ test("saved password-reset runs open as read-only timelines and return to live s
   await page.getByRole("button", { name: "Return to live Reality" }).click();
   await expect(page.getByTestId("archive-view-banner")).toHaveCount(0);
   await expect(page).toHaveURL(/\/missions\/password-reset$/);
-  await expect(page.getByTestId("phase-header")).toContainText("REHEARSED MISSION / PASSWORD RESET");
+  await expect(page.getByTestId("phase-header")).toContainText("DEMO MISSION / PASSWORD RESET");
   await expect(page.getByTestId("action-dock")).toBeVisible();
 });
 
@@ -629,7 +629,7 @@ test("Mission Composer does not show a false real-mode warning while runtime dat
   await expect(page.getByTestId("topbar-status")).toContainText("CHECKING RUNTIME");
   await expect(page.getByText("Real mode required")).toHaveCount(0);
   await expect(page.getByTestId("topbar-status")).toContainText("GPT-5.6");
-  await expect(page.getByTestId("topbar-actions")).toContainText("REHEARSED MISSION");
+  await expect(page.getByTestId("topbar-actions")).toContainText("DEMO MISSION");
   await expect(page.getByTestId("topbar-actions").getByRole("button", { name: "Open admin controls" })).toBeVisible();
   await expect(page.getByText("Real mode required")).toHaveCount(0);
 });
@@ -645,7 +645,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   let missionResets = 0;
   const passwordResetMission = {
     id: "password-reset",
-    kind: "rehearsed",
+    kind: "demo",
     name: "Password Reset Under Coordinated Attack",
     scope: "Password-reset abuse resistance and privacy",
     status: "forming",
@@ -759,7 +759,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.getByLabel(/Arm one bounded chaos-engineer intervention/)).not.toBeChecked();
   await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
   await expect(page.getByTestId("topbar-status")).toContainText("REAL CODEX / GPT-5.6");
-  await expect(page.getByTestId("topbar-actions")).toContainText("REHEARSED MISSION");
+  await expect(page.getByTestId("topbar-actions")).toContainText("DEMO MISSION");
   await expect(page.locator(".mission-history")).toContainText("Password Reset Under Coordinated Attack");
   await expect(page.locator(".mission-history").getByRole("link", { name: /Password Reset Under Coordinated Attack/ }))
     .toHaveAttribute("href", "/missions/password-reset");

@@ -41,4 +41,4 @@ All Codex-facing output must be validated with Zod before persistence. A raw SDK
 
 ## Demo discipline
 
-The mocked sequence is the canonical hackathon path. Keep it deterministic, under three minutes, and functional without an API key. Real Codex mode is an enhancement behind `INCEPTION_CODEX_MODE=real`, not a dependency of the rehearsed demo.
+The mocked sequence is the canonical hackathon path. Keep it deterministic, under three minutes, and functional without an API key. Real Codex mode is an enhancement behind `INCEPTION_CODEX_MODE=real`, not a dependency of the Demo Mission.

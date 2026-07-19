@@ -53,7 +53,7 @@ interface MissionSummary {
   realityCount: number;
   updatedAt: string;
   href: string;
-  kind: "rehearsed" | "saved";
+  kind: "demo" | "saved";
   canDelete: boolean;
 }
 
@@ -829,9 +829,9 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
           realityCount={missions.reduce((total, mission) => total + mission.realityCount, 0)}
           actions={(
             <>
-              <a className="mission-link" href="/missions/password-reset" title="Open the rehearsed Password Reset Mission">
+              <a className="mission-link" href="/missions/password-reset" title="Open the Password Reset Demo Mission">
                 <Play size={13} />
-                <span>REHEARSED MISSION</span>
+                <span>DEMO MISSION</span>
               </a>
               <button
                 type="button"
@@ -1065,12 +1065,12 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
                   <span>
                     <strong>{mission.name}</strong>
                     <small>
-                      {mission.kind === "rehearsed" ? "REHEARSED / IMMUTABLE" : "SAVED"}
+                      {mission.kind === "demo" ? "DEMO / IMMUTABLE" : "SAVED"}
                       {" / "}
                       {mission.status.toUpperCase()}
                     </small>
                   </span>
-                  {mission.kind === "rehearsed" ? <LockKeyhole size={15} /> : <ChevronRight size={15} />}
+                  {mission.kind === "demo" ? <LockKeyhole size={15} /> : <ChevronRight size={15} />}
                 </a>
               ))}
               {!missions.length && <p className="mission-empty">No Missions available.</p>}

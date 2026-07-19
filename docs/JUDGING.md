@@ -40,7 +40,7 @@ The release workflow publishes tagged multi-architecture images. Until the publi
 | 2:00 | Synthesise returned memories | Knowledge changes the waking implementation |
 | 2:20 | Run anchors and regression suite | Parent truth gates the agent |
 | 2:35 | Stabilise, reveal memories and diff, move timeline | Complete product outcome and replayability |
-| 2:50 | Show Mission Control's VAmPI preset and shared library | Password reset is an immutable rehearsal, not hardcoding |
+| 2:50 | Show Mission Control's VAmPI preset and shared library | Password reset is an immutable Demo Mission, not hardcoding |
 
 ## Real Codex Evaluation
 
@@ -57,12 +57,12 @@ Reality Engine reuses the judge's CLI authentication while isolating personal Co
 
 **Mission Control** is available at `/missions`. Its default is a pinned VAmPI repository-maintenance Mission for one documented ownership regression. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit local source-review action. The prompt prohibits running a service or contacting targets, accounts, credentials, or network systems. The optional sealed intervention is off by default for VAmPI because its published defects already provide authorized counterfactual evidence.
 
-The Mission Library lists the immutable password-reset rehearsal beside user-created Missions. Password reset can be opened, exported, and reset but not deleted; user-created runs expose the full lifecycle. Every Mission opens in the same product shell: branded live-status header, five-stage phase tracker, Admin runtime controls, fixed action dock, Reality topology, ledgers, timeline, Memories, proofs, event stream, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
+The Mission Library lists the immutable password-reset Demo Mission beside user-created Missions. Password reset can be opened, exported, and reset but not deleted; user-created runs expose the full lifecycle. Every Mission opens in the same product shell: branded live-status header, five-stage phase tracker, Admin runtime controls, fixed action dock, Reality topology, ledgers, timeline, Memories, proofs, event stream, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
 
 ## What to Inspect
 
 - `packages/codex-runtime/src/real-codex-runtime.ts`: SDK threads, GPT-5.6 options, native Subject collaboration evidence, Zod output schemas.
-- `packages/orchestrator/src/reality-orchestrator.ts`: rehearsed nested flow, real nested test execution, Wake artefact promotion, anchors.
+- `packages/orchestrator/src/reality-orchestrator.ts`: Demo Mission nested flow, real nested test execution, Wake artefact promotion, anchors.
 - `packages/orchestrator/src/mission-orchestrator.ts`: general real-mode engine.
 - `packages/orchestrator/src/memory-integrity-service.ts`: report/source digests, anchor checks, descendant lineage, quarantine policy.
 - `packages/worktree-manager/src/worktree-manager.ts`: inheritance and ownership-scoped cleanup.
