@@ -24,7 +24,8 @@
     "db:push": "prisma db push",
     "demo:reset": "tsx scripts/reset-demo.ts",
     "verify": "npm run test && npm run typecheck && npm run build",
-    "judge:demo": "npm run dev:mock",
+    "judge:demo": "npm run dev:real",
+    "record:demo": "npm run dev:mock",
     "prepare:repo": "node scripts/ensure-git.mjs"
   },
   "dependencies": {

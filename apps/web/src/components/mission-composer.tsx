@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpFromLine,
+  BrainCircuit,
   CheckCircle2,
   ChevronRight,
   CircleDot,
@@ -14,11 +15,16 @@ import {
   FolderGit2,
   GitBranch,
   LockKeyhole,
+  Minimize2,
   MoonStar,
   Network,
   Play,
+  Pause,
+  Plus,
   Settings,
   ShieldAlert,
+  ShieldCheck,
+  Square,
   SquareTerminal,
   Trash2,
   UsersRound,
@@ -27,23 +33,31 @@ import {
 import type {
   AdversarialFaultClass,
   MissionDefinitionDraft,
+  MissionDreamStrategy,
+  MissionMemoryPolicy,
   MissionRun,
+  MissionSafetyProfile,
   Reality,
   RealityEvent
 } from "@inception/domain";
 import type { MissionAction, MissionSnapshot } from "@inception/orchestrator";
 import {
   AdminDrawer,
+  DreamGate,
   OperationMonitor,
+  RealityJourneyBand,
   RealityPhaseHeader,
   RealityTimeline,
   RealityTopbar,
   RealityWorkspace,
+  WakeTransition,
   replayRealities,
   type InspectorTab,
   type PresentedRealityOperation,
   type RealityPhaseStep
 } from "./reality-engine";
+
+type AutopilotCommand = "start" | "resume" | "pause" | "stop";
 
 interface MissionSummary {
   id: string;
@@ -71,9 +85,24 @@ interface ComposerState {
   premise: string;
   constraints: string;
   parentTruths: string;
-  proofName: string;
-  proofExecutable: string;
-  proofArgs: string;
+  wakeContract: string;
+  runtimeLaws: string;
+  safetyProfile: MissionSafetyProfile;
+  memoryPolicy: MissionMemoryPolicy;
+  dreamStrategy: MissionDreamStrategy;
+  maxSiblingDreams: number;
+  proofs: Array<{
+    key: string;
+    name: string;
+    executable: string;
+    args: string;
+  }>;
+  subjects: Array<{
+    key: string;
+    name: string;
+    role: string;
+    mission: string;
+  }>;
   tokenBudget: number;
   maxDreamDepth: number;
   interventionEnabled: boolean;
@@ -96,12 +125,41 @@ const initialState: ComposerState = {
   premise: "The current handlers enforce the documented owner and administrator invariants.",
   constraints: "Work only inside the operator-provided local VAmPI educational fixture.\nPerform repository maintenance with static source inspection and local tests; do not start or contact a service.\nUse only synthetic test data and do not access credentials, accounts, external targets, or network systems.\nLimit changes to reproducing and correcting the documented local behavior.\nPreserve the documented OpenAPI shape unless a compatible correction requires otherwise.\nReturn reproducible test evidence without exposing hidden model reasoning.",
   parentTruths: "This is an operator-owned local educational fixture with published defects.\nA book record is available only to its documented owner.\nOnly the administrator role may delete users.\nEvery conclusion must cite executable local-test or source evidence.",
-  proofName: "Authorization regression",
-  proofExecutable: "python3",
-  proofArgs: "tests/test_authorization_regression.py",
+  wakeContract: "State initial beliefs and what changed.\nReturn reproducible evidence and artefacts.\nSeparate invariants from world-specific observations.\nPreserve remaining uncertainty.",
+  runtimeLaws: "Only evidence reproduced inside the local repository may become memory.\nA failed immutable proof prevents Reality stabilisation.\nCompeting Dreams may disagree; only evidence-backed conclusions may propagate.",
+  safetyProfile: "authorized-local-defensive-review",
+  memoryPolicy: "verified-reports-and-artefacts",
+  dreamStrategy: "competing-siblings",
+  maxSiblingDreams: 2,
+  proofs: [{
+    key: "authorization-regression",
+    name: "Authorization regression",
+    executable: "python3",
+    args: "tests/test_authorization_regression.py"
+  }],
+  subjects: [
+    {
+      key: "ariadne",
+      name: "Ariadne",
+      role: "Ownership contract investigator",
+      mission: "Trace documented owner and role checks from the local API handler to persisted test data."
+    },
+    {
+      key: "saito",
+      name: "Saito",
+      role: "Boundary reviewer",
+      mission: "Compare local handlers with documented ownership requirements using only source and tests."
+    },
+    {
+      key: "eames",
+      name: "Eames",
+      role: "Negative-test engineer",
+      mission: "Turn the documented behavior mismatch into the smallest decisive executable local test."
+    }
+  ],
   tokenBudget: 8_000_000,
   maxDreamDepth: 3,
-  interventionEnabled: false,
+  interventionEnabled: true,
   interventionHypothesis: "A minimal authorization-boundary regression should be discoverable from cross-user behavior and ordinary source evidence without revealing which line changed.",
   interventionFaultClass: "permission",
   interventionAllowedPaths: "api_views/**\nmodels/**\napp.py\nconfig.py",
@@ -110,31 +168,13 @@ const initialState: ComposerState = {
   interventionMaxPatchLines: 80,
   interventionTokenBudget: 16_000,
   interventionMaxMinutes: 12,
-  interventionTargetDepth: 1
+  interventionTargetDepth: 2
 };
-
-const subjectCharters = [
-  {
-    name: "Ariadne",
-    role: "Ownership contract investigator",
-    mission: "Trace documented owner and role checks from the local API handler to persisted test data."
-  },
-  {
-    name: "Saito",
-    role: "Access rule reviewer",
-    mission: "Compare local handlers with documented ownership requirements using only source and tests; do not contact a running service."
-  },
-  {
-    name: "Eames",
-    role: "Regression test engineer",
-    mission: "Turn the documented behavior mismatch into the smallest decisive executable local test."
-  }
-];
 
 const adversarialSubject = {
   name: "Mal",
-  role: "Bounded chaos engineer",
-  mission: "Inject one minimal reversible fault inside the operator's explicit path, file, patch, time, and token limits."
+  role: "Controlled resilience engineer",
+  mission: "Introduce one minimal reversible local fault inside the operator's explicit path, file, patch, time, and token limits."
 };
 
 interface TrainingTargetStatus {
@@ -178,6 +218,22 @@ function observedMissionTokens(events: RealityEvent[]): number {
       + (typeof metadata.inputTokens === "number" ? metadata.inputTokens : 0)
       + (typeof metadata.outputTokens === "number" ? metadata.outputTokens : 0);
   }, 0);
+}
+
+function missionAutopilot(run: MissionRun): MissionRun["autopilot"] {
+  return run.autopilot ?? {
+    mode: "off",
+    kind: "guided-real",
+    maxActions: 30,
+    maxMinutes: 60,
+    pauseOnDream: true,
+    pauseOnIntervention: true,
+    actionsCompleted: 0
+  };
+}
+
+function missionEventCount(run: MissionRun): number {
+  return run.eventCount ?? run.events.length;
 }
 
 function statusLabel(status: MissionRun["status"]): string {
@@ -225,24 +281,172 @@ function missionPhaseSteps(run: MissionRun): RealityPhaseStep[] {
   }));
 }
 
+function MissionAutoModeBar({
+  run,
+  busy,
+  onControl
+}: {
+  run: MissionRun;
+  busy: boolean;
+  onControl(command: AutopilotCommand): void;
+}) {
+  const state = missionAutopilot(run);
+  const running = state.mode === "running";
+  const paused = state.mode === "paused";
+  return (
+    <section className={`mission-autopilot autopilot-${state.mode}`} data-testid="mission-autopilot">
+      <div>
+        <span><Play size={15} /></span>
+        <p>
+          <small>GUIDED AUTO MODE / PARENT GATES ARMED</small>
+          <strong>{running ? "Advancing one validated Reality action at a time" : paused ? state.pauseReason ?? "Waiting at a parent-owned gate" : state.mode === "completed" ? "Auto mode reached a stable Reality" : "Manual control"}</strong>
+        </p>
+      </div>
+      <dl>
+        <div><dt>ACTIONS</dt><dd>{state.actionsCompleted} / {state.maxActions}</dd></div>
+        <div><dt>LIMIT</dt><dd>{state.maxMinutes} min</dd></div>
+      </dl>
+      <nav aria-label="Guided auto mode controls">
+        {["off", "stopped", "completed"].includes(state.mode) && run.status !== "stabilised" && (
+          <button type="button" onClick={() => onControl("start")} disabled={busy}>
+            <Play size={14} /> Start guided auto
+          </button>
+        )}
+        {running && (
+          <button type="button" onClick={() => onControl("pause")} disabled={busy}>
+            <Pause size={14} /> Pause
+          </button>
+        )}
+        {paused && (
+          <button type="button" className="is-primary" onClick={() => onControl("resume")} disabled={busy}>
+            <Play size={14} /> Approve and continue
+          </button>
+        )}
+        {(running || paused) && (
+          <button type="button" onClick={() => onControl("stop")} disabled={busy}>
+            <Square size={13} /> Stop
+          </button>
+        )}
+      </nav>
+    </section>
+  );
+}
+
+function MissionOutcomePanel({
+  run,
+  collapsed,
+  onToggle
+}: {
+  run: MissionRun;
+  collapsed: boolean;
+  onToggle(): void;
+}) {
+  const outcome = run.outcome;
+  if (!outcome) return null;
+  return (
+    <section className="outcome-summary mission-outcome" data-testid="mission-outcome">
+      <div className="outcome-intro">
+        <span className="eyebrow">WAKING OUTCOME</span>
+        <h2>{outcome.title}</h2>
+        <p>{outcome.summary}</p>
+      </div>
+      <div className="outcome-results">
+        <div><BrainCircuit size={19} /><span><b>{outcome.metrics.realitiesExplored} Dreams lived</b><small>Maximum depth {outcome.metrics.maximumDepth}; {outcome.metrics.subjectsReturned} Subjects returned.</small></span></div>
+        <div><Fingerprint size={19} /><span><b>{outcome.metrics.memoriesVerified} memories admitted</b><small>{outcome.metrics.interventionsDetected} injected faults detected; {outcome.metrics.memoriesQuarantined} unsafe memories quarantined.</small></span></div>
+        <div><ShieldCheck size={19} /><span><b>{outcome.metrics.proofsPassed} of {outcome.metrics.proofsTotal} proofs passed</b><small>{outcome.metrics.changedFiles} waking files changed.</small></span></div>
+      </div>
+      <p className="outcome-boundary"><LockKeyhole size={15} /><span><b>Risk prevented</b> {outcome.preventedRisk}</span></p>
+      <div className="outcome-actions">
+        <button type="button" onClick={onToggle}>
+          <Minimize2 size={15} /> {collapsed ? "Reveal lived Realities" : "Collapse Dreams into waking Reality"}
+        </button>
+        <span><BrainCircuit size={14} /> {outcome.generalisedInvariants.length} inherited truths</span>
+      </div>
+    </section>
+  );
+}
+
+function RealityMirrorBand({ run }: { run: MissionRun }) {
+  const reflection = (run.reflections ?? []).at(-1);
+  if (!reflection) return null;
+  return (
+    <section className="reality-mirror" data-testid="reality-mirror">
+      <header>
+        <span><BrainCircuit size={16} /> REALITY MIRROR / SIBLING COMPARISON</span>
+        <b>{Math.round(reflection.confidence * 100)}% EVIDENCE COVERAGE</b>
+      </header>
+      <div>
+        {reflection.evidenceMatrix.map((entry) => (
+          <article key={entry.realityId}>
+            <small>{entry.realityName}</small>
+            <strong>{entry.evidenceTitles.length} evidence signals</strong>
+            <p>{entry.invariants[0] ?? entry.remainingUncertainty[0] ?? "No invariant survived this world."}</p>
+          </article>
+        ))}
+      </div>
+      <footer>
+        <span><ShieldCheck size={13} /> {reflection.sharedInvariants.length} invariants survived every sibling</span>
+        <span><CircleDot size={13} /> {reflection.disagreements.length} disagreements remain visible</span>
+      </footer>
+    </section>
+  );
+}
+
+function MemoryAscentBand({ run }: { run: MissionRun }) {
+  const seals = run.memoryIntegrity ?? [];
+  const interventions = run.interventions ?? [];
+  if (!seals.length) return null;
+  return (
+    <section className="memory-ascent" data-testid="memory-ascent">
+      <header><ArrowUpFromLine size={16} /><span><b>MEMORY ASCENT</b><small>Every Kick is judged before knowledge moves upward</small></span></header>
+      <div>
+        {seals.map((seal) => {
+          const source = run.realities.find((reality) => reality.id === seal.realityId);
+          const parent = run.realities.find((reality) => reality.id === seal.parentRealityId);
+          const intervention = interventions.find((entry) => entry.realityId === seal.realityId);
+          return (
+            <article className={`memory-ascent-row is-${seal.verdict}`} key={seal.id}>
+              <span><strong>{source?.name ?? "Dream"}</strong><small>Depth {source?.depth ?? "?"}</small></span>
+              <ChevronRight size={14} />
+              <span><strong>{seal.verdict === "verified" ? "Totem admitted memory" : "Totem quarantined memory"}</strong><small>{seal.checks.filter((check) => check.status === "passed").length} / {seal.checks.length} checks passed</small></span>
+              <ChevronRight size={14} />
+              <span>
+                <strong>{seal.verdict === "verified" ? parent?.name ?? "Parent Reality" : "No parent change"}</strong>
+                <small>
+                  {intervention?.assessment
+                    ? `Injected Subject: ${intervention.assessment.outcome}${intervention.containedAt ? " / mutation contained" : ""}`
+                    : seal.verdict === "verified" ? "Knowledge propagated" : "Unsafe assumption contained"}
+                </small>
+              </span>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function MissionActionDock({
   snapshot,
   busy,
   replaying,
   phaseSteps,
-  onAction,
-  onRemove
+  onAction
 }: {
   snapshot: MissionSnapshot;
   busy: boolean;
   replaying: boolean;
   phaseSteps: RealityPhaseStep[];
   onAction(action: MissionAction): void;
-  onRemove(): void;
 }) {
-  const ceilingReached = observedMissionTokens(snapshot.run.events) >= snapshot.run.definition.tokenBudget;
+  const ceilingReached = (snapshot.run.observedTokens
+    ?? observedMissionTokens(snapshot.run.events)) >= snapshot.run.definition.tokenBudget;
   const next = ceilingReached ? null : snapshot.nextAction;
-  const blocked = busy || Boolean(snapshot.operation) || replaying || ceilingReached;
+  const blocked = busy
+    || Boolean(snapshot.operation)
+    || replaying
+    || ceilingReached
+    || missionAutopilot(snapshot.run).mode === "running";
   const isDream = next?.kind === "dream";
   const isKick = next?.kind === "kick";
   const isStandard = Boolean(next && !isDream && !isKick);
@@ -267,15 +471,6 @@ function MissionActionDock({
         </strong>
         <div><i style={{ width: `${progress}%` }} /></div>
       </div>
-      <button
-        type="button"
-        className="reset-command"
-        onClick={onRemove}
-        disabled={blocked}
-        title="Delete this Mission and clean up its worktrees"
-      >
-        <Trash2 size={16} /> Delete Mission
-      </button>
       <button
         type="button"
         className={`dream-command ${isDream ? "is-next" : ""}`}
@@ -317,11 +512,13 @@ function MissionRunView({
   snapshot,
   runtime,
   onReload,
+  onAppendEvents,
   onDeleted
 }: {
   snapshot: MissionSnapshot;
   runtime: RuntimeInfo;
   onReload(snapshot: MissionSnapshot): void;
+  onAppendEvents(events: RealityEvent[]): void;
   onDeleted(): void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -333,6 +530,19 @@ function MissionRunView({
   const [pulseRealityId, setPulseRealityId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [adminOpen, setAdminOpen] = useState(false);
+  const [dreamGateOpen, setDreamGateOpen] = useState(false);
+  const [collapsedDreams, setCollapsedDreams] = useState(false);
+  const [wakeStage, setWakeStage] = useState<"collecting" | "sealing" | "returning" | null>(null);
+  const [wakeRealityName, setWakeRealityName] = useState<string | undefined>();
+  const [hasMoreEvents, setHasMoreEvents] = useState(
+    missionEventCount(snapshot.run) > snapshot.run.events.length
+  );
+  const [loadingMoreEvents, setLoadingMoreEvents] = useState(false);
+  const reconcileTimer = useRef<number | null>(null);
+  const wakeClearTimer = useRef<number | null>(null);
+  const realityNames = useRef(new Map(
+    snapshot.run.realities.map((entry) => [entry.id, entry.name])
+  ));
   const run = snapshot.run;
   const reality = snapshot.activeReality;
   // Browser state may outlive a schema migration during local development.
@@ -343,7 +553,23 @@ function MissionRunView({
   const interventionContract = run.definition.intervention;
   const integritySeal = memoryIntegrity.find((entry) => entry.realityId === reality.id)
     ?? memoryIntegrity.at(-1);
-  const usedTokens = useMemo(() => observedMissionTokens(run.events), [run.events]);
+  const usedTokens = run.observedTokens ?? observedMissionTokens(run.events);
+  const totalEvents = missionEventCount(run);
+  const autopilotMode = missionAutopilot(run).mode;
+  const root = run.realities.find((entry) => entry.depth === 0);
+  const pendingProposal = reality.proposals.find((proposal) => proposal.status === "open") ?? null;
+
+  useEffect(() => {
+    if (timelineIndex === null) setSelectedRealityId(run.activeRealityId);
+  }, [run.activeRealityId, timelineIndex]);
+
+  useEffect(() => {
+    realityNames.current = new Map(run.realities.map((entry) => [entry.id, entry.name]));
+  }, [run.realities]);
+
+  useEffect(() => {
+    setHasMoreEvents(totalEvents > run.events.length);
+  }, [run.events.length, totalEvents]);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/missions/${encodeURIComponent(run.id)}`, {
@@ -360,24 +586,57 @@ function MissionRunView({
   useEffect(() => {
     const stream = new EventSource(`/api/missions/events?missionId=${encodeURIComponent(run.id)}`);
     stream.onmessage = (event) => {
-      const value = JSON.parse(event.data) as { type?: string; realityId?: string };
+      let value: RealityEvent | { type: "connected" };
+      try {
+        value = JSON.parse(event.data) as RealityEvent | { type: "connected" };
+      } catch {
+        return;
+      }
+      if (value.type === "connected" || !("realityId" in value)) return;
+      onAppendEvents([value]);
       if (
         value.realityId
-        && ["kick.triggered", "memory.returned", "reality.stabilised"].includes(value.type ?? "")
+        && ["kick.triggered", "memory.returned", "memory.quarantined", "reality.stabilised"].includes(value.type)
       ) {
         setPulseRealityId(value.realityId);
         window.setTimeout(() => setPulseRealityId(null), 1_400);
       }
-      if (value.type !== "connected") void load();
+      if (value.type === "wake.collecting" || value.type === "kick.triggered") {
+        setWakeStage("collecting");
+      } else if (value.type === "wake.sealing") {
+        setWakeStage("sealing");
+      } else if (value.type === "wake.returning") {
+        setWakeStage("returning");
+      }
+      if (value.type.startsWith("wake.") || value.type === "kick.triggered") {
+        setWakeRealityName(
+          realityNames.current.get(value.realityId)
+        );
+      }
+      if (value.type === "wake.returning" || value.type === "memory.quarantined") {
+        if (wakeClearTimer.current) window.clearTimeout(wakeClearTimer.current);
+        wakeClearTimer.current = window.setTimeout(() => {
+          setWakeStage(null);
+          setWakeRealityName(undefined);
+        }, 2_000);
+      }
+      if (value.type !== "codex.progress") {
+        if (reconcileTimer.current) window.clearTimeout(reconcileTimer.current);
+        reconcileTimer.current = window.setTimeout(() => void load(), 180);
+      }
     };
-    return () => stream.close();
-  }, [load, run.id]);
+    return () => {
+      stream.close();
+      if (reconcileTimer.current) window.clearTimeout(reconcileTimer.current);
+      if (wakeClearTimer.current) window.clearTimeout(wakeClearTimer.current);
+    };
+  }, [load, onAppendEvents, run.id]);
 
   useEffect(() => {
-    if (!snapshot.operation && !busy) return;
-    const poll = window.setInterval(() => void load(), 2_000);
+    if (!snapshot.operation && !busy && autopilotMode !== "running") return;
+    const poll = window.setInterval(() => void load(), 5_000);
     return () => window.clearInterval(poll);
-  }, [busy, load, snapshot.operation]);
+  }, [autopilotMode, busy, load, snapshot.operation]);
 
   useEffect(() => {
     setNow(Date.now());
@@ -389,9 +648,14 @@ function MissionRunView({
   }, [snapshot.operation?.id]);
 
   const act = async (action: MissionAction) => {
-    if (action === "create_dream" && !window.confirm(
-      `Create a child Reality at depth ${reality.depth + 1}? It will receive an isolated Codex thread and Git worktree.`
-    )) return;
+    if (action === "create_dream") {
+      setDreamGateOpen(true);
+      return;
+    }
+    if (action === "kick") {
+      setWakeStage("collecting");
+      setWakeRealityName(reality.name);
+    }
     setBusy(true);
     setError(null);
     try {
@@ -411,26 +675,86 @@ function MissionRunView({
       setTimelineIndex(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
+      setWakeStage(null);
       await load().catch(() => undefined);
     } finally {
       setBusy(false);
     }
   };
 
-  const remove = async () => {
-    if (!window.confirm("Delete this Mission and clean up every Mission-owned worktree and branch?")) return;
+  const confirmDream = async () => {
+    setDreamGateOpen(false);
     setBusy(true);
+    setError(null);
     try {
-      const response = await fetch(`/api/missions/${encodeURIComponent(run.id)}`, {
-        method: "DELETE"
+      const response = await fetch(`/api/missions/${encodeURIComponent(run.id)}/action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "create_dream" })
       });
-      const body = await readJson<{ error?: string }>(response, "Could not delete the mission.");
-      if (!response.ok) throw new Error(body.error ?? "Could not delete the mission.");
-      onDeleted();
+      const body = await readJson<MissionSnapshot & { error?: string }>(
+        response,
+        "The Dream could not be created."
+      );
+      if (!response.ok) throw new Error(body.error ?? "The Dream could not be created.");
+      onReload(body);
+      setSelectedRealityId(body.run.activeRealityId);
+      setInspectorTab("world");
+      setTimelineIndex(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const controlAutopilot = async (command: AutopilotCommand) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/missions/${encodeURIComponent(run.id)}/autopilot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command })
+      });
+      const body = await readJson<MissionSnapshot & { error?: string }>(
+        response,
+        "Guided auto mode could not change state."
+      );
+      if (!response.ok) throw new Error(body.error ?? "Guided auto mode could not change state.");
+      onReload(body);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const loadEarlierEvents = async () => {
+    const earliest = run.events[0];
+    if (!earliest) return;
+    setLoadingMoreEvents(true);
+    setError(null);
+    try {
+      const cursor = `${earliest.occurredAt}|${earliest.id}`;
+      const response = await fetch(
+        `/api/missions/${encodeURIComponent(run.id)}/events?limit=200&before=${encodeURIComponent(cursor)}`,
+        { cache: "no-store" }
+      );
+      const body = await readJson<{
+        events?: RealityEvent[];
+        nextCursor?: string | null;
+        error?: string;
+      }>(response, "Earlier Reality events could not be loaded.");
+      if (!response.ok) throw new Error(body.error ?? "Earlier Reality events could not be loaded.");
+      onAppendEvents(body.events ?? []);
+      setHasMoreEvents(Boolean(body.nextCursor));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setBusy(false);
+      setLoadingMoreEvents(false);
     }
   };
 
@@ -452,6 +776,7 @@ function MissionRunView({
     : null;
   const replaying = timelineIndex !== null;
   const phaseSteps = missionPhaseSteps(run);
+  const graphRealities = collapsedDreams && root ? [root] : replayedRealities;
   return (
     <main className="app-shell mission-run">
       <RealityTopbar
@@ -485,6 +810,12 @@ function MissionRunView({
         steps={phaseSteps}
       />
 
+      <RealityJourneyBand
+        realities={run.realities}
+        events={run.events}
+        stabilised={run.status === "stabilised"}
+      />
+
       <section className="mission-context-band" data-testid="mission-context">
         <p>{run.definition.mission}</p>
         <dl>
@@ -493,6 +824,12 @@ function MissionRunView({
           <div><dt>DEPTH BUDGET</dt><dd>{Math.max(...run.realities.map((entry) => entry.depth))} / {run.definition.maxDreamDepth}</dd></div>
         </dl>
       </section>
+
+      <MissionAutoModeBar
+        run={run}
+        busy={busy}
+        onControl={(command) => void controlAutopilot(command)}
+      />
 
       {error && (
         <div className="mission-error">
@@ -510,7 +847,21 @@ function MissionRunView({
         />
       )}
 
+      <WakeTransition stage={wakeStage} realityName={wakeRealityName} />
+
+      <MissionOutcomePanel
+        run={run}
+        collapsed={collapsedDreams}
+        onToggle={() => {
+          setCollapsedDreams((current) => !current);
+          if (!collapsedDreams && root) setSelectedRealityId(root.id);
+        }}
+      />
+
       <RealityTimeline events={run.events} index={timelineIndex} onChange={setTimelineIndex} />
+
+      <RealityMirrorBand run={run} />
+      <MemoryAscentBand run={run} />
 
       {(intervention || integritySeal || memoryIntegrity.length === 0) && (
         <section className="mission-guardrail-band">
@@ -518,8 +869,8 @@ function MissionRunView({
             <article className={`mission-intervention intervention-${intervention.status}`} data-testid="intervention-ledger">
               <div className="mission-intervention-heading">
                 <span>
-                  <strong><ShieldAlert size={14} /> {adversarialSubject.name} / {adversarialSubject.role}</strong>
-                  <small>SEALED INTERVENTION / {intervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
+                  <strong><ShieldAlert size={14} /> {interventionContract.subject.name} / {interventionContract.subject.role}</strong>
+                  <small>INJECTED SUBJECT / {intervention.containedAt ? "CONTAINED" : intervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
                 </span>
                 <b>{interventionContract.maxChangedFiles} FILES / {interventionContract.maxPatchLines} LINES</b>
               </div>
@@ -527,7 +878,12 @@ function MissionRunView({
               {intervention.status === "sealed" && <p>{intervention.changedFileCount ?? 0} changed file{intervention.changedFileCount === 1 ? "" : "s"} sealed. Cause and paths remain hidden until Kick.</p>}
               {intervention.status === "rejected" && <p>{intervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>}
               {intervention.status === "revealed" && intervention.report && intervention.assessment && (
-                <p>{intervention.assessment.outcome.toUpperCase()}: {intervention.report.summary}</p>
+                <p>
+                  {intervention.assessment.outcome.toUpperCase()}: {intervention.report.summary}
+                  {intervention.containedAt && (
+                    <> The Dream baseline was restored before memory ascent; {intervention.excludedArtefactPaths?.length ?? 0} injected artefact path{intervention.excludedArtefactPaths?.length === 1 ? " was" : "s were"} excluded.</>
+                  )}
+                </p>
               )}
             </article>
           )}
@@ -568,11 +924,16 @@ function MissionRunView({
         operation={activeOperation}
         now={now}
         pulseRealityId={pulseRealityId}
+        graphRealities={graphRealities}
         memoryIntegrity={memoryIntegrity}
         anchorResults={run.proofResults}
         finalDiff={run.finalDiff}
         revealCode={revealCode}
         onToggleCode={() => setRevealCode((current) => !current)}
+        hasMoreEvents={hasMoreEvents}
+        loadingMoreEvents={loadingMoreEvents}
+        onLoadMoreEvents={() => void loadEarlierEvents()}
+        totalEventCount={totalEvents}
       />
 
       <AdminDrawer
@@ -583,18 +944,25 @@ function MissionRunView({
           id: run.id,
           name: run.definition.name,
           status: statusLabel(run.status),
-          eventCount: run.events.length,
+          eventCount: totalEvents,
           realityCount: run.realities.length
         }}
         onMissionDeleted={onDeleted}
       />
+      {dreamGateOpen && pendingProposal && (
+        <DreamGate
+          proposal={pendingProposal}
+          owner={reality.name}
+          onCancel={() => setDreamGateOpen(false)}
+          onConfirm={() => void confirmDream()}
+        />
+      )}
       <MissionActionDock
         snapshot={snapshot}
         busy={busy}
         replaying={replaying}
         phaseSteps={phaseSteps}
         onAction={(action) => void act(action)}
-        onRemove={() => void remove()}
       />
     </main>
   );
@@ -611,6 +979,41 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
   const [targets, setTargets] = useState<TrainingTargetStatus[]>([]);
   const [targetBusy, setTargetBusy] = useState(false);
   const [composerAdminOpen, setComposerAdminOpen] = useState(false);
+
+  const mergeSnapshot = useCallback((next: MissionSnapshot) => {
+    setSnapshot((current) => {
+      if (!current || current.run.id !== next.run.id) return next;
+      const events = new Map<string, RealityEvent>();
+      for (const event of [...current.run.events, ...next.run.events]) events.set(event.id, event);
+      return {
+        ...next,
+        run: {
+          ...next.run,
+          events: [...events.values()].sort((left, right) =>
+            left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id)
+          )
+        }
+      };
+    });
+  }, []);
+
+  const appendEvents = useCallback((incoming: RealityEvent[]) => {
+    if (!incoming.length) return;
+    setSnapshot((current) => {
+      if (!current) return current;
+      const events = new Map(current.run.events.map((event) => [event.id, event]));
+      for (const event of incoming) events.set(event.id, event);
+      return {
+        ...current,
+        run: {
+          ...current.run,
+          events: [...events.values()].sort((left, right) =>
+            left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id)
+          )
+        }
+      };
+    });
+  }, []);
 
   const loadIndex = useCallback(async () => {
     const response = await fetch("/api/missions", { cache: "no-store" });
@@ -724,8 +1127,16 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
       ["Scope", composer.scope],
       ["Initial belief to challenge", composer.premise],
       ["Constitution constraints", composer.constraints],
-      ["Proof name", composer.proofName],
-      ["Proof executable", composer.proofExecutable]
+      ["Wake contract", composer.wakeContract],
+      ...composer.proofs.flatMap((proof, index) => [
+        [`Proof ${index + 1} name`, proof.name] as const,
+        [`Proof ${index + 1} executable`, proof.executable] as const
+      ]),
+      ...composer.subjects.flatMap((subject, index) => [
+        [`Subject ${index + 1} name`, subject.name] as const,
+        [`Subject ${index + 1} role`, subject.role] as const,
+        [`Subject ${index + 1} mission`, subject.mission] as const
+      ])
     ];
     if (composer.interventionEnabled) {
       requiredFields.push(
@@ -751,18 +1162,22 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
       premise: composer.premise.trim(),
       constraints: lines(composer.constraints),
       parentTruths: lines(composer.parentTruths),
-      wakeContract: [
-        "State initial beliefs and what changed.",
-        "Return reproducible evidence and artefacts.",
-        "Separate invariants from world-specific observations.",
-        "Preserve remaining uncertainty."
-      ],
-      proofs: [{
-        name: composer.proofName.trim(),
-        executable: composer.proofExecutable.trim(),
-        args: lines(composer.proofArgs)
-      }],
-      subjects: subjectCharters,
+      wakeContract: lines(composer.wakeContract),
+      runtimeLaws: lines(composer.runtimeLaws),
+      safetyProfile: composer.safetyProfile,
+      memoryPolicy: composer.memoryPolicy,
+      dreamStrategy: composer.dreamStrategy,
+      maxSiblingDreams: composer.maxSiblingDreams,
+      proofs: composer.proofs.map((proof) => ({
+        name: proof.name.trim(),
+        executable: proof.executable.trim(),
+        args: lines(proof.args)
+      })),
+      subjects: composer.subjects.map((subject) => ({
+        name: subject.name.trim(),
+        role: subject.role.trim(),
+        mission: subject.mission.trim()
+      })),
       intervention: composer.interventionEnabled ? {
         enabled: true,
         subject: adversarialSubject,
@@ -808,7 +1223,8 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
         <MissionRunView
           snapshot={snapshot}
           runtime={runtime}
-          onReload={setSnapshot}
+          onReload={mergeSnapshot}
+          onAppendEvents={appendEvents}
           onDeleted={() => {
             setSnapshot(null);
             router.replace("/missions", { scroll: true });
@@ -920,6 +1336,40 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
               <span>Parent truths / one per line</span>
               <textarea value={composer.parentTruths} onChange={(event) => setComposer({ ...composer, parentTruths: event.target.value })} placeholder="Public contracts or requirements every Dream inherits" />
             </label>
+            <label>
+              <span>Authorization profile</span>
+              <select
+                value={composer.safetyProfile}
+                onChange={(event) => setComposer({
+                  ...composer,
+                  safetyProfile: event.target.value as MissionSafetyProfile
+                })}
+              >
+                <option value="authorized-local-defensive-review">Authorized local defensive review</option>
+                <option value="general-development">General local development</option>
+              </select>
+            </label>
+            <label>
+              <span>Memory admission policy</span>
+              <select
+                value={composer.memoryPolicy}
+                onChange={(event) => setComposer({
+                  ...composer,
+                  memoryPolicy: event.target.value as MissionMemoryPolicy
+                })}
+              >
+                <option value="verified-reports-and-artefacts">Verified reports and artefacts</option>
+                <option value="verified-invariants-only">Verified invariants only</option>
+              </select>
+            </label>
+            <label className="mission-field-wide">
+              <span>Wake contract / one requirement per line</span>
+              <textarea required value={composer.wakeContract} onChange={(event) => setComposer({ ...composer, wakeContract: event.target.value })} />
+            </label>
+            <label className="mission-field-wide">
+              <span>World laws / one per line</span>
+              <textarea value={composer.runtimeLaws} onChange={(event) => setComposer({ ...composer, runtimeLaws: event.target.value })} />
+            </label>
 
             <div className="mission-section-title mission-form-divider">
               <span><ShieldAlert size={16} /> SEALED INTERVENTION</span>
@@ -931,7 +1381,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
                 checked={composer.interventionEnabled}
                 onChange={(event) => setComposer({ ...composer, interventionEnabled: event.target.checked })}
               />
-              <span>Arm one bounded chaos-engineer intervention at Dream depth {composer.interventionTargetDepth}</span>
+              <span>Inject one bounded controlled Subject at Dream depth {composer.interventionTargetDepth}</span>
             </label>
             {composer.interventionEnabled && (
               <>
@@ -953,7 +1403,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
                 <fieldset>
                   <legend>Intervention Dream depth</legend>
                   <div className="mission-segments">
-                    {[1, 2, 3].filter((depth) => depth <= composer.maxDreamDepth).map((depth) => (
+                    {[1, 2, 3, 4, 5].filter((depth) => depth <= composer.maxDreamDepth).map((depth) => (
                       <button type="button" className={composer.interventionTargetDepth === depth ? "is-selected" : ""} onClick={() => setComposer({ ...composer, interventionTargetDepth: depth })} key={depth}>
                         {depth}
                       </button>
@@ -988,21 +1438,82 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
             )}
 
             <div className="mission-section-title mission-form-divider">
-              <span><LockKeyhole size={16} /> IMMUTABLE PROOF</span>
-              <b>STRUCTURED EXECUTION</b>
+              <span><LockKeyhole size={16} /> IMMUTABLE PROOF SUITE</span>
+              <b>{composer.proofs.length} PARENT-OWNED</b>
             </div>
-            <label>
-              <span>Proof name</span>
-              <input required value={composer.proofName} onChange={(event) => setComposer({ ...composer, proofName: event.target.value })} />
-            </label>
-            <label>
-              <span>Executable</span>
-              <input required value={composer.proofExecutable} onChange={(event) => setComposer({ ...composer, proofExecutable: event.target.value })} />
-            </label>
-            <label className="mission-field-wide">
-              <span>Arguments / one per line</span>
-              <textarea value={composer.proofArgs} onChange={(event) => setComposer({ ...composer, proofArgs: event.target.value })} />
-            </label>
+            {composer.proofs.map((proof, proofIndex) => (
+              <div className="mission-repeat-row mission-field-wide" key={proof.key}>
+                <label>
+                  <span>Proof {proofIndex + 1} name</span>
+                  <input
+                    required
+                    value={proof.name}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      proofs: composer.proofs.map((entry) => entry.key === proof.key
+                        ? { ...entry, name: event.target.value }
+                        : entry)
+                    })}
+                  />
+                </label>
+                <label>
+                  <span>Executable</span>
+                  <input
+                    required
+                    value={proof.executable}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      proofs: composer.proofs.map((entry) => entry.key === proof.key
+                        ? { ...entry, executable: event.target.value }
+                        : entry)
+                    })}
+                  />
+                </label>
+                <label className="mission-field-wide">
+                  <span>Arguments / one per line</span>
+                  <textarea
+                    value={proof.args}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      proofs: composer.proofs.map((entry) => entry.key === proof.key
+                        ? { ...entry, args: event.target.value }
+                        : entry)
+                    })}
+                  />
+                </label>
+                {composer.proofs.length > 1 && (
+                  <button
+                    type="button"
+                    className="mission-repeat-remove"
+                    onClick={() => setComposer({
+                      ...composer,
+                      proofs: composer.proofs.filter((entry) => entry.key !== proof.key)
+                    })}
+                    aria-label={`Remove proof ${proofIndex + 1}`}
+                    title="Remove proof"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+            {composer.proofs.length < 20 && (
+              <button
+                type="button"
+                className="mission-add-row mission-field-wide"
+                onClick={() => setComposer({
+                  ...composer,
+                  proofs: [...composer.proofs, {
+                    key: crypto.randomUUID(),
+                    name: "",
+                    executable: "",
+                    args: ""
+                  }]
+                })}
+              >
+                <Plus size={14} /> Add immutable proof
+              </button>
+            )}
 
             <div className="mission-section-title mission-form-divider">
               <span><Network size={16} /> EXPLORATION BUDGET</span>
@@ -1011,10 +1522,38 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
               <span>Observed SDK token ceiling</span>
               <input type="number" min={10_000} max={10_000_000} step={10_000} value={composer.tokenBudget} onChange={(event) => setComposer({ ...composer, tokenBudget: Number(event.target.value) })} />
             </label>
+            <label>
+              <span>Dream exploration strategy</span>
+              <select
+                value={composer.dreamStrategy}
+                onChange={(event) => setComposer({
+                  ...composer,
+                  dreamStrategy: event.target.value as MissionDreamStrategy
+                })}
+              >
+                <option value="competing-siblings">Compare sibling realities</option>
+                <option value="single-chain">Follow one nested chain</option>
+              </select>
+            </label>
+            {composer.dreamStrategy === "competing-siblings" && (
+              <label>
+                <span>Maximum sibling Dreams per Reality</span>
+                <input
+                  type="number"
+                  min={2}
+                  max={3}
+                  value={composer.maxSiblingDreams}
+                  onChange={(event) => setComposer({
+                    ...composer,
+                    maxSiblingDreams: Number(event.target.value)
+                  })}
+                />
+              </label>
+            )}
             <fieldset>
               <legend>Maximum Dream depth</legend>
               <div className="mission-segments">
-                {[1, 2, 3].map((depth) => (
+                {[1, 2, 3, 4, 5].map((depth) => (
                   <button
                     type="button"
                     className={composer.maxDreamDepth === depth ? "is-selected" : ""}
@@ -1043,18 +1582,73 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
           <aside className="mission-roster">
             <div className="mission-section-title">
               <span><UsersRound size={16} /> SUBJECT CHARTERS</span>
-              <b>{subjectCharters.length} DIRECT THREADS</b>
+              <b>{composer.subjects.length} DIRECT THREADS</b>
             </div>
-            {subjectCharters.map((subject) => (
-              <article key={subject.name}>
+            {composer.subjects.map((subject, subjectIndex) => (
+              <article className="mission-subject-editor" key={subject.key}>
                 <span><UsersRound size={15} /></span>
                 <div>
-                  <strong>{subject.name}</strong>
-                  <small>{subject.role}</small>
-                  <p>{subject.mission}</p>
+                  <input
+                    aria-label={`Subject ${subjectIndex + 1} name`}
+                    value={subject.name}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      subjects: composer.subjects.map((entry) => entry.key === subject.key
+                        ? { ...entry, name: event.target.value }
+                        : entry)
+                    })}
+                  />
+                  <input
+                    aria-label={`Subject ${subjectIndex + 1} role`}
+                    value={subject.role}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      subjects: composer.subjects.map((entry) => entry.key === subject.key
+                        ? { ...entry, role: event.target.value }
+                        : entry)
+                    })}
+                  />
+                  <textarea
+                    aria-label={`Subject ${subjectIndex + 1} mission`}
+                    value={subject.mission}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      subjects: composer.subjects.map((entry) => entry.key === subject.key
+                        ? { ...entry, mission: event.target.value }
+                        : entry)
+                    })}
+                  />
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setComposer({
+                    ...composer,
+                    subjects: composer.subjects.filter((entry) => entry.key !== subject.key)
+                  })}
+                  aria-label={`Remove Subject ${subject.name || subjectIndex + 1}`}
+                  title="Remove Subject"
+                >
+                  <Trash2 size={13} />
+                </button>
               </article>
             ))}
+            {composer.subjects.length < 6 && (
+              <button
+                type="button"
+                className="mission-add-subject"
+                onClick={() => setComposer({
+                  ...composer,
+                  subjects: [...composer.subjects, {
+                    key: crypto.randomUUID(),
+                    name: "",
+                    role: "",
+                    mission: ""
+                  }]
+                })}
+              >
+                <Plus size={14} /> Add Subject charter
+              </button>
+            )}
             <div className="mission-section-title mission-history-title">
               <span><Clock3 size={16} /> MISSION LIBRARY</span>
               <b>{missions.length}</b>

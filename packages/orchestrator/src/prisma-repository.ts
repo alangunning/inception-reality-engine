@@ -19,6 +19,7 @@ type PrismaDelegate = {
   findMany(args?: RecordShape): Promise<RecordShape[]>;
   create(args: RecordShape): Promise<RecordShape>;
   deleteMany(args?: RecordShape): Promise<RecordShape>;
+  count(args?: RecordShape): Promise<number>;
 };
 
 /**
@@ -31,6 +32,7 @@ export interface InceptionPrismaClient {
   demoSessionRecord: PrismaDelegate;
   realityRunArchiveRecord: PrismaDelegate;
   missionRunRecord: PrismaDelegate;
+  missionEventRecord: PrismaDelegate;
   $transaction<T>(operations: Promise<T>[]): Promise<T[]>;
   $disconnect?(): Promise<void>;
 }
@@ -85,6 +87,7 @@ function toSession(record: RecordShape): DemoSession {
     anchorResults: parseJson(record.anchorResultsJson),
     regressionResult: record.regressionResultJson ? parseJson(record.regressionResultJson) : undefined,
     memoryIntegrity: record.memoryIntegrityJson ? parseJson(record.memoryIntegrityJson) : [],
+    autopilot: record.autopilotJson ? parseJson(record.autopilotJson) : undefined,
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString()
   });
@@ -162,6 +165,7 @@ export class PrismaRealityRepository implements RealityRepository {
       anchorResultsJson: JSON.stringify(session.anchorResults),
       regressionResultJson: session.regressionResult ? JSON.stringify(session.regressionResult) : null,
       memoryIntegrityJson: JSON.stringify(session.memoryIntegrity),
+      autopilotJson: JSON.stringify(session.autopilot),
       createdAt: new Date(session.createdAt),
       updatedAt: new Date(session.updatedAt)
     };
@@ -211,7 +215,7 @@ export class PrismaRealityRepository implements RealityRepository {
   async saveMissionRun(run: MissionRun): Promise<void> {
     const validated = MissionRunSchema.parse(run);
     const data = {
-      snapshotJson: JSON.stringify(validated),
+      snapshotJson: JSON.stringify({ ...validated, events: [] }),
       updatedAt: new Date(validated.updatedAt)
     };
     await this.prisma.missionRunRecord.upsert({
@@ -223,7 +227,26 @@ export class PrismaRealityRepository implements RealityRepository {
 
   async getMissionRun(id: string): Promise<MissionRun | null> {
     const record = await this.prisma.missionRunRecord.findUnique({ where: { id } });
-    return record ? MissionRunSchema.parse(parseJson(record.snapshotJson)) : null;
+    if (!record) return null;
+    const snapshot = MissionRunSchema.parse(parseJson(record.snapshotJson));
+    const [events, eventCount] = await Promise.all([
+      this.listMissionEvents(id, 500),
+      this.prisma.missionEventRecord.count({ where: { missionId: id } })
+    ]);
+    const hydratedEvents = events.length ? events : snapshot.events;
+    return MissionRunSchema.parse({
+      ...snapshot,
+      events: hydratedEvents,
+      eventCount: Math.max(snapshot.eventCount, eventCount, hydratedEvents.length),
+      observedTokens: snapshot.observedTokens || hydratedEvents.reduce((total, event) => {
+        const metadata = event.payload.metadata;
+        if (!metadata || typeof metadata !== "object") return total;
+        const values = metadata as Record<string, unknown>;
+        return total
+          + (typeof values.inputTokens === "number" ? values.inputTokens : 0)
+          + (typeof values.outputTokens === "number" ? values.outputTokens : 0);
+      }, 0)
+    });
   }
 
   async listMissionRuns(limit = 20): Promise<MissionRun[]> {
@@ -234,8 +257,65 @@ export class PrismaRealityRepository implements RealityRepository {
     return records.map((record) => MissionRunSchema.parse(parseJson(record.snapshotJson)));
   }
 
+  async appendMissionEvent(missionId: string, event: RealityEvent): Promise<void> {
+    const validated = RealityEventSchema.parse(event);
+    const existing = await this.prisma.missionEventRecord.findMany({
+      where: { missionId },
+      take: 1
+    });
+    if (!existing.length) {
+      const legacy = await this.prisma.missionRunRecord.findUnique({ where: { id: missionId } });
+      if (legacy) {
+        const snapshot = MissionRunSchema.parse(parseJson(legacy.snapshotJson));
+        for (const legacyEvent of snapshot.events) {
+          await this.upsertMissionEvent(missionId, legacyEvent);
+        }
+      }
+    }
+    await this.upsertMissionEvent(missionId, validated);
+  }
+
+  async listMissionEvents(missionId: string, limit = 500, before?: string): Promise<RealityEvent[]> {
+    const [beforeTime, beforeId] = before?.split("|") ?? [];
+    const records = await this.prisma.missionEventRecord.findMany({
+      where: {
+        missionId,
+        ...(beforeTime ? {
+          OR: [
+            { occurredAt: { lt: new Date(beforeTime) } },
+            {
+              occurredAt: new Date(beforeTime),
+              id: { lt: beforeId ?? "" }
+            }
+          ]
+        } : {})
+      },
+      orderBy: [{ occurredAt: "desc" }, { id: "desc" }],
+      take: limit
+    });
+    return records.reverse().map(toEvent);
+  }
+
   async deleteMissionRun(id: string): Promise<void> {
+    await this.prisma.missionEventRecord.deleteMany({ where: { missionId: id } });
     await this.prisma.missionRunRecord.deleteMany({ where: { id } });
+  }
+
+  private async upsertMissionEvent(missionId: string, event: RealityEvent): Promise<void> {
+    const data = {
+      missionId,
+      realityId: event.realityId,
+      type: event.type,
+      summary: event.summary,
+      dreamTime: event.dreamTime,
+      payloadJson: JSON.stringify(event.payload),
+      occurredAt: new Date(event.occurredAt)
+    };
+    await this.prisma.missionEventRecord.upsert({
+      where: { id: event.id },
+      create: { id: event.id, ...data },
+      update: data
+    });
   }
 
   async deleteAll(): Promise<void> {

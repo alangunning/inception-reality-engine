@@ -80,6 +80,7 @@ export class SqliteRealityRepository implements RealityRepository {
         anchorResultsJson TEXT NOT NULL,
         regressionResultJson TEXT,
         memoryIntegrityJson TEXT NOT NULL DEFAULT '[]',
+        autopilotJson TEXT NOT NULL DEFAULT '{"mode":"off","maxActions":10,"paceMilliseconds":1000,"actionsCompleted":0}',
         createdAt DATETIME NOT NULL,
         updatedAt DATETIME NOT NULL
       );
@@ -99,6 +100,19 @@ export class SqliteRealityRepository implements RealityRepository {
       );
       CREATE INDEX IF NOT EXISTS MissionRunRecord_updatedAt_idx
         ON MissionRunRecord(updatedAt);
+
+      CREATE TABLE IF NOT EXISTS MissionEventRecord (
+        id TEXT PRIMARY KEY,
+        missionId TEXT NOT NULL,
+        realityId TEXT NOT NULL,
+        type TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        dreamTime INTEGER NOT NULL,
+        payloadJson TEXT NOT NULL,
+        occurredAt DATETIME NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS MissionEventRecord_missionId_occurredAt_idx
+        ON MissionEventRecord(missionId, occurredAt DESC);
     `);
     const sessionColumns = this.db.prepare("PRAGMA table_info(DemoSessionRecord)").all() as Array<{ name: string }>;
     if (!sessionColumns.some((column) => column.name === "regressionResultJson")) {
@@ -106,6 +120,9 @@ export class SqliteRealityRepository implements RealityRepository {
     }
     if (!sessionColumns.some((column) => column.name === "memoryIntegrityJson")) {
       this.db.exec("ALTER TABLE DemoSessionRecord ADD COLUMN memoryIntegrityJson TEXT NOT NULL DEFAULT '[]';");
+    }
+    if (!sessionColumns.some((column) => column.name === "autopilotJson")) {
+      this.db.exec(`ALTER TABLE DemoSessionRecord ADD COLUMN autopilotJson TEXT NOT NULL DEFAULT '{"mode":"off","maxActions":10,"paceMilliseconds":1000,"actionsCompleted":0}';`);
     }
   }
 
@@ -210,8 +227,8 @@ export class SqliteRealityRepository implements RealityRepository {
   async saveSession(session: DemoSession): Promise<void> {
     this.db.prepare(`
       INSERT INTO DemoSessionRecord
-      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, memoryIntegrityJson, createdAt, updatedAt)
-      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @memoryIntegrityJson, @createdAt, @updatedAt)
+      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, memoryIntegrityJson, autopilotJson, createdAt, updatedAt)
+      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @memoryIntegrityJson, @autopilotJson, @createdAt, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         phase=excluded.phase,
         activeRealityId=excluded.activeRealityId,
@@ -219,6 +236,7 @@ export class SqliteRealityRepository implements RealityRepository {
         anchorResultsJson=excluded.anchorResultsJson,
         regressionResultJson=excluded.regressionResultJson,
         memoryIntegrityJson=excluded.memoryIntegrityJson,
+        autopilotJson=excluded.autopilotJson,
         createdAt=excluded.createdAt,
         updatedAt=excluded.updatedAt
     `).run({
@@ -229,6 +247,7 @@ export class SqliteRealityRepository implements RealityRepository {
       anchorResultsJson: JSON.stringify(session.anchorResults),
       regressionResultJson: session.regressionResult ? JSON.stringify(session.regressionResult) : null,
       memoryIntegrityJson: JSON.stringify(session.memoryIntegrity),
+      autopilotJson: JSON.stringify(session.autopilot),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt
     });
@@ -244,6 +263,7 @@ export class SqliteRealityRepository implements RealityRepository {
       anchorResults: parseJson(row.anchorResultsJson),
       regressionResult: row.regressionResultJson ? parseJson(row.regressionResultJson) : undefined,
       memoryIntegrity: row.memoryIntegrityJson ? parseJson(row.memoryIntegrityJson) : [],
+      autopilot: row.autopilotJson ? parseJson(row.autopilotJson) : undefined,
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt)
     }) : null;
@@ -290,7 +310,7 @@ export class SqliteRealityRepository implements RealityRepository {
         updatedAt=excluded.updatedAt
     `).run({
       id: validated.id,
-      snapshotJson: JSON.stringify(validated),
+      snapshotJson: JSON.stringify({ ...validated, events: [] }),
       updatedAt: validated.updatedAt
     });
   }
@@ -299,7 +319,26 @@ export class SqliteRealityRepository implements RealityRepository {
     const row = this.db.prepare(
       "SELECT snapshotJson FROM MissionRunRecord WHERE id = ?"
     ).get(id) as Row | undefined;
-    return row ? MissionRunSchema.parse(parseJson(row.snapshotJson)) : null;
+    if (!row) return null;
+    const snapshot = MissionRunSchema.parse(parseJson(row.snapshotJson));
+    const events = await this.listMissionEvents(id, 500);
+    const eventCount = Number((this.db.prepare(
+      "SELECT COUNT(*) AS count FROM MissionEventRecord WHERE missionId = ?"
+    ).get(id) as { count?: number } | undefined)?.count ?? 0);
+    const hydratedEvents = events.length ? events : snapshot.events;
+    return MissionRunSchema.parse({
+      ...snapshot,
+      events: hydratedEvents,
+      eventCount: Math.max(snapshot.eventCount, eventCount, hydratedEvents.length),
+      observedTokens: snapshot.observedTokens || hydratedEvents.reduce((total, event) => {
+        const metadata = event.payload.metadata;
+        if (!metadata || typeof metadata !== "object") return total;
+        const values = metadata as Record<string, unknown>;
+        return total
+          + (typeof values.inputTokens === "number" ? values.inputTokens : 0)
+          + (typeof values.outputTokens === "number" ? values.outputTokens : 0);
+      }, 0)
+    });
   }
 
   async listMissionRuns(limit = 20): Promise<MissionRun[]> {
@@ -309,7 +348,52 @@ export class SqliteRealityRepository implements RealityRepository {
     return rows.map((row) => MissionRunSchema.parse(parseJson(row.snapshotJson)));
   }
 
+  async appendMissionEvent(missionId: string, event: RealityEvent): Promise<void> {
+    const validated = RealityEventSchema.parse(event);
+    const legacy = this.db.prepare(
+      "SELECT snapshotJson FROM MissionRunRecord WHERE id = ?"
+    ).get(missionId) as Row | undefined;
+    const existingCount = Number((this.db.prepare(
+      "SELECT COUNT(*) AS count FROM MissionEventRecord WHERE missionId = ?"
+    ).get(missionId) as { count?: number } | undefined)?.count ?? 0);
+    if (legacy && existingCount === 0) {
+      const snapshot = MissionRunSchema.parse(parseJson(legacy.snapshotJson));
+      for (const legacyEvent of snapshot.events) {
+        this.insertMissionEvent(missionId, legacyEvent);
+      }
+    }
+    this.insertMissionEvent(missionId, validated);
+  }
+
+  async listMissionEvents(missionId: string, limit = 500, before?: string): Promise<RealityEvent[]> {
+    const [beforeTime, beforeId] = before?.split("|") ?? [];
+    const rows = beforeTime
+      ? this.db.prepare(`
+          SELECT * FROM MissionEventRecord
+          WHERE missionId = ?
+            AND (occurredAt < ? OR (occurredAt = ? AND id < ?))
+          ORDER BY occurredAt DESC, id DESC
+          LIMIT ?
+        `).all(missionId, beforeTime, beforeTime, beforeId ?? "", limit) as Row[]
+      : this.db.prepare(`
+          SELECT * FROM MissionEventRecord
+          WHERE missionId = ?
+          ORDER BY occurredAt DESC, id DESC
+          LIMIT ?
+        `).all(missionId, limit) as Row[];
+    return rows.reverse().map((row) => RealityEventSchema.parse({
+      id: row.id,
+      realityId: row.realityId,
+      type: row.type,
+      summary: row.summary,
+      dreamTime: row.dreamTime,
+      payload: parseJson(row.payloadJson),
+      occurredAt: iso(row.occurredAt)
+    }));
+  }
+
   async deleteMissionRun(id: string): Promise<void> {
+    this.db.prepare("DELETE FROM MissionEventRecord WHERE missionId = ?").run(id);
     this.db.prepare("DELETE FROM MissionRunRecord WHERE id = ?").run(id);
   }
 
@@ -328,6 +412,23 @@ export class SqliteRealityRepository implements RealityRepository {
 
   close(): void {
     this.db.close();
+  }
+
+  private insertMissionEvent(missionId: string, event: RealityEvent): void {
+    this.db.prepare(`
+      INSERT OR IGNORE INTO MissionEventRecord
+      (id, missionId, realityId, type, summary, dreamTime, payloadJson, occurredAt)
+      VALUES (@id, @missionId, @realityId, @type, @summary, @dreamTime, @payloadJson, @occurredAt)
+    `).run({
+      id: event.id,
+      missionId,
+      realityId: event.realityId,
+      type: event.type,
+      summary: event.summary,
+      dreamTime: event.dreamTime,
+      payloadJson: JSON.stringify(event.payload),
+      occurredAt: event.occurredAt
+    });
   }
 
   private toReality(row: Row): Reality {

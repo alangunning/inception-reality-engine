@@ -4,6 +4,7 @@ import {
   RealityEntity,
   RealityRunArchiveSchema,
   type AnchorResult,
+  type DemoAutopilotState,
   type DemoSession,
   type InvestigationReport,
   type MemoryIntegritySeal,
@@ -69,6 +70,12 @@ export interface DemoSnapshot {
   nextAction: DemoNextAction | null;
 }
 
+export type DemoAutopilotCommand =
+  | { command: "start"; paceMilliseconds?: number }
+  | { command: "resume" }
+  | { command: "pause" }
+  | { command: "stop" };
+
 interface ActionDefinition {
   id: DemoAction;
   kind: DemoNextAction["kind"];
@@ -105,6 +112,8 @@ export class RealityOrchestrator {
   private seedOperation: Promise<void> = Promise.resolve();
   private reconcileOperation: Promise<void> = Promise.resolve();
   private activeOperation: ActiveRealityOperation | null = null;
+  private demoAutopilotControl: DemoAutopilotState | null = null;
+  private demoAutopilotLoop: Promise<void> | null = null;
   private readonly memoryIntegrity = new MemoryIntegrityService();
 
   constructor(
@@ -210,6 +219,12 @@ export class RealityOrchestrator {
         finalDiff: "",
         anchorResults: [],
         memoryIntegrity: [],
+        autopilot: {
+          mode: "off",
+          maxActions: 10,
+          paceMilliseconds: 1_000,
+          actionsCompleted: 0
+        },
         createdAt: timestamp,
         updatedAt: timestamp
       };
@@ -231,6 +246,19 @@ export class RealityOrchestrator {
       this.repository.listEvents(500)
     ]);
     if (!session) throw new Error("Demo session is missing.");
+    if (
+      session.autopilot.mode === "running"
+      && !this.demoAutopilotControl
+      && !this.demoAutopilotLoop
+    ) {
+      session.autopilot = {
+        ...session.autopilot,
+        mode: "paused",
+        pauseReason: "The server restarted; resume explicitly to continue without starting Codex on page load.",
+        updatedAt: new Date().toISOString()
+      };
+      await this.repository.saveSession(session);
+    }
     const activeReality = realities.find((reality) => reality.id === session.activeRealityId) ?? null;
     return {
       session,
@@ -306,7 +334,80 @@ export class RealityOrchestrator {
     return this.snapshot();
   }
 
+  async controlAutopilot(command: DemoAutopilotCommand): Promise<DemoSnapshot> {
+    await this.ensureSeeded();
+    if (this.codexRuntime.mode !== "mock") {
+      throw new Error("Demo auto mode is deterministic mock-only. Use guided auto mode for real Codex Missions.");
+    }
+    const session = await this.requireSession();
+    const reality = session.activeRealityId
+      ? await this.repository.getReality(session.activeRealityId)
+      : null;
+    if (!reality) throw new Error("The active Demo Reality is unavailable.");
+    const timestamp = new Date().toISOString();
+    if (command.command === "start") {
+      if (session.phase >= 10) throw new Error("The Demo Mission is already stabilised.");
+      session.autopilot = {
+        mode: "running",
+        maxActions: 10,
+        paceMilliseconds: Math.max(250, Math.min(command.paceMilliseconds ?? 1_000, 10_000)),
+        actionsCompleted: 0,
+        startedAt: timestamp,
+        updatedAt: timestamp
+      };
+      this.demoAutopilotControl = { ...session.autopilot };
+      await this.repository.saveSession(session);
+      await this.emit(reality, "autopilot.started", "Demo auto mode started; the deterministic Reality path will advance without Codex usage.", {
+        kind: "demo",
+        paceMilliseconds: session.autopilot.paceMilliseconds,
+        maxActions: session.autopilot.maxActions
+      });
+      this.startDemoAutopilotLoop();
+    } else if (command.command === "resume") {
+      if (session.autopilot.mode !== "paused") {
+        throw new Error("Demo auto mode is not paused.");
+      }
+      session.autopilot = {
+        ...session.autopilot,
+        mode: "running",
+        pauseReason: undefined,
+        updatedAt: timestamp
+      };
+      this.demoAutopilotControl = { ...session.autopilot };
+      await this.repository.saveSession(session);
+      this.startDemoAutopilotLoop();
+    } else {
+      session.autopilot = {
+        ...session.autopilot,
+        mode: command.command === "pause" ? "paused" : "stopped",
+        pauseReason: command.command === "pause"
+          ? "Paused by the operator after the current deterministic action."
+          : "Stopped by the operator after the current deterministic action.",
+        updatedAt: timestamp
+      };
+      this.demoAutopilotControl = { ...session.autopilot };
+      await this.repository.saveSession(session);
+      await this.emit(
+        reality,
+        command.command === "pause" ? "autopilot.paused" : "autopilot.stopped",
+        command.command === "pause"
+          ? "Demo auto mode paused by the operator."
+          : "Demo auto mode stopped by the operator.",
+        { actionsCompleted: session.autopilot.actionsCompleted }
+      );
+    }
+    return this.snapshot();
+  }
+
   async reset(): Promise<DemoSnapshot> {
+    if (this.demoAutopilotControl?.mode === "running") {
+      this.demoAutopilotControl = {
+        ...this.demoAutopilotControl,
+        mode: "stopped",
+        pauseReason: "Stopped for full reset.",
+        updatedAt: new Date().toISOString()
+      };
+    }
     if (this.activeOperation) {
       throw new Error(`Cannot reset while "${this.activeOperation.label}" is active.`);
     }
@@ -537,6 +638,10 @@ export class RealityOrchestrator {
     const report = returned.wakeReport!;
 
     const parent = await this.requireDreamAtDepth(1);
+    await this.emit(returned, "wake.sealing", "Reality Totem is sealing the nested memory to its failing artefact and Git source.", {
+      wakeStage: "sealing",
+      wakeStageIndex: 2
+    });
     const seal = await this.sealCanonicalMemory(session, returned, parent, report);
     const integritySession = await this.acceptCanonicalMemorySeal(session, returned, seal);
     const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
@@ -553,6 +658,11 @@ export class RealityOrchestrator {
     parentEntity.advanceTime(5, "Receiving nested memory", "A decisive failing test returned from depth two.");
     const updatedParent = parentEntity.snapshot();
     await this.repository.saveReality(updatedParent);
+    await this.emit(returned, "wake.returning", "Validated nested memory is returning to the coordinated-attack Dream.", {
+      parentRealityId: parent.id,
+      wakeStage: "returning",
+      wakeStageIndex: 3
+    });
     await this.emit(returned, "memory.returned", "Memory returned from the rotating-IP Dream with a failing test artefact.", { report });
     await this.advanceSession(integritySession, 6, updatedParent.id);
   }
@@ -624,6 +734,10 @@ export class RealityOrchestrator {
     const waking = RealityEntity.hydrate(experiencedReality).setStatus("waking", "Kick received").advanceTime(2, "Preparing structured memory");
     await this.repository.saveReality(waking.snapshot());
     await this.emit(waking.snapshot(), "kick.triggered", "Kick triggered: stop the rotating-IP Dream and return evidence.", {});
+    await this.emit(waking.snapshot(), "wake.collecting", "Collecting the failing test, changed belief, and remaining uncertainty.", {
+      wakeStage: "collecting",
+      wakeStageIndex: 1
+    });
     const result = await this.requestWake({
       ...waking.snapshot(),
       codexThreadId: experiencedReality.codexThreadId
@@ -645,6 +759,10 @@ export class RealityOrchestrator {
     const waking = RealityEntity.hydrate(dream).setStatus("waking", "Kick received").advanceTime(3, "Consolidating subject and nested memories");
     await this.repository.saveReality(waking.snapshot());
     await this.emit(waking.snapshot(), "kick.triggered", "Kick triggered: coordinated-attack Dream must return what generalises.", {});
+    await this.emit(waking.snapshot(), "wake.collecting", "Collecting Subject findings and inherited nested memory.", {
+      wakeStage: "collecting",
+      wakeStageIndex: 1
+    });
     const result = await this.requestWake({
       ...waking.snapshot(),
       codexThreadId: dream.codexThreadId?.startsWith("unbound:") ? undefined : dream.codexThreadId
@@ -654,6 +772,10 @@ export class RealityOrchestrator {
     await this.repository.saveReality(returned);
 
     const root = await this.requireNamedReality(ROOT_NAME);
+    await this.emit(returned, "wake.sealing", "Reality Totem is sealing the parent Dream memory and verified descendant lineage.", {
+      wakeStage: "sealing",
+      wakeStageIndex: 2
+    });
     const seal = await this.sealCanonicalMemory(session, returned, root, result.report);
     const integritySession = await this.acceptCanonicalMemorySeal(session, returned, seal);
     const proposal = root.proposals.find((entry) => entry.status === "dreaming");
@@ -669,6 +791,11 @@ export class RealityOrchestrator {
     rootEntity.advanceTime(6, "Receiving coordinated-attack memory", "The parent Dream returned layered defensive invariants.");
     const updatedRoot = rootEntity.snapshot();
     await this.repository.saveReality(updatedRoot);
+    await this.emit(returned, "wake.returning", "Validated parent memory is returning to the waking Reality.", {
+      parentRealityId: root.id,
+      wakeStage: "returning",
+      wakeStageIndex: 3
+    });
     await this.emit(returned, "memory.returned", "Memory returned from the coordinated-attack Dream.", { report: result.report });
     await this.advanceSession(integritySession, 7, updatedRoot.id);
   }
@@ -1653,6 +1780,9 @@ ${laws || "- No additional runtime laws."}
     await this.repository.saveSession({
       ...session,
       ...changes,
+      ...(this.demoAutopilotControl
+        ? { autopilot: { ...this.demoAutopilotControl } }
+        : {}),
       phase,
       activeRealityId,
       updatedAt: new Date().toISOString()
@@ -1671,6 +1801,92 @@ ${laws || "- No additional runtime laws."}
     };
     await this.repository.appendEvent(event);
     this.eventBus.publish(event);
+  }
+
+  private startDemoAutopilotLoop(): void {
+    if (this.demoAutopilotLoop) return;
+    this.demoAutopilotLoop = this.runDemoAutopilot()
+      .finally(() => {
+        this.demoAutopilotLoop = null;
+      });
+  }
+
+  private async runDemoAutopilot(): Promise<void> {
+    while (this.demoAutopilotControl?.mode === "running") {
+      const session = await this.requireSession();
+      const control = this.demoAutopilotControl;
+      if (!control || control.mode !== "running") return;
+      if (session.phase >= 10) {
+        const active = session.activeRealityId
+          ? await this.repository.getReality(session.activeRealityId)
+          : null;
+        const completed: DemoAutopilotState = {
+          ...control,
+          mode: "completed",
+          updatedAt: new Date().toISOString(),
+          pauseReason: undefined
+        };
+        this.demoAutopilotControl = completed;
+        await this.repository.saveSession({ ...session, autopilot: completed });
+        if (active) {
+          await this.emit(active, "autopilot.completed", "Demo auto mode reached the stabilised waking Reality.", {
+            actionsCompleted: completed.actionsCompleted
+          });
+        }
+        return;
+      }
+      if (control.actionsCompleted >= control.maxActions) {
+        await this.pauseDemoAutopilot("The configured Demo action limit was reached.");
+        return;
+      }
+      const action = this.expectedAction(session);
+      if (!action) {
+        await this.pauseDemoAutopilot("The Demo Mission has no valid next action.");
+        return;
+      }
+      try {
+        await this.act(action);
+      } catch (error) {
+        await this.pauseDemoAutopilot(
+          `Action ${action} stopped: ${error instanceof Error ? error.message : "unknown failure"}`
+        );
+        return;
+      }
+      const currentSession = await this.requireSession();
+      const latest = this.demoAutopilotControl;
+      if (!latest || latest.mode !== "running") return;
+      const advanced: DemoAutopilotState = {
+        ...latest,
+        actionsCompleted: latest.actionsCompleted + 1,
+        lastAction: action,
+        updatedAt: new Date().toISOString()
+      };
+      this.demoAutopilotControl = advanced;
+      await this.repository.saveSession({ ...currentSession, autopilot: advanced });
+      await new Promise((resolve) => setTimeout(resolve, advanced.paceMilliseconds));
+    }
+  }
+
+  private async pauseDemoAutopilot(reason: string): Promise<void> {
+    const session = await this.requireSession();
+    const current = this.demoAutopilotControl ?? session.autopilot;
+    const paused: DemoAutopilotState = {
+      ...current,
+      mode: "paused",
+      pauseReason: reason,
+      updatedAt: new Date().toISOString()
+    };
+    this.demoAutopilotControl = paused;
+    await this.repository.saveSession({ ...session, autopilot: paused });
+    const active = session.activeRealityId
+      ? await this.repository.getReality(session.activeRealityId)
+      : null;
+    if (active) {
+      await this.emit(active, "autopilot.paused", `Demo auto mode paused: ${reason}`, {
+        actionsCompleted: paused.actionsCompleted,
+        reason
+      });
+    }
   }
 
   private async emitCodexEvent(reality: Reality, event: CodexRuntimeEvent): Promise<void> {

@@ -20,6 +20,8 @@ export interface RealityRepository {
   saveMissionRun(run: MissionRun): Promise<void>;
   getMissionRun(id: string): Promise<MissionRun | null>;
   listMissionRuns(limit?: number): Promise<MissionRun[]>;
+  appendMissionEvent(missionId: string, event: RealityEvent): Promise<void>;
+  listMissionEvents(missionId: string, limit?: number, before?: string): Promise<RealityEvent[]>;
   deleteMissionRun(id: string): Promise<void>;
   deleteAll(): Promise<void>;
 }

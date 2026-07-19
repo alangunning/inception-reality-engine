@@ -20,7 +20,9 @@ import {
 } from "./types";
 
 function mockThreadId(reality: Reality): string {
-  return reality.codexThreadId ?? `mock-thread-${reality.id}`;
+  return reality.codexThreadId && !reality.codexThreadId.startsWith("unbound:")
+    ? reality.codexThreadId
+    : `mock-thread-${reality.id}`;
 }
 
 function mockDelayMilliseconds(): number {
@@ -139,6 +141,16 @@ export class MockCodexRuntime implements CodexRuntime {
             estimatedTokens: 18_000,
             costClass: "medium"
           },
+          alternativeDreamProposal: {
+            title: "Under concurrent recovery load",
+            premise: "Assume legitimate recovery traffic and repeated identifier pressure arrive concurrently.",
+            uncertainty: "Do shared controls contain repeated requests without blocking ordinary recovery?",
+            rationale: "A competing world tests availability while the first world tests distributed-source containment.",
+            impactProbability: 0.67,
+            expectedInsight: "Separate abuse containment from legitimate recovery availability.",
+            estimatedTokens: 14_000,
+            costClass: "medium"
+          },
           remainingUncertainty: ["Whether coordinated sources can bypass the IP-only boundary."],
           changedFiles: [],
           generatedAt
@@ -194,6 +206,7 @@ export class MockCodexRuntime implements CodexRuntime {
             estimatedTokens: 9_000,
             costClass: "low"
           },
+          alternativeDreamProposal: null,
           remainingUncertainty: ["Whether rotating source addresses bypass the defence in a deterministic test."],
           changedFiles: [],
           generatedAt
@@ -201,7 +214,8 @@ export class MockCodexRuntime implements CodexRuntime {
     if (
       nested
       && (reality.constitution.runtimeLaws ?? []).some((law) =>
-        law.includes("sealed adversarial intervention")
+        law.includes("sealed controlled intervention")
+        || law.includes("sealed adversarial intervention")
       )
     ) {
       report.adversarialDiagnosis = {
@@ -264,7 +278,7 @@ export class MockCodexRuntime implements CodexRuntime {
       .replace(/\/$/, "") || "src";
     const changedPath = `${allowedRoot}/sealed-intervention.ts`;
     return {
-      coordinatorThreadId: `mock-intervention-${reality.id}`,
+      coordinatorThreadId: mockThreadId(reality),
       subjectThreadId,
       events,
       report: AdversarialInterventionReportSchema.parse({

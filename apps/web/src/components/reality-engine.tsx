@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -27,6 +27,7 @@ import {
   Minimize2,
   MoonStar,
   Network,
+  Pause,
   Play,
   Power,
   Radio,
@@ -165,17 +166,68 @@ async function readApiResponse<T extends object>(response: Response, fallback: s
   return value as T;
 }
 
-function graphPosition(depth: number, maximumDepth: number): { x: number; y: number } {
-  if (maximumDepth <= 2) {
-    return [
-      { x: 150, y: 185 },
-      { x: 500, y: 95 },
-      { x: 845, y: 205 }
-    ][depth] ?? { x: 845, y: 205 };
+interface RealityGraphLayout {
+  positions: Map<string, { x: number; y: number }>;
+  width: number;
+  height: number;
+  maximumDepth: number;
+}
+
+function layoutRealityTree(realities: Reality[]): RealityGraphLayout {
+  const byId = new Map(realities.map((reality) => [reality.id, reality]));
+  const children = new Map<string, Reality[]>();
+  for (const reality of realities) {
+    if (!reality.parentId || !byId.has(reality.parentId)) continue;
+    const siblings = children.get(reality.parentId) ?? [];
+    siblings.push(reality);
+    children.set(reality.parentId, siblings);
   }
+  for (const siblings of children.values()) {
+    siblings.sort((left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id)
+    );
+  }
+
+  const roots = realities
+    .filter((reality) => !reality.parentId || !byId.has(reality.parentId))
+    .sort((left, right) =>
+      left.depth - right.depth
+      || left.createdAt.localeCompare(right.createdAt)
+      || left.id.localeCompare(right.id)
+    );
+  const positions = new Map<string, { x: number; y: number }>();
+  const visiting = new Set<string>();
+  let leafIndex = 0;
+  const place = (reality: Reality): number => {
+    const existing = positions.get(reality.id);
+    if (existing) return existing.y;
+    if (visiting.has(reality.id)) {
+      const y = 116 + leafIndex++ * 164;
+      positions.set(reality.id, { x: 138 + reality.depth * 304, y });
+      return y;
+    }
+    visiting.add(reality.id);
+    const descendants = children.get(reality.id) ?? [];
+    const childRows = descendants.map(place);
+    const y = childRows.length
+      ? childRows.reduce((total, row) => total + row, 0) / childRows.length
+      : 116 + leafIndex++ * 164;
+    positions.set(reality.id, { x: 138 + reality.depth * 304, y });
+    visiting.delete(reality.id);
+    return y;
+  };
+  for (const root of roots) place(root);
+  for (const reality of realities) {
+    if (!positions.has(reality.id)) place(reality);
+  }
+
+  const maximumDepth = Math.max(0, ...realities.map((reality) => reality.depth));
+  const maximumY = Math.max(116, ...[...positions.values()].map((position) => position.y));
   return {
-    x: 110 + (780 * depth) / maximumDepth,
-    y: depth % 2 === 0 ? 205 : 95
+    positions,
+    width: Math.max(920, 276 + maximumDepth * 304),
+    height: Math.max(356, maximumY + 116),
+    maximumDepth
   };
 }
 
@@ -284,7 +336,7 @@ function eventFamily(event: RealityEvent): Exclude<EventFamily, "all"> {
   if (prefix === "dream") return "dream";
   if (prefix === "subject") return "subject";
   if (prefix === "evidence" || prefix === "belief" || prefix === "uncertainty") return "evidence";
-  if (prefix === "kick" || prefix === "memory" || prefix === "artefact" || prefix === "synthesis") return "memory";
+  if (prefix === "kick" || prefix === "wake" || prefix === "memory" || prefix === "artefact" || prefix === "synthesis" || prefix === "reflection" || prefix === "intervention") return "memory";
   if (prefix === "anchor" || prefix === "validation" || prefix === "verification") return "anchor";
   return "reality";
 }
@@ -459,6 +511,84 @@ export function RealityPhaseHeader({
   );
 }
 
+export function RealityJourneyBand({
+  realities,
+  events,
+  stabilised
+}: {
+  realities: Reality[];
+  events: RealityEvent[];
+  stabilised: boolean;
+}) {
+  const hasDream = realities.some((reality) => reality.depth > 0);
+  const hasSubjects = realities.some((reality) => reality.subjects.length > 0)
+    || events.some((event) => event.type.startsWith("subject."));
+  const hasKick = events.some((event) => event.type === "kick.triggered");
+  const hasMemory = events.some((event) =>
+    event.type === "memory.returned"
+    || event.type === "memory.quarantined"
+    || event.type === "reflection.created"
+  );
+  const journey = [
+    { label: "Waking requirements", detail: "Parent truth", icon: <LockKeyhole size={15} />, reached: true },
+    { label: "Dreams explore", detail: "Isolated worlds", icon: <MoonStar size={15} />, reached: hasDream },
+    { label: "Subjects test", detail: "Independent roles", icon: <UsersRound size={15} />, reached: hasSubjects },
+    { label: "Totem judges", detail: "Kick boundary", icon: <Fingerprint size={15} />, reached: hasKick },
+    { label: "Memory changes Reality", detail: "Proven outcome", icon: <ArrowUpFromLine size={15} />, reached: hasMemory || stabilised }
+  ];
+  const firstUnreached = journey.findIndex((stage) => !stage.reached);
+  const current = stabilised
+    ? journey.length - 1
+    : firstUnreached < 0 ? journey.length - 1 : firstUnreached;
+
+  return (
+    <section className="reality-journey" data-testid="reality-journey" aria-label="Current Reality journey">
+      {journey.map((stage, index) => (
+        <div
+          className={`${stage.reached ? "is-reached" : ""} ${index === current ? "is-current" : ""}`}
+          key={stage.label}
+        >
+          <span>{stage.icon}</span>
+          <p><strong>{stage.label}</strong><small>{stage.detail}</small></p>
+          {index < journey.length - 1 && <ChevronRight size={13} aria-hidden="true" />}
+        </div>
+      ))}
+    </section>
+  );
+}
+
+export function WakeTransition({
+  stage,
+  realityName
+}: {
+  stage: "collecting" | "sealing" | "returning" | null;
+  realityName?: string;
+}) {
+  if (!stage) return null;
+  const stages = [
+    { id: "collecting", label: "Collecting lived evidence" },
+    { id: "sealing", label: "Reality Totem checking memory" },
+    { id: "returning", label: "Validated memory returning upward" }
+  ] as const;
+  const activeIndex = stages.findIndex((entry) => entry.id === stage);
+  return (
+    <div className="wake-transition" role="status" aria-live="polite" data-testid="wake-transition">
+      <div className="wake-transition-core">
+        <Fingerprint size={24} />
+        <span><small>KICK DETECTED / {realityName ?? "DREAM"}</small><strong>{stages[activeIndex]?.label}</strong></span>
+      </div>
+      <ol>
+        {stages.map((entry, index) => (
+          <li className={`${index < activeIndex ? "is-complete" : ""} ${index === activeIndex ? "is-current" : ""}`} key={entry.id}>
+            <span>{index < activeIndex ? <Check size={11} /> : index + 1}</span>
+            {entry.label}
+          </li>
+        ))}
+      </ol>
+    </div>
+  );
+}
+
 export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect }: {
   realities: Reality[];
   locusId: string | null;
@@ -467,77 +597,92 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, onSelect
   onSelect: (id: string) => void;
 }) {
   const collapsed = realities.length === 1 && realities[0]?.status === "stabilised";
-  const maximumDepth = Math.max(2, ...realities.map((reality) => reality.depth));
+  const layout = useMemo(() => layoutRealityTree(realities), [realities]);
+  const viewportHeight = Math.min(560, layout.height);
   return (
-    <div className={`reality-map ${collapsed ? "is-collapsed" : ""}`} data-testid="reality-graph">
-      <div className="map-grid" aria-hidden="true" />
-      {Array.from({ length: maximumDepth + 1 }, (_, depth) => (
-        <div
-          className={`depth-rail depth-rail-${depth}`}
-          style={{ left: `${graphPosition(depth, maximumDepth).x / 10}%` }}
-          key={depth}
+    <div
+      className={`reality-map ${collapsed ? "is-collapsed" : ""}`}
+      data-testid="reality-graph"
+      style={{ height: viewportHeight }}
+    >
+      <div
+        className="reality-graph-canvas"
+        style={{ width: layout.width, height: layout.height }}
+      >
+        <div className="map-grid" aria-hidden="true" />
+        {Array.from({ length: layout.maximumDepth + 1 }, (_, depth) => (
+          <div
+            className={`depth-rail depth-rail-${depth}`}
+            style={{ left: 28 + depth * 304 }}
+            key={depth}
+          >
+            <span>LEVEL {depth}</span>
+            <b>{depth === 0 ? "Waking" : depth === 1 ? "Dream" : "Nested dream"}</b>
+          </div>
+        ))}
+        <svg
+          className="map-links"
+          viewBox={`0 0 ${layout.width} ${layout.height}`}
+          aria-hidden="true"
         >
-          <span>LEVEL {depth}</span>
-          <b>{depth === 0 ? "Waking" : depth === 1 ? "Dream" : "Nested dream"}</b>
-        </div>
-      ))}
-      <svg className="map-links" viewBox="0 0 1000 320" preserveAspectRatio="none" aria-hidden="true">
-        {realities.map((reality) => {
-          const parent = realities.find((candidate) => candidate.id === reality.parentId);
-          if (!parent) return null;
-          const from = graphPosition(parent.depth, maximumDepth);
-          const to = graphPosition(reality.depth, maximumDepth);
-          const returned = reality.status === "kicked";
-          return (
-            <g key={`${parent.id}-${reality.id}`}>
-              <path
-                className={`map-path ${returned ? "path-returned" : ""}`}
-                d={`M ${from.x + 102} ${from.y} C ${from.x + 190} ${from.y}, ${to.x - 190} ${to.y}, ${to.x - 102} ${to.y}`}
-              />
-              {returned && (
-                <circle className="memory-packet" r="4">
-                  <animateMotion
-                    dur="2.8s"
-                    repeatCount="indefinite"
-                    path={`M ${to.x - 102} ${to.y} C ${to.x - 190} ${to.y}, ${from.x + 190} ${from.y}, ${from.x + 102} ${from.y}`}
+          {realities.map((reality) => {
+            const parent = realities.find((candidate) => candidate.id === reality.parentId);
+            const from = parent ? layout.positions.get(parent.id) : undefined;
+            const to = layout.positions.get(reality.id);
+            if (!parent || !from || !to) return null;
+            const returned = reality.status === "kicked";
+            const forwardPath = `M ${from.x + 109} ${from.y} C ${from.x + 190} ${from.y}, ${to.x - 190} ${to.y}, ${to.x - 109} ${to.y}`;
+            const returnPath = `M ${to.x - 109} ${to.y} C ${to.x - 190} ${to.y}, ${from.x + 190} ${from.y}, ${from.x + 109} ${from.y}`;
+            return (
+              <g key={`${parent.id}-${reality.id}`}>
+                <path
+                  className={`map-path ${returned ? "path-returned" : ""}`}
+                  d={forwardPath}
+                />
+                {returned && (
+                  <circle
+                    className="memory-packet"
+                    r="4"
+                    style={{ offsetPath: `path("${returnPath}")` }}
                   />
-                </circle>
-              )}
-            </g>
+                )}
+              </g>
+            );
+          })}
+        </svg>
+
+        {realities.map((reality) => {
+          const position = layout.positions.get(reality.id);
+          if (!position) return null;
+          const selected = reality.id === selectedId;
+          const locus = reality.id === locusId;
+          return (
+            <button
+              type="button"
+              className={`reality-node depth-node-${reality.depth} ${selected ? "is-selected" : ""} ${locus ? "is-locus" : ""} ${pulseId === reality.id ? "is-waking" : ""}`}
+              style={{ left: position.x, top: position.y }}
+              key={reality.id}
+              onClick={() => onSelect(reality.id)}
+              aria-pressed={selected}
+            >
+              <span className="node-kicker">
+                <span>L{reality.depth}</span>
+                {locus && <b><Radio size={10} /> LOCUS</b>}
+                {!locus && <b>{statusLabel(reality.status)}</b>}
+              </span>
+              <strong>{reality.name}</strong>
+              <small>{reality.worldState.currentFocus}</small>
+              <span className="node-stats">
+                <span><Clock3 size={12} />{reality.worldState.simulatedMinutes}m</span>
+                <span><FlaskConical size={12} />{reality.evidence.length}</span>
+                <span><UsersRound size={12} />{reality.subjects.length}</span>
+              </span>
+            </button>
           );
         })}
-      </svg>
 
-      {realities.map((reality) => {
-        const position = graphPosition(reality.depth, maximumDepth);
-        const selected = reality.id === selectedId;
-        const locus = reality.id === locusId;
-        return (
-          <button
-            type="button"
-            className={`reality-node depth-node-${reality.depth} ${selected ? "is-selected" : ""} ${locus ? "is-locus" : ""} ${pulseId === reality.id ? "is-waking" : ""}`}
-            style={{ left: `${position.x / 10}%`, top: `${position.y / 3.2}%` }}
-            key={reality.id}
-            onClick={() => onSelect(reality.id)}
-            aria-pressed={selected}
-          >
-            <span className="node-kicker">
-              <span>L{reality.depth}</span>
-              {locus && <b><Radio size={10} /> LOCUS</b>}
-              {!locus && <b>{statusLabel(reality.status)}</b>}
-            </span>
-            <strong>{reality.name}</strong>
-            <small>{reality.worldState.currentFocus}</small>
-            <span className="node-stats">
-              <span><Clock3 size={12} />{reality.worldState.simulatedMinutes}m</span>
-              <span><FlaskConical size={12} />{reality.evidence.length}</span>
-              <span><UsersRound size={12} />{reality.subjects.length}</span>
-            </span>
-          </button>
-        );
-      })}
-
-      {pulseId && <div className="wake-flash" aria-hidden="true"><span /><span /></div>}
+        {pulseId && <div className="wake-flash" aria-hidden="true"><span /><span /></div>}
+      </div>
     </div>
   );
 }
@@ -807,11 +952,28 @@ export function OperationMonitor({ operation, realities, events, now }: {
   );
 }
 
-export function EventFeed({ events, realities, now }: { events: RealityEvent[]; realities: Reality[]; now: number }) {
+export function EventFeed({
+  events,
+  realities,
+  now,
+  hasMore = false,
+  loadingMore = false,
+  onLoadMore,
+  totalCount = events.length
+}: {
+  events: RealityEvent[];
+  realities: Reality[];
+  now: number;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  totalCount?: number;
+}) {
   const [query, setQuery] = useState("");
   const [family, setFamily] = useState<EventFamily>("all");
   const [sort, setSort] = useState<EventSort>("newest");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const [visibleLimit, setVisibleLimit] = useState(200);
   const selectedEvent = events.find((event) => event.id === selectedEventId) ?? null;
   const selectedReality = selectedEvent
     ? realities.find((reality) => reality.id === selectedEvent.realityId)
@@ -849,7 +1011,7 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
         return sort === "oldest" ? difference : -difference;
       });
   }, [events, family, query, realities, sort]);
-  const renderedEvents = filteredEvents.slice(0, 200);
+  const renderedEvents = filteredEvents.slice(0, visibleLimit);
 
   return (
     <div className="event-feed" data-testid="event-feed">
@@ -894,7 +1056,7 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
             <ArrowUp size={14} />
           </button>
         </div>
-        <small>{renderedEvents.length} of {filteredEvents.length} / {events.length} total</small>
+        <small>{renderedEvents.length} shown / {events.length} loaded / {totalCount} persisted</small>
       </div>
       {renderedEvents.map((event) => {
         const reality = realities.find((candidate) => candidate.id === event.realityId);
@@ -935,6 +1097,23 @@ export function EventFeed({ events, realities, now }: { events: RealityEvent[]; 
       })}
       {!renderedEvents.length && (
         <EmptyState icon={<Search size={18} />}>No Reality events match this view.</EmptyState>
+      )}
+      {(renderedEvents.length < filteredEvents.length || hasMore) && (
+        <button
+          type="button"
+          className="event-load-more"
+          disabled={loadingMore}
+          onClick={() => {
+            if (renderedEvents.length < filteredEvents.length) {
+              setVisibleLimit((current) => current + 200);
+            } else {
+              onLoadMore?.();
+            }
+          }}
+        >
+          <History size={14} />
+          {loadingMore ? "Loading earlier events" : "Load 200 earlier events"}
+        </button>
       )}
       {selectedEvent && (
         <EventDetailDialog
@@ -1567,7 +1746,7 @@ export function RealityTimeline({ events, index, onChange }: {
   );
 }
 
-function DreamGate({ proposal, owner, onCancel, onConfirm }: {
+export function DreamGate({ proposal, owner, onCancel, onConfirm }: {
   proposal: DreamProposal;
   owner: string;
   onCancel: () => void;
@@ -1616,7 +1795,10 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
   onReset: () => void;
 }) {
   const next = snapshot.nextAction;
-  const busy = loading !== "idle" || operation !== null || replaying;
+  const busy = loading !== "idle"
+    || operation !== null
+    || replaying
+    || snapshot.session.autopilot.mode === "running";
   const progress = snapshot.session.phase * 10;
   const isDream = next?.kind === "dream";
   const isKick = next?.kind === "kick";
@@ -1675,6 +1857,58 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
   );
 }
 
+function DemoAutoModeBar({
+  snapshot,
+  busy,
+  onControl
+}: {
+  snapshot: PresentedDemoSnapshot;
+  busy: boolean;
+  onControl(command: "start" | "resume" | "pause" | "stop"): void;
+}) {
+  if (snapshot.runtime.codexMode !== "mock") return null;
+  const state = snapshot.session.autopilot;
+  const running = state.mode === "running";
+  const paused = state.mode === "paused";
+  return (
+    <section className={`mission-autopilot autopilot-${state.mode}`} data-testid="demo-autopilot">
+      <div>
+        <span><Play size={15} /></span>
+        <p>
+          <small>RECORDING AUTO MODE / DETERMINISTIC / NO CODEX USAGE</small>
+          <strong>{running ? "Advancing the Demo Mission for a consistent recording" : paused ? state.pauseReason ?? "Recording path paused" : state.mode === "completed" ? "Demo Mission reached a stable Reality" : "Manual control"}</strong>
+        </p>
+      </div>
+      <dl>
+        <div><dt>ACTIONS</dt><dd>{state.actionsCompleted} / {state.maxActions}</dd></div>
+        <div><dt>PACE</dt><dd>{(state.paceMilliseconds / 1_000).toFixed(1)}s</dd></div>
+      </dl>
+      <nav aria-label="Demo recording auto mode controls">
+        {["off", "stopped", "completed"].includes(state.mode) && snapshot.session.phase < 10 && (
+          <button type="button" onClick={() => onControl("start")} disabled={busy}>
+            <Play size={14} /> Start recording auto
+          </button>
+        )}
+        {running && (
+          <button type="button" onClick={() => onControl("pause")} disabled={busy}>
+            <Pause size={14} /> Pause
+          </button>
+        )}
+        {paused && (
+          <button type="button" className="is-primary" onClick={() => onControl("resume")} disabled={busy}>
+            <Play size={14} /> Resume
+          </button>
+        )}
+        {(running || paused) && (
+          <button type="button" onClick={() => onControl("stop")} disabled={busy}>
+            <SquareTerminal size={13} /> Stop
+          </button>
+        )}
+      </nav>
+    </section>
+  );
+}
+
 export function RealityWorkspace({
   realities,
   sourceRealities = realities,
@@ -1693,7 +1927,11 @@ export function RealityWorkspace({
   regressionResult,
   finalDiff = "",
   revealCode,
-  onToggleCode
+  onToggleCode,
+  hasMoreEvents = false,
+  loadingMoreEvents = false,
+  onLoadMoreEvents,
+  totalEventCount = events.length
 }: {
   realities: Reality[];
   sourceRealities?: Reality[];
@@ -1713,6 +1951,10 @@ export function RealityWorkspace({
   finalDiff?: string;
   revealCode: boolean;
   onToggleCode(): void;
+  hasMoreEvents?: boolean;
+  loadingMoreEvents?: boolean;
+  onLoadMoreEvents?: () => void;
+  totalEventCount?: number;
 }) {
   const selectedReality = realities.find((reality) => reality.id === selectedRealityId)
     ?? realities.find((reality) => reality.id === activeRealityId)
@@ -1924,7 +2166,15 @@ export function RealityWorkspace({
         </div>
         <div className="proof-column event-proof">
           <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
-          <EventFeed events={events} realities={realities} now={now} />
+          <EventFeed
+            events={events}
+            realities={realities}
+            now={now}
+            hasMore={hasMoreEvents}
+            loadingMore={loadingMoreEvents}
+            onLoadMore={onLoadMoreEvents}
+            totalCount={totalEventCount}
+          />
         </div>
       </section>
 
@@ -1966,6 +2216,9 @@ export function RealityEngine() {
   const [collapsedDreams, setCollapsedDreams] = useState(false);
   const [revealCode, setRevealCode] = useState(false);
   const [pendingDreamAction, setPendingDreamAction] = useState<DemoAction | null>(null);
+  const [wakeStage, setWakeStage] = useState<"collecting" | "sealing" | "returning" | null>(null);
+  const [wakeRealityName, setWakeRealityName] = useState<string | undefined>();
+  const wakeClearTimer = useRef<number | null>(null);
   const [loadedArchive, setLoadedArchive] = useState<{
     id: string;
     archivedAt: string;
@@ -1994,6 +2247,23 @@ export function RealityEngine() {
         window.setTimeout(() => setPulseRealityId(null), 1400);
       }
       if ("realityId" in event) {
+        if (event.type === "wake.collecting" || event.type === "kick.triggered") {
+          setWakeStage("collecting");
+        } else if (event.type === "wake.sealing") {
+          setWakeStage("sealing");
+        } else if (event.type === "wake.returning") {
+          setWakeStage("returning");
+        }
+        if (event.type.startsWith("wake.") || event.type === "kick.triggered") {
+          setWakeRealityName((current) => current ?? "Active Dream");
+        }
+        if (event.type === "wake.returning" || event.type === "memory.quarantined") {
+          if (wakeClearTimer.current) window.clearTimeout(wakeClearTimer.current);
+          wakeClearTimer.current = window.setTimeout(() => {
+            setWakeStage(null);
+            setWakeRealityName(undefined);
+          }, 2_000);
+        }
         setSnapshot((current) => {
           if (!current || current.events.some((existing) => existing.id === event.id)) return current;
           return { ...current, events: [...current.events, event] };
@@ -2003,7 +2273,10 @@ export function RealityEngine() {
         }
       }
     };
-    return () => source.close();
+    return () => {
+      source.close();
+      if (wakeClearTimer.current) window.clearTimeout(wakeClearTimer.current);
+    };
   }, [loadSnapshot, loadedArchive]);
 
   const openArchive = (archive: RealityRunArchive) => {
@@ -2057,6 +2330,10 @@ export function RealityEngine() {
     });
     setLoading("acting");
     setError(null);
+    if (action === "wake_nested" || action === "wake_parent") {
+      setWakeStage("collecting");
+      setWakeRealityName(snapshot?.activeReality?.name);
+    }
     try {
       const response = await fetch("/api/demo/action", {
         method: "POST",
@@ -2076,8 +2353,32 @@ export function RealityEngine() {
       const message = cause instanceof Error ? cause.message : String(cause);
       await loadSnapshot(true).catch(() => undefined);
       setError(message);
+      setWakeStage(null);
     } finally {
       setLocalOperation(null);
+      setLoading("idle");
+    }
+  };
+
+  const controlDemoAutopilot = async (command: "start" | "resume" | "pause" | "stop") => {
+    setLoading("acting");
+    setError(null);
+    try {
+      const response = await fetch("/api/demo/autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ command })
+      });
+      const body = await readApiResponse<PresentedDemoSnapshot & { error?: string }>(
+        response,
+        "Demo recording auto mode could not change state."
+      );
+      if (!response.ok) throw new Error(body.error ?? "Demo recording auto mode could not change state.");
+      setSnapshot(body);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await loadSnapshot(true).catch(() => undefined);
+    } finally {
       setLoading("idle");
     }
   };
@@ -2199,6 +2500,18 @@ export function RealityEngine() {
           })}
       />
 
+      <RealityJourneyBand
+        realities={snapshot.realities}
+        events={snapshot.events}
+        stabilised={snapshot.session.phase === 10}
+      />
+
+      <DemoAutoModeBar
+        snapshot={snapshot}
+        busy={loading !== "idle" || Boolean(activeOperation)}
+        onControl={(command) => void controlDemoAutopilot(command)}
+      />
+
       {loadedArchive && (
         <section className="archive-view-banner" data-testid="archive-view-banner">
           <History size={17} />
@@ -2261,6 +2574,8 @@ export function RealityEngine() {
           now={now}
         />
       )}
+
+      <WakeTransition stage={wakeStage} realityName={wakeRealityName} />
 
       <RealityTimeline events={snapshot.events} index={timelineIndex} onChange={setTimelineIndex} />
 

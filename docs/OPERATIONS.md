@@ -1,7 +1,7 @@
 # Operations
 
 **Operations version:** 0.1.0
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-19
 
 ## Supported Platforms
 
@@ -11,26 +11,26 @@
 | Linux x64/arm64 | Supported by Node and Git; verify in CI |
 | Windows native | Not verified |
 | Windows via WSL2 | Expected; not verified |
-| Browser | Current Chromium; responsive desktop/mobile Playwright coverage |
+| Browser | Current Chromium; responsive desktop/tablet Playwright coverage |
 
 Runtime prerequisites are Node.js 22.5 or newer, npm, and Git with worktree support.
 
 ## Modes and Authentication
 
-Clone and run mock mode without Docker:
+Clone and run live judge mode without Docker:
 
 ```bash
 git clone https://github.com/alangunning/inception-reality-engine.git
 cd inception-reality-engine
 npm ci
-npm run dev:mock
+codex login
+npm run judge:demo
 ```
 
-Real mode reuses the judge's Codex CLI login at `${CODEX_HOME:-~/.codex}/auth.json`:
+This reuses the judge's Codex CLI login at `${CODEX_HOME:-~/.codex}/auth.json`. For deterministic recording or credential-free offline inspection:
 
 ```bash
-npm run codex:check
-npm run dev:real
+npm run record:demo
 ```
 
 The runtime links that auth file and existing CLI session state into `.inception/codex-home`, but does not inherit the user's `config.toml`, plugins, or MCP servers. This prevents an unrelated or expired MCP login from stopping `codex exec` before a Reality begins while allowing persisted Reality thread IDs to resume. Alternatively set `CODEX_API_KEY` or `OPENAI_API_KEY` in `.env`. Credential contents are never committed, persisted in application data, emitted as events, included in Wake Reports, or exported in run logs.
@@ -46,8 +46,9 @@ For a Mission that deliberately depends on personal Codex integrations, set `INC
 - The Mission setting defaults to an 8,000,000 observed SDK token ceiling. Codex reports authoritative input/output usage at turn completion; an over-ceiling report is rejected, its worktree transaction is rolled back, and new actions remain stopped.
 - The observed ceiling is not a provider spend cap because the SDK does not expose incremental per-turn token cancellation. Use ChatGPT workspace or OpenAI API project spend controls for billing enforcement.
 - Waking inspection keeps full Codex write/test capability inside the isolated worktree, then restores its checkpoint so knowledge returns before implementation.
+- A controlled intervention is always rolled back at Kick. Injected paths are excluded before the Wake Report is sealed, so diagnosed bad code cannot become a returned artefact.
 - Rejected inspection turns retain their resumable SDK thread ID, safe validation path/code, and rollback event without persisting raw model output.
-- The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the deterministic password-reset Demo Mission remains fully runnable without a model call.
+- The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the recording-mode password-reset Demo Mission remains fully runnable without a model call.
 
 ## Stop and Cleanup
 

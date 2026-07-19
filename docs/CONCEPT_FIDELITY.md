@@ -23,7 +23,14 @@ This document tracks the Reality Engine against the canonical product conversati
 - Parent-owned immutable anchors plus a complete inherited regression proof.
 - Automatic Reality Totem seals binding each memory to source state, parent anchors, evidence, artefacts, and verified descendant lineage.
 - Memory quarantine on stale digests, missing lineage, unresolved evidence/artefacts, or an incompletely diagnosed sealed intervention.
-- An optional bounded chaos-engineer Subject with operator-owned paths, fault classes, budgets, rollback, target depth, and delayed reveal.
+- An optional controlled resilience Subject with operator-owned paths, fault classes, budgets, rollback, target depth, and delayed reveal.
+- Automatic post-diagnosis containment: injected paths are excluded, the pre-intervention checkpoint is restored, and only safe independent artefacts can ascend.
+- Competing sibling Dreams, a Reality Mirror evidence matrix, shared-invariant synthesis, and explicit disagreement retention.
+- A scrollable branching Reality graph that keeps every nested and sibling world visible instead of presenting only maximum depth.
+- Staged Wake presentation covering evidence collection, Totem sealing, containment, and upward memory return.
+- Generalized waking outcomes that quantify verified/quarantined memories, injected faults detected, proofs passed, and waking files changed.
+- Explicit recording and guided-real auto modes with persisted bounds and pause gates; neither begins on page load.
+- Append-only cursor-readable Mission event history with incremental SSE and a bounded UI window.
 - A pinned VAmPI authorization-testing preset plus arbitrary trusted local repositories in Mission Composer.
 - Failed proof blocks stabilisation and offers a real Codex repair action.
 - Reality-local constitution, agent contract, and redacted anchor manifest.
@@ -31,7 +38,7 @@ This document tracks the Reality Engine against the canonical product conversati
 - Dream impact probability, expected insight, token estimate, cost class, and explicit confirmation.
 - Per-Reality runtime laws and 1x, 12x, and 120x time dilation.
 - Live safe events with timestamps, filtering, search, sorting, failure classification, and archived export.
-- Replayable Reality Timeline, Memories comparison, final Dream collapse, and explicit code reveal.
+- Replayable Reality Timeline, Memories comparison, Reality Mirror, final Dream collapse, and explicit code reveal.
 
 ## Preserved operational behavior
 
@@ -54,5 +61,5 @@ Implemented direction: password reset remains the default first-run proof, while
 
 - A fully blank first-run engine without a canonical proof case.
 - Unbounded recursive depth or unbounded Codex spend.
-- A global network of unrelated agent mirrors.
+- Unbounded sibling or unrelated agent graphs without a parent-owned synthesis policy.
 - Architect/manager organizational hierarchies that replace Reality, Dream, Subject, and Wake semantics.

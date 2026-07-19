@@ -75,6 +75,12 @@ describe("SqliteRealityRepository", () => {
       finalDiff: "",
       anchorResults: [],
       memoryIntegrity,
+      autopilot: {
+        mode: "off",
+        maxActions: 10,
+        paceMilliseconds: 1_000,
+        actionsCompleted: 0
+      },
       regressionResult: {
         status: "passed",
         output: "4 tests passed",
@@ -141,6 +147,93 @@ describe("SqliteRealityRepository", () => {
     expect((await repository.getMissionRun("mission-1"))?.status).toBe("exploring");
     await repository.deleteMissionRun("mission-1");
     expect(await repository.getMissionRun("mission-1")).toBeNull();
+    repository.close();
+  });
+
+  it("keeps Mission events append-only and pages older history without hydrating the full log", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "inception-events-"));
+    directories.push(directory);
+    const repository = new SqliteRealityRepository(path.join(directory, "events.db"));
+    const reality = RealityEntity.create({
+      depth: 0,
+      kind: "waking",
+      name: "Scalable Reality",
+      premise: "The event stream remains reviewable.",
+      constitution: {
+        mission: "Retain validated events.",
+        premise: "The event stream remains reviewable.",
+        constraints: ["Persist safe metadata only."],
+        wakeContract: ["Return evidence."],
+        parentTruths: []
+      },
+      inheritedAnchors: [],
+      initialBeliefs: []
+    }).snapshot();
+    const createdAt = "2026-07-19T00:00:00.000Z";
+    const mission = MissionRunSchema.parse({
+      id: "mission-events",
+      definition: {
+        id: "mission-events",
+        name: "Event history",
+        repositoryPath: directory,
+        mission: "Prove cursor history.",
+        scope: "event persistence",
+        premise: "History remains available.",
+        constraints: ["No raw reasoning."],
+        parentTruths: [],
+        wakeContract: ["Return evidence."],
+        proofs: [{ id: "proof", name: "Tests", executable: "npm", args: ["test"] }],
+        subjects: [],
+        tokenBudget: 10_000,
+        maxDreamDepth: 1,
+        createdAt
+      },
+      status: "exploring",
+      realities: [reality],
+      events: [],
+      eventCount: 550,
+      observedTokens: 550,
+      activeRealityId: reality.id,
+      memories: [],
+      proofResults: [],
+      finalDiff: "",
+      createdAt,
+      updatedAt: createdAt
+    });
+    await repository.saveMissionRun(mission);
+    for (let index = 0; index < 550; index += 1) {
+      await repository.appendMissionEvent("mission-events", {
+        id: `event-${index.toString().padStart(4, "0")}`,
+        realityId: reality.id,
+        type: "codex.progress",
+        summary: `Validated event ${index}`,
+        dreamTime: index,
+        payload: {
+          metadata: {
+            stage: "turn",
+            status: "completed",
+            inputTokens: 1
+          }
+        },
+        occurredAt: new Date(Date.parse(createdAt) + index).toISOString()
+      });
+    }
+
+    const hydrated = await repository.getMissionRun("mission-events");
+    expect(hydrated?.events).toHaveLength(500);
+    expect(hydrated?.eventCount).toBe(550);
+    expect(hydrated?.observedTokens).toBe(550);
+    const recent = await repository.listMissionEvents("mission-events", 200);
+    const earliestRecent = recent[0]!;
+    const older = await repository.listMissionEvents(
+      "mission-events",
+      200,
+      `${earliestRecent.occurredAt}|${earliestRecent.id}`
+    );
+    expect(recent).toHaveLength(200);
+    expect(older).toHaveLength(200);
+    expect(new Set([...recent, ...older].map((event) => event.id)).size).toBe(400);
+    expect(older.at(-1)!.occurredAt < earliestRecent.occurredAt).toBe(true);
     repository.close();
   });
 });

@@ -13,8 +13,17 @@ export function buildDreamPrompt(reality: Reality): string {
   const runtimeLaws = reality.constitution.runtimeLaws?.length
     ? reality.constitution.runtimeLaws.map((item) => `- ${item}`).join("\n")
     : "- No additional world-specific runtime laws.";
+  const safetyBoundary = reality.constitution.safetyProfile === "authorized-local-defensive-review"
+    ? `AUTHORIZED LOCAL DEFENSIVE MAINTENANCE BOUNDARY
+- The operator supplied this local Git repository and authorized defensive source review, local testing, remediation, and regression prevention.
+- Work only with repository source and synthetic local test data. Do not contact a running service, external target, account, credential, or network system.
+- The outcome is defensive: identify, prevent, or remediate the bounded defect. Do not add unnecessary exploitation detail.
+- This authorization boundary is immutable in every child Reality and Subject thread.
 
-  return `You are operating inside the Reality \"${reality.name}\".
+`
+    : "";
+
+  return `${safetyBoundary}You are operating inside the Reality \"${reality.name}\".
 Reality ID: ${reality.id}
 
 PREMISE
@@ -29,8 +38,16 @@ ${reality.constitution.parentTruths.map((item) => `- ${item}`).join("\n")}
 Time dilation: ${reality.constitution.timeDilation ?? 1}x waking time
 World-specific runtime laws:
 ${runtimeLaws}
+Memory admission policy: ${reality.constitution.memoryPolicy ?? "verified-reports-and-artefacts"}
+Dream strategy: ${reality.constitution.dreamStrategy ?? "single-chain"} with at most ${reality.constitution.maxSiblingDreams ?? 1} sibling world(s)
 
 WORLD HISTORY AND EVIDENCE
+World status: ${reality.worldState.status}
+Current focus: ${reality.worldState.currentFocus}
+World summary: ${reality.worldState.summary}
+Implementation state: ${reality.worldState.implementationState}
+Simulated time: ${reality.worldState.simulatedMinutes} minutes
+
 ${history}
 
 CURRENT BELIEFS

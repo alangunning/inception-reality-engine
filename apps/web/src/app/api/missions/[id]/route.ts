@@ -12,11 +12,22 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
   try {
     const { id } = await context.params;
     const container = getRuntime();
+    const fullSnapshot = await container.missionOrchestrator.snapshot(id);
+    const download = new URL(request.url).searchParams.get("download") === "1";
+    const events = await container.missionOrchestrator.events(
+      id,
+      download ? 100_000 : 500
+    );
     const body = {
-      snapshot: await container.missionOrchestrator.snapshot(id),
+      snapshot: {
+        ...fullSnapshot,
+        run: {
+          ...fullSnapshot.run,
+          events
+        }
+      },
       runtime: container.codexRuntime.info()
     };
-    const download = new URL(request.url).searchParams.get("download") === "1";
     return Response.json(body, {
       headers: {
         "Cache-Control": "no-store",

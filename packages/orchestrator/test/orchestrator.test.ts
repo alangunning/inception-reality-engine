@@ -328,6 +328,45 @@ describe("RealityOrchestrator", () => {
     }
   });
 
+  it("starts Demo recording auto mode only on command and completes the deterministic path", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-demo-auto-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const idle = await orchestrator.snapshot();
+      expect(idle.session.phase).toBe(0);
+      expect(idle.session.autopilot.mode).toBe("off");
+      expect(idle.events.some((event) => event.type === "autopilot.started")).toBe(false);
+
+      await orchestrator.controlAutopilot({
+        command: "start",
+        paceMilliseconds: 250
+      });
+      let completed = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 80 && completed.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        completed = await orchestrator.snapshot();
+      }
+
+      expect(completed.session.autopilot).toMatchObject({
+        mode: "completed",
+        actionsCompleted: 10
+      });
+      expect(completed.session.phase).toBe(10);
+      expect(completed.events.some((event) => event.type === "autopilot.started")).toBe(true);
+      expect(completed.events.some((event) => event.type === "autopilot.completed")).toBe(true);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  }, 10_000);
+
   it("revalidates a legacy nested memory before synthesis", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-memory-revalidation-"));
     try {

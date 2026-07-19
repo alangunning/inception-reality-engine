@@ -224,6 +224,51 @@
   cursor: pointer;
 }
 .mission-form-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+.mission-repeat-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px 16px;
+  padding: 14px 48px 14px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  border-radius: 5px;
+}
+.mission-repeat-row .mission-field-wide { grid-column: 1 / -1; }
+.mission-repeat-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mission-repeat-remove:hover { color: var(--red); border-color: var(--red); }
+.mission-add-row,
+.mission-add-subject {
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--cyan);
+  background: transparent;
+  border: 1px dashed var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.61rem;
+  font-weight: 750;
+}
+.mission-add-row:hover,
+.mission-add-subject:hover { color: var(--text); border-color: var(--cyan); }
 .mission-roster { border-left: 1px solid var(--line); padding-left: 24px; }
 .mission-roster > article {
   display: flex;
@@ -245,6 +290,44 @@
 .mission-roster strong { display: block; font-size: 0.72rem; }
 .mission-roster small { display: block; margin-top: 3px; color: var(--cyan); font-size: 0.57rem; }
 .mission-roster p { margin: 7px 0 0; color: var(--muted); font-size: 0.64rem; line-height: 1.5; }
+.mission-roster > article.mission-subject-editor {
+  position: relative;
+  align-items: flex-start;
+  padding-right: 30px;
+}
+.mission-subject-editor > div { width: 100%; display: flex; flex-direction: column; gap: 7px; }
+.mission-subject-editor input,
+.mission-subject-editor textarea {
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 9px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  outline: none;
+  font-size: 0.62rem;
+}
+.mission-subject-editor textarea { min-height: 70px; resize: vertical; line-height: 1.45; }
+.mission-subject-editor input:focus,
+.mission-subject-editor textarea:focus { border-color: var(--cyan); }
+.mission-subject-editor > button {
+  position: absolute;
+  top: 15px;
+  right: 0;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.mission-subject-editor > button:hover { color: var(--red); border-color: var(--red); }
+.mission-add-subject { width: 100%; margin-top: 12px; }
 .mission-history-title { margin-top: 24px; }
 .mission-history { display: flex; flex-direction: column; }
 .mission-history button,
@@ -295,6 +378,57 @@
 .mission-context-band dl > div:last-child { border-right: 0; }
 .mission-context-band dt { color: var(--muted); font-size: 0.53rem; font-weight: 800; }
 .mission-context-band dd { margin: 6px 0 0; overflow-wrap: anywhere; font-size: 0.65rem; font-weight: 700; }
+.mission-autopilot {
+  min-height: 64px;
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
+  gap: 20px;
+  align-items: center;
+  padding: 9px 12px;
+  background: #0c1012;
+  border-bottom: 1px solid var(--line);
+}
+.mission-autopilot > div { min-width: 0; display: flex; align-items: center; gap: 10px; }
+.mission-autopilot > div > span {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  display: grid;
+  place-items: center;
+  color: var(--cyan);
+  background: var(--cyan-deep);
+  border-radius: 4px;
+}
+.mission-autopilot p { min-width: 0; margin: 0; }
+.mission-autopilot small,
+.mission-autopilot strong { display: block; }
+.mission-autopilot small { color: var(--muted); font-size: 0.48rem; font-weight: 800; }
+.mission-autopilot strong { margin-top: 4px; color: var(--text-soft); font-size: 0.64rem; line-height: 1.35; }
+.mission-autopilot dl { display: flex; margin: 0; }
+.mission-autopilot dl > div { min-width: 74px; padding: 3px 10px; border-left: 1px solid var(--line); }
+.mission-autopilot dt { color: var(--muted); font-size: 0.47rem; font-weight: 800; }
+.mission-autopilot dd { margin: 4px 0 0; font-size: 0.6rem; font-weight: 750; }
+.mission-autopilot nav { display: flex; gap: 6px; }
+.mission-autopilot button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 10px;
+  color: var(--text-soft);
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.56rem;
+  font-weight: 750;
+}
+.mission-autopilot button.is-primary { color: var(--ink); background: var(--cyan); border-color: var(--cyan); }
+.mission-autopilot button:disabled { opacity: 0.45; cursor: wait; }
+.mission-autopilot.autopilot-running { border-bottom-color: var(--cyan); }
+.mission-autopilot.autopilot-paused { border-bottom-color: var(--amber); }
+.mission-autopilot.autopilot-paused > div > span { color: var(--amber); background: var(--amber-deep); }
 .mission-tree-band { padding: 22px 0; border-bottom: 1px solid var(--line); }
 .mission-tree { min-height: 102px; display: flex; align-items: center; gap: 8px; padding-top: 15px; overflow-x: auto; }
 .mission-node-wrap { display: flex; align-items: center; gap: 8px; }
@@ -503,11 +637,89 @@
   background: var(--surface-soft);
 }
 .mission-guardrail-band > article { margin: 0; }
+.reality-mirror,
+.memory-ascent {
+  padding: 15px 12px;
+  background: #0b0e10;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+}
+.reality-mirror header,
+.reality-mirror footer,
+.memory-ascent > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-soft);
+  font-size: 0.55rem;
+  font-weight: 800;
+}
+.reality-mirror header > span,
+.memory-ascent > header { color: var(--cyan); }
+.reality-mirror header > span,
+.reality-mirror footer > span,
+.memory-ascent > header { display: flex; align-items: center; gap: 7px; }
+.reality-mirror header > b { color: var(--green); font-size: 0.5rem; }
+.reality-mirror > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.reality-mirror article {
+  min-width: 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: 5px;
+}
+.reality-mirror article small,
+.reality-mirror article strong { display: block; }
+.reality-mirror article small { color: var(--blue); font-size: 0.49rem; }
+.reality-mirror article strong { margin-top: 5px; font-size: 0.62rem; }
+.reality-mirror article p { margin: 7px 0 0; color: var(--muted); font-size: 0.58rem; line-height: 1.45; }
+.reality-mirror footer { justify-content: flex-start; margin-top: 10px; color: var(--muted); font-weight: 650; }
+.memory-ascent > header { justify-content: flex-start; }
+.memory-ascent > header span { display: flex; flex-direction: column; gap: 3px; }
+.memory-ascent > header small { color: var(--muted); font-weight: 600; }
+.memory-ascent > div { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.memory-ascent-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto minmax(180px, 1.25fr) auto minmax(150px, 1fr);
+  gap: 9px;
+  align-items: center;
+  padding: 9px 10px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--green);
+  border-radius: 4px;
+}
+.memory-ascent-row.is-quarantined { border-left-color: var(--red); }
+.memory-ascent-row > svg { color: var(--line-strong); }
+.memory-ascent-row span { min-width: 0; }
+.memory-ascent-row strong,
+.memory-ascent-row small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.memory-ascent-row strong { font-size: 0.59rem; }
+.memory-ascent-row small { margin-top: 3px; color: var(--muted); font-size: 0.49rem; }
 .mission-run .reality-timeline { border-right: 1px solid var(--line); border-left: 1px solid var(--line); }
 .mission-run [data-testid="reality-workspace"] {
   overflow: hidden;
   border-right: 1px solid var(--line);
   border-left: 1px solid var(--line);
+}
+.mission-run .action-dock {
+  grid-template-columns: minmax(360px, 1fr) repeat(3, max-content);
+}
+.mission-run .action-dock.is-complete {
+  grid-template-columns: minmax(360px, 1fr) max-content;
 }
 
 @media (max-width: 1050px) {
@@ -521,14 +733,33 @@
   .mission-event-list { max-height: 420px; }
   .mission-results { grid-template-columns: 1fr; }
   .mission-guardrail-band { grid-template-columns: 1fr; }
+  .mission-autopilot { grid-template-columns: 1fr auto; }
+  .mission-autopilot nav { grid-column: 1 / -1; }
 }
 
 @media (max-width: 700px) {
   .mission-form { grid-template-columns: 1fr; }
   .mission-form label, .mission-form fieldset, .mission-form > .mission-section-title { grid-column: 1; }
+  .mission-repeat-row { grid-template-columns: 1fr; }
+  .mission-repeat-row .mission-field-wide { grid-column: 1; }
   .mission-target { grid-template-columns: 34px minmax(0, 1fr); }
   .mission-target > button { grid-column: 1 / -1; }
   .mission-context-band dl, .mission-world-state { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mission-context-band dl > div:nth-child(2), .mission-world-state div:nth-child(2) { border-right: 0; }
   .mission-subjects, .mission-evidence { grid-template-columns: 1fr; }
+  .mission-autopilot { grid-template-columns: 1fr; gap: 10px; }
+  .mission-autopilot dl, .mission-autopilot nav { grid-column: 1; }
+  .mission-autopilot nav { overflow-x: auto; }
+  .memory-ascent-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+  .memory-ascent-row > svg { transform: rotate(90deg); }
+  .mission-run .action-dock,
+  .mission-run .action-dock.is-complete {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .mission-run .action-dock.is-complete .primary-command {
+    grid-column: 1 / -1;
+  }
 }

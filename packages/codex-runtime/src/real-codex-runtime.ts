@@ -608,7 +608,8 @@ export class RealCodexRuntime implements CodexRuntime {
     const scope = reality.constitution.scope ?? reality.name;
     const operationLabel = `${scope} source review`;
     const diagnosisRequired = (reality.constitution.runtimeLaws ?? []).some((law) =>
-      law.includes("sealed adversarial intervention")
+      law.includes("sealed controlled intervention")
+      || law.includes("sealed adversarial intervention")
     );
     const prompt = `${buildDreamPrompt(reality)}
 
@@ -617,8 +618,11 @@ ${buildSubjectOrchestrationPrompt(reality)}
 TASK
 Inspect the local source for the defined repository-maintenance task covering ${scope}, then run decisive local tests inside this Reality. Do not contact a running service, external target, account, or network system. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
 ${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
-${diagnosisRequired ? "This Reality contains a sealed adversarial intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
-Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, one high-value Dream proposal when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.`;
+${diagnosisRequired ? "This Reality contains a sealed controlled intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
+Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, Dream proposals when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.
+${reality.depth === 0 && reality.constitution.dreamStrategy === "competing-siblings"
+    ? "Return dreamProposal and alternativeDreamProposal as two materially different, bounded, defensive counterfactuals that can test competing explanations. Neither may request external interaction."
+    : "Return the single highest-value uncertainty in dreamProposal and set alternativeDreamProposal to null."}`;
     const outputSchema = zodToJsonSchema(InvestigationReportSchema, {
       target: "openAi",
       $refStrategy: "none"
@@ -664,7 +668,9 @@ Every active Subject must be represented by one subjectReports entry using its e
   ): Promise<CodexInterventionResult> {
     const subjectReality: Reality = {
       ...reality,
-      codexThreadId: undefined,
+      codexThreadId: reality.codexThreadId?.startsWith("unbound:")
+        ? undefined
+        : reality.codexThreadId,
       subjects: [{
         ...contract.subject,
         realityId: reality.id,
@@ -681,8 +687,8 @@ Every active Subject must be represented by one subjectReports entry using its e
 
 ${buildSubjectOrchestrationPrompt(subjectReality)}
 
-SEALED ADVERSARIAL INTERVENTION
-Inject exactly one minimal, reversible fault that tests this hypothesis:
+SEALED CONTROLLED RESILIENCE INTERVENTION
+Introduce exactly one minimal, reversible local fault that tests this defensive hypothesis:
 ${contract.hypothesis}
 
 Allowed fault classes: ${contract.faultClasses.join(", ")}
@@ -690,17 +696,17 @@ Allowed path patterns: ${contract.allowedPaths.join(", ")}
 Protected path patterns: ${contract.protectedPaths.join(", ")}
 Hard limits: at most ${contract.maxChangedFiles} changed files, ${contract.maxPatchLines} patch lines, ${contract.tokenBudget} tokens, and ${contract.maxMinutes} minutes.
 
-Only the named adversarial Subject may edit. Do not modify Git metadata, .inception control files, immutable proof definitions, protected paths, dependency lockfiles unless explicitly allowed, or anything outside this Reality worktree. Do not commit. Do not add explanatory comments, filenames, notes, or tests that reveal the injected cause. The altered implementation must remain diagnosable from observable behavior and ordinary code evidence.
+Only the named controlled-intervention Subject may edit. Do not modify Git metadata, .inception control files, immutable proof definitions, protected paths, dependency lockfiles unless explicitly allowed, or anything outside this Reality worktree. Do not commit. Do not add explanatory comments, filenames, notes, or tests that reveal the injected cause. The altered implementation must remain diagnosable from observable behavior and ordinary code evidence.
 
 Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contract.id}", realityId to "${reality.id}", and subjectId to "${contract.subject.id}". Report exact changed paths and expected observable symptoms without raw reasoning.`;
     const { thread, events, finalResponse } = await this.streamStructured(
       subjectReality,
-      "Sealed adversarial intervention",
+      "Sealed controlled resilience intervention",
       prompt,
       outputSchema,
       onEvent,
       subjectTrace,
-      true,
+      false,
       contract.maxMinutes * 60_000
     );
     const report = parseStructuredJson<AdversarialInterventionReport>(

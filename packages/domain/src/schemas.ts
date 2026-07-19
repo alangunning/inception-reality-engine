@@ -18,7 +18,20 @@ export const RealityConstitutionSchema = z.object({
   wakeContract: z.array(z.string()),
   parentTruths: z.array(z.string()),
   timeDilation: z.number().int().positive().optional(),
-  runtimeLaws: z.array(z.string()).optional()
+  runtimeLaws: z.array(z.string()).optional(),
+  safetyProfile: z.enum([
+    "general-development",
+    "authorized-local-defensive-review"
+  ]).optional(),
+  memoryPolicy: z.enum([
+    "verified-reports-and-artefacts",
+    "verified-invariants-only"
+  ]).optional(),
+  dreamStrategy: z.enum([
+    "single-chain",
+    "competing-siblings"
+  ]).optional(),
+  maxSiblingDreams: z.number().int().min(1).max(3).optional()
 });
 
 export const WorldStateSchema = z.object({
@@ -136,6 +149,7 @@ export const InvestigationReportSchema = z.object({
   subjectReports: z.array(SubjectReportSchema),
   changedBeliefs: z.array(InvestigationBeliefChangeSchema),
   dreamProposal: DreamProposalDraftSchema.nullable(),
+  alternativeDreamProposal: DreamProposalDraftSchema.nullable().optional().default(null),
   adversarialDiagnosis: AdversarialDiagnosisSchema.nullable().optional(),
   remainingUncertainty: z.array(z.string()),
   changedFiles: z.array(z.string()),
@@ -212,6 +226,7 @@ export const RealityEventTypeSchema = z.enum([
   "intervention.sealed",
   "intervention.rejected",
   "intervention.revealed",
+  "intervention.contained",
   "evidence.discovered",
   "belief.changed",
   "kick.triggered",
@@ -219,6 +234,7 @@ export const RealityEventTypeSchema = z.enum([
   "memory.quarantined",
   "memory.verified",
   "artefact.returned",
+  "reflection.created",
   "synthesis.completed",
   "verification.started",
   "verification.passed",
@@ -229,7 +245,14 @@ export const RealityEventTypeSchema = z.enum([
   "reality.fractured",
   "reality.recovered",
   "reality.stabilised",
-  "validation.rejected"
+  "validation.rejected",
+  "wake.collecting",
+  "wake.sealing",
+  "wake.returning",
+  "autopilot.started",
+  "autopilot.paused",
+  "autopilot.stopped",
+  "autopilot.completed"
 ]);
 
 export const RealityEventSchema = z.object({
@@ -338,6 +361,17 @@ export const MemoryIntegritySealSchema = z.object({
   }
 });
 
+export const DemoAutopilotStateSchema = z.object({
+  mode: z.enum(["off", "running", "paused", "stopped", "completed"]),
+  maxActions: z.number().int().min(1).max(20),
+  paceMilliseconds: z.number().int().min(250).max(10_000),
+  actionsCompleted: z.number().int().nonnegative(),
+  startedAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  lastAction: z.string().optional(),
+  pauseReason: z.string().max(500).optional()
+});
+
 export const DemoSessionSchema = z.object({
   id: z.literal("singleton"),
   phase: z.number().int().nonnegative(),
@@ -346,6 +380,12 @@ export const DemoSessionSchema = z.object({
   anchorResults: z.array(AnchorResultSchema),
   regressionResult: RegressionResultSchema.optional(),
   memoryIntegrity: z.array(MemoryIntegritySealSchema).default([]),
+  autopilot: DemoAutopilotStateSchema.default({
+    mode: "off",
+    maxActions: 10,
+    paceMilliseconds: 1_000,
+    actionsCompleted: 0
+  }),
   createdAt: z.string(),
   updatedAt: z.string()
 });
@@ -371,6 +411,21 @@ export const MissionSubjectCharterSchema = z.object({
   role: z.string().min(1).max(100),
   mission: z.string().min(1).max(500)
 });
+
+export const MissionSafetyProfileSchema = z.enum([
+  "general-development",
+  "authorized-local-defensive-review"
+]);
+
+export const MissionMemoryPolicySchema = z.enum([
+  "verified-reports-and-artefacts",
+  "verified-invariants-only"
+]);
+
+export const MissionDreamStrategySchema = z.enum([
+  "single-chain",
+  "competing-siblings"
+]);
 
 export const MissionInterventionContractSchema = z.object({
   id: z.string(),
@@ -399,6 +454,11 @@ export const MissionDefinitionSchema = z.object({
   constraints: z.array(z.string().min(1).max(500)).min(1).max(20),
   parentTruths: z.array(z.string().min(1).max(500)).max(20),
   wakeContract: z.array(z.string().min(1).max(500)).min(1).max(20),
+  runtimeLaws: z.array(z.string().min(1).max(500)).max(20).default([]),
+  safetyProfile: MissionSafetyProfileSchema.default("general-development"),
+  memoryPolicy: MissionMemoryPolicySchema.default("verified-reports-and-artefacts"),
+  dreamStrategy: MissionDreamStrategySchema.default("single-chain"),
+  maxSiblingDreams: z.number().int().min(1).max(3).default(2),
   proofs: z.array(MissionProofSchema).min(1).max(20),
   subjects: z.array(MissionSubjectCharterSchema).max(6),
   intervention: MissionInterventionContractSchema.optional(),
@@ -450,6 +510,7 @@ export const AdversarialInterventionLedgerSchema = z.object({
   startedAt: z.string().optional(),
   sealedAt: z.string().optional(),
   revealedAt: z.string().optional(),
+  containedAt: z.string().optional(),
   baselineCommit: z.string().optional(),
   interventionCommit: z.string().optional(),
   subjectThreadId: z.string().optional(),
@@ -458,8 +519,86 @@ export const AdversarialInterventionLedgerSchema = z.object({
   report: AdversarialInterventionReportSchema.optional(),
   diagnosis: AdversarialDiagnosisSchema.optional(),
   assessment: AdversarialInterventionAssessmentSchema.optional(),
+  excludedArtefactPaths: z.array(z.string().min(1).max(500)).max(20).optional(),
   rejectionReason: z.string().max(500).optional()
 });
+
+export const DreamReflectionSchema = z.object({
+  id: z.string(),
+  parentRealityId: z.string(),
+  realityIds: z.array(z.string()).min(2).max(3),
+  sharedInvariants: z.array(z.string().min(1).max(1_000)).max(30),
+  disagreements: z.array(z.object({
+    statement: z.string().min(1).max(1_000),
+    realityIds: z.array(z.string()).min(1).max(3),
+    evidenceTitles: z.array(z.string().min(1).max(240)).max(20)
+  })).max(30),
+  evidenceMatrix: z.array(z.object({
+    realityId: z.string(),
+    realityName: z.string().min(1).max(240),
+    evidenceTitles: z.array(z.string().min(1).max(240)).max(30),
+    invariants: z.array(z.string().min(1).max(1_000)).max(30),
+    remainingUncertainty: z.array(z.string().min(1).max(1_000)).max(30)
+  })).min(2).max(3),
+  confidence: z.number().min(0).max(1),
+  createdAt: z.string()
+});
+
+export const MissionOutcomeSchema = z.object({
+  title: z.string().min(1).max(240),
+  summary: z.string().min(1).max(2_000),
+  initialBelief: z.string().min(1).max(2_000),
+  finalBelief: z.string().min(1).max(2_000),
+  preventedRisk: z.string().min(1).max(1_000),
+  generalisedInvariants: z.array(z.string().min(1).max(1_000)).max(50),
+  remainingUncertainty: z.array(z.string().min(1).max(1_000)).max(50),
+  metrics: z.object({
+    realitiesExplored: z.number().int().nonnegative(),
+    maximumDepth: z.number().int().nonnegative(),
+    subjectsReturned: z.number().int().nonnegative(),
+    memoriesVerified: z.number().int().nonnegative(),
+    memoriesQuarantined: z.number().int().nonnegative(),
+    interventionsDetected: z.number().int().nonnegative(),
+    interventionsMissed: z.number().int().nonnegative(),
+    proofsPassed: z.number().int().nonnegative(),
+    proofsTotal: z.number().int().nonnegative(),
+    changedFiles: z.number().int().nonnegative()
+  }),
+  generatedAt: z.string()
+});
+
+export const MissionAutopilotModeSchema = z.enum([
+  "off",
+  "running",
+  "paused",
+  "stopped",
+  "completed"
+]);
+
+export const MissionAutopilotStateSchema = z.object({
+  mode: MissionAutopilotModeSchema,
+  kind: z.enum(["demo", "guided-real"]),
+  maxActions: z.number().int().min(1).max(100),
+  maxMinutes: z.number().int().min(1).max(180),
+  pauseOnDream: z.boolean(),
+  pauseOnIntervention: z.boolean(),
+  actionsCompleted: z.number().int().nonnegative(),
+  startedAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  lastAction: z.string().optional(),
+  approvedAction: z.string().optional(),
+  pauseReason: z.string().max(500).optional()
+});
+
+const DefaultMissionAutopilotState = {
+  mode: "off",
+  kind: "guided-real",
+  maxActions: 30,
+  maxMinutes: 60,
+  pauseOnDream: true,
+  pauseOnIntervention: true,
+  actionsCompleted: 0
+} as const;
 
 export const MissionRunSchema = z.object({
   id: z.string(),
@@ -467,10 +606,15 @@ export const MissionRunSchema = z.object({
   status: z.enum(["forming", "exploring", "verifying", "stabilised", "fractured"]),
   realities: z.array(RealitySchema),
   events: z.array(RealityEventSchema),
+  eventCount: z.number().int().nonnegative().default(0),
+  observedTokens: z.number().int().nonnegative().default(0),
   activeRealityId: z.string(),
   memories: z.array(WakeReportSchema),
   interventions: z.array(AdversarialInterventionLedgerSchema).default([]),
   memoryIntegrity: z.array(MemoryIntegritySealSchema).default([]),
+  reflections: z.array(DreamReflectionSchema).default([]),
+  outcome: MissionOutcomeSchema.optional(),
+  autopilot: MissionAutopilotStateSchema.default(DefaultMissionAutopilotState),
   proofResults: z.array(AnchorResultSchema),
   finalDiff: z.string(),
   createdAt: z.string(),
@@ -502,15 +646,23 @@ export type Reality = z.infer<typeof RealitySchema>;
 export type AnchorResult = z.infer<typeof AnchorResultSchema>;
 export type RegressionResult = z.infer<typeof RegressionResultSchema>;
 export type DemoSession = z.infer<typeof DemoSessionSchema>;
+export type DemoAutopilotState = z.infer<typeof DemoAutopilotStateSchema>;
 export type RealityRunArchive = z.infer<typeof RealityRunArchiveSchema>;
 export type MissionProof = z.infer<typeof MissionProofSchema>;
 export type MissionSubjectCharter = z.infer<typeof MissionSubjectCharterSchema>;
+export type MissionSafetyProfile = z.infer<typeof MissionSafetyProfileSchema>;
+export type MissionMemoryPolicy = z.infer<typeof MissionMemoryPolicySchema>;
+export type MissionDreamStrategy = z.infer<typeof MissionDreamStrategySchema>;
 export type MissionInterventionContract = z.infer<typeof MissionInterventionContractSchema>;
 export type MissionDefinition = z.infer<typeof MissionDefinitionSchema>;
-export type MissionDefinitionDraft = z.infer<typeof MissionDefinitionDraftSchema>;
+export type MissionDefinitionDraft = z.input<typeof MissionDefinitionDraftSchema>;
 export type AdversarialInterventionReport = z.infer<typeof AdversarialInterventionReportSchema>;
 export type AdversarialInterventionAssessment = z.infer<typeof AdversarialInterventionAssessmentSchema>;
 export type AdversarialInterventionLedger = z.infer<typeof AdversarialInterventionLedgerSchema>;
+export type DreamReflection = z.infer<typeof DreamReflectionSchema>;
+export type MissionOutcome = z.infer<typeof MissionOutcomeSchema>;
+export type MissionAutopilotMode = z.infer<typeof MissionAutopilotModeSchema>;
+export type MissionAutopilotState = z.infer<typeof MissionAutopilotStateSchema>;
 export type MemoryIntegrityCheck = z.infer<typeof MemoryIntegrityCheckSchema>;
 export type MemoryIntegritySeal = z.infer<typeof MemoryIntegritySealSchema>;
 export type MissionRun = z.infer<typeof MissionRunSchema>;

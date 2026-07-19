@@ -1,98 +1,155 @@
-# Inception — Three-Minute Demo Runbook
+# Inception: Three-Minute Demo Runbook
 
-## Before presenting
+**Runbook version:** 0.1.0
+**Target:** Desktop or tablet Chromium
+**Last rehearsed against UI:** 2026-07-19
+
+## Choose The Runtime
+
+Use deterministic recording mode for the submitted video:
 
 ```bash
-npm install
+npm ci
 npm run demo:reset
-npm run codex:check
-npm run dev:real
+npm run record:demo
 ```
 
-Open `http://localhost:3000`. This uses the existing Codex CLI login in `~/.codex/auth.json`.
+Use live Codex for technical evaluation:
 
-For the deterministic backup, run `npm run dev:mock`. It follows the same UI sequence without network or account dependencies.
+```bash
+npm ci
+codex login              # skip if already authenticated or using an API key
+npm run judge:demo
+```
 
-## Presentation sequence
+Open `http://localhost:3000`. An ignored `.env` containing `CODEX_API_KEY` or `OPENAI_API_KEY` is the alternative to CLI auth. Docker is not required.
 
-### 1. Establish the waking Reality
+Page load, refresh, Admin, Mission creation, and timeline replay do not call Codex. In live mode, the action dock explicitly says **STARTS REAL CODEX CLI IN THE ACTIVE WORKTREE** before a usage-bearing action.
 
-Point to the central Reality graph, immutable anchors, initial belief, and isolated worktree.
+## Preflight
 
-Say: “This is not an agent dashboard. It is one software world with a premise, history, evidence, constitution, Codex thread, and Git worktree.”
+1. Open `/missions/password-reset` or click **Demo Mission** in the header.
+2. Confirm the header reports **Live memory stream** and the expected runtime.
+3. Confirm the action dock shows phase `0 / 10` and **Run Codex audit**.
+4. Confirm the Reality graph contains only **Waking Reality**.
+5. Keep the timeline on **Live**.
 
-Click **Ask Codex to audit and improve password-reset security**. The live operation band confirms the real CLI is active, shows elapsed wall time, and names each validated command, tool, and file milestone. Its tool-call total includes terminal commands, file changes, MCP tools, and searches; the adjacent counters retain the command/file breakdown.
+For a consistent recording, click **Start recording auto**. The controller advances the deterministic path, can be paused/resumed/stopped, and never starts merely because the page opened. For a narrated manual recording, use the steps below.
 
-### 2. Surface uncertainty
+## Three-Minute Sequence
 
-Show the uncertainty card: whether per-IP rate limiting prevents abuse.
+### 0:00 - Establish The Waking Reality
 
-Say: “The agent does not immediately commit to a fix. It proposes a counterfactual world capable of changing a belief.”
+Show:
 
-Click **Create Dream: Under coordinated attack**, review its impact probability, expected insight, and estimated Codex budget, then confirm the Dream.
+- the initial belief;
+- parent-owned hidden anchors;
+- the single waking graph node;
+- the idle operation band and zero observed usage.
 
-### 3. Populate the Dream with bounded Subjects
+Say: “Reality Engine lets Codex experience risky assumptions in isolated software worlds before they can change the waking repository.”
 
-Click **Enter attacker, investigator, and test engineer into Under coordinated attack**, then **Ask Codex to investigate coordinated password-reset abuse**.
+The **Next move** band reads **Ask Codex to audit and improve password-reset security**. Click **Run Codex audit**.
 
-Show Ariadne, Arthur, and Eames as attacker, investigator, and test engineer. Emphasise that Subjects operate inside one Reality; they are not sibling worlds.
+In live mode, point to the bound Reality thread, worktree, elapsed time, SDK token evidence, and timestamped milestones. Do not wait on a generic spinner; follow the operation band and Reality Events.
 
-In real mode these Subject charters are direct Codex subagent requests. Codex runs bounded investigations concurrently when capacity allows and waits for every Subject to return before synthesis.
+### 0:25 - Turn Uncertainty Into A Dream
 
-Show the returned evidence:
+Show the proposal asking whether coordinated sources can bypass per-IP protection.
 
-- Account enumeration remains possible.
-- IP counters do not share an identifier-level budget.
-- The inherited belief loses confidence.
+Click **Create Dream: Under coordinated attack**. Review the premise, expected insight, model-estimated impact, token estimate, and cost class. Click **Confirm and create Dream**.
 
-### 4. Descend one level deeper
+Say: “A Dream is a real child world with its own Codex thread and Git worktree, not another chat panel.”
 
-Click **Create nested Dream: Rotating IP swarm**, review the narrower proposal, then confirm the nested Dream.
+### 0:45 - Enter Bounded Subjects
 
-Say: “The remaining uncertainty is narrow enough for a nested Dream: one identifier, a new IP on every request.”
+The **Next move** band describes entering attacker, investigator, and test-engineer Subjects. Click **Enter Subjects**, then click **Run Codex investigation**.
 
-Click **Kick and return memory**.
+Show Ariadne, Arthur, and Eames as bounded roles inside the current Dream. In real mode, open a Subject event to show the native child thread ID, completed `spawn_agent`, and terminal `wait` evidence. Do not display raw Subject messages or reasoning.
 
-Show the Wake Report and failing `rotating-ip.attack.spec.ts` artefact. Say: “The Dream returns memories, not raw reasoning.”
+Show the resulting evidence:
 
-### 5. Wake the parent Dream
+- account-specific behavior can still reveal state;
+- per-IP counters do not impose an identifier-level budget;
+- the initial belief loses confidence.
 
-Click **Kick and return memory**.
+### 1:10 - Descend And Return Memory
 
-Show its consolidated invariants and changed belief. Point out that parent-owned anchors remained immutable throughout both Dreams.
+Click **Create nested Dream: Rotating IP swarm**, review the narrower counterfactual, and click **Confirm and create Dream**.
 
-### 6. Synthesis and proof
+Say: “The uncertainty discovered inside one Dream becomes a deeper isolated Reality.”
 
-Click **Synthesise returned memories into the Waking Reality implementation**.
+Click **Kick and return memory**. During the staged Wake, call out:
 
-Show the layered implementation: generic response, per-IP limit, identifier-level limit, and global circuit breaker.
+1. lived evidence collected;
+2. Reality Totem checking identity, source, anchors, evidence, artefacts, and lineage;
+3. validated memory returning upward.
 
-Click **Run 3 parent-owned requirements**.
+Show the failing `rotating-ip.attack.spec.ts` artefact and the memory path on the graph. Then click **Kick and return memory** again to wake **Under coordinated attack**.
 
-Pause on the three green anchor results:
+### 1:45 - Change Reality Only Through Proof
 
-- Enumeration-safe response
-- Token expiry preserved
-- Rotating-IP resistance
+Click **Synthesise memories**.
 
-Click **Stabilise Waking Reality**.
+Show that returned knowledge changes the waking implementation while the Dream worktrees remain isolated. Click **Run anchor tests** and pause on:
 
-### 7. Close on the differentiator
+- Enumeration-safe response;
+- Token expiry preserved;
+- Rotating-IP resistance;
+- the returned rotating-IP regression.
 
-Show the full Reality tree, Memories panel, inherited evidence, and proof results. Click **Reveal code** only when discussing the final Git diff.
+If proof fails in live mode, the engine offers **Repair proof** and cannot stabilise. On the successful path, click **Stabilise Reality**.
 
-Drag the Reality Timeline through its narrative milestones to recap the complete run without replaying wall-clock Codex time. Detailed command, file, tool, and test events remain available in the filterable event stream. Return the timeline to **Live** before performing another Reality action.
+### 2:20 - Close On The Differentiator
 
-Say: “Inception lets Codex explore assumptions in isolated software worlds, then wake with validated evidence that changes the implementation in the waking Reality.”
+Show:
+
+- the complete nested Reality graph and exact return paths;
+- Memories before/after;
+- Reality Totem seals and inherited lineage;
+- final proof results;
+- **Reveal code** for the waking Git diff;
+- timestamped, searchable events with inspectable metadata;
+- the Reality Timeline moving through earlier states and returning to **Live**.
+
+Say: “Good evidence and tested artefacts can wake into Reality. Unsupported assumptions, stale lineage, and planted changes are quarantined before they cross a Kick boundary.”
+
+If time permits, open **Mission Control** and show the generalized VAmPI preset, editable proofs and Subject charters, sibling-Dream strategy, and bounded controlled Subject. Do not prepare or run it during the three-minute canonical recording.
+
+## Optional Controlled-Subject Shot
+
+Use a previously completed generalized Mission or a dedicated recording fixture. Show:
+
+1. **Injected Subject / contained** in the intervention ledger;
+2. the diagnosis verdict;
+3. the restored baseline and excluded injected artefact count;
+4. **Memory verified** or **Memory quarantined**;
+5. the containment event and upward memory path.
+
+The correct claim is: the injected mutation never ascends. An exact diagnosis may return independent knowledge and safe investigator tests; a partial or missed diagnosis quarantines the entire Wake Report.
 
 ## Recovery
 
-When no operation is active, click the labeled **Full reset** button and confirm, or run:
+When no operation is active, **Full reset** in the action dock clearly resets the Demo Mission. It is not a refresh control.
+
+For process and filesystem cleanup:
+
+1. open the Admin gear;
+2. choose **Stop all Codex CLI** if an operation is active;
+3. choose **Full reset and cleanup** and confirm.
+
+The reset archives safe telemetry, removes only Demo Mission-owned Reality/worktree state, prunes owned branches, and forms a clean waking Reality. The equivalent terminal command is:
 
 ```bash
 npm run demo:reset
 ```
 
-The deterministic sequence can then be replayed from the beginning. Full reset archives the validated event log for retrospective analysis while removing all active Reality and worktree state.
+User-created Missions are reset or deleted separately from the Admin Mission Library. The immutable password-reset Demo Mission can be opened, exported, and reset, but not deleted.
 
-If a Codex execution must be stopped first, open the gear menu, choose **Stop all Codex CLI**, then use **Full reset and cleanup**. These Admin controls are deliberately separate from the narrative UI.
+## Accuracy Guardrails
+
+- Say **model-reported estimate** for belief confidence, Dream impact, token estimate, and cost.
+- Say **observed SDK token ceiling**, not provider billing cap.
+- Say **validated** for schema conformance and **verified** only after Reality Totem/proof checks.
+- Mock recording events are deterministic equivalents; native Subject thread evidence is a live-mode claim.
+- Never show `auth.json`, API keys, raw Codex output, raw Subject messages, or hidden reasoning.

@@ -5,6 +5,7 @@ import {
   MissionDefinitionSchema,
   MissionRunSchema,
   RealityEntity,
+  WakeReportSchema,
   type AdversarialDiagnosis,
   type AdversarialInterventionLedger,
   type AdversarialInterventionReport,
@@ -12,6 +13,7 @@ import {
   type InvestigationReport,
   type MissionInterventionContract,
   type MissionDefinitionDraft,
+  type MissionAutopilotState,
   type MemoryIntegritySeal,
   type MissionRun,
   type Reality,
@@ -27,6 +29,7 @@ import {
 } from "./codex-port";
 import type { RealityEventBus, RealityRepository } from "./ports";
 import { MemoryIntegrityService } from "./memory-integrity-service";
+import { CounterfactualReflectionService } from "./counterfactual-reflection-service";
 import type {
   MissionWorkspaceFactoryPort,
   WorktreeManagerPort
@@ -63,6 +66,19 @@ export interface MissionSnapshot {
   operation: MissionOperation | null;
   nextAction: MissionNextAction | null;
 }
+
+export interface MissionAutopilotOptions {
+  maxActions?: number;
+  maxMinutes?: number;
+  pauseOnDream?: boolean;
+  pauseOnIntervention?: boolean;
+}
+
+export type MissionAutopilotCommand =
+  | { command: "start"; options?: MissionAutopilotOptions }
+  | { command: "resume" }
+  | { command: "pause" }
+  | { command: "stop" };
 
 const DEFAULT_WAKE_CONTRACT = [
   "State initial beliefs and what changed.",
@@ -153,10 +169,23 @@ function isDescendantOf(realities: Reality[], candidateId: string, ancestorId: s
   return false;
 }
 
+function defensiveLanguage(value: string): string {
+  return value
+    .replace(/\battacks?\b/gi, "negative-test scenarios")
+    .replace(/\battackers?\b/gi, "independent test sources")
+    .replace(/\bexploits?\b/gi, "documented defects")
+    .replace(/\bbreaches?\b/gi, "boundary failures")
+    .replace(/\bhacking\b/gi, "authorized local source review")
+    .replace(/\badversarial\b/gi, "counterfactual");
+}
+
 export class MissionOrchestrator {
   private readonly operationQueues = new Map<string, Promise<void>>();
   private readonly activeOperations = new Map<string, MissionOperation>();
+  private readonly autopilotControls = new Map<string, MissionAutopilotState>();
+  private readonly autopilotLoops = new Map<string, Promise<void>>();
   private readonly memoryIntegrity = new MemoryIntegrityService();
+  private readonly reflections = new CounterfactualReflectionService();
 
   constructor(
     private readonly repository: RealityRepository,
@@ -220,8 +249,13 @@ export class MissionOrchestrator {
         timeDilation: 1,
         runtimeLaws: [
           "Only validated Codex outputs may enter this Reality.",
-          "A failed immutable proof prevents Reality stabilisation."
-        ]
+          "A failed immutable proof prevents Reality stabilisation.",
+          ...definition.runtimeLaws
+        ],
+        safetyProfile: definition.safetyProfile,
+        memoryPolicy: definition.memoryPolicy,
+        dreamStrategy: definition.dreamStrategy,
+        maxSiblingDreams: definition.maxSiblingDreams
       },
       initialBeliefs: [{
         statement: definition.premise,
@@ -255,10 +289,22 @@ export class MissionOrchestrator {
       status: "exploring",
       realities: [reality],
       events: [],
+      eventCount: 0,
+      observedTokens: 0,
       activeRealityId: reality.id,
       memories: [],
       interventions: [],
       memoryIntegrity: [],
+      reflections: [],
+      autopilot: {
+        mode: "off",
+        kind: "guided-real",
+        maxActions: 30,
+        maxMinutes: 60,
+        pauseOnDream: true,
+        pauseOnIntervention: true,
+        actionsCompleted: 0
+      },
       proofResults: [],
       finalDiff: "",
       createdAt,
@@ -274,11 +320,123 @@ export class MissionOrchestrator {
 
   async snapshot(id: string): Promise<MissionSnapshot> {
     const run = await this.requireRun(id);
+    if (
+      run.autopilot.mode === "running"
+      && !this.autopilotControls.has(id)
+      && !this.autopilotLoops.has(id)
+    ) {
+      const active = this.requireActive(run);
+      run.autopilot = {
+        ...run.autopilot,
+        mode: "paused",
+        pauseReason: "The server restarted; resume explicitly so page load never starts Codex.",
+        updatedAt: now()
+      };
+      await this.emit(
+        run,
+        active,
+        "autopilot.paused",
+        "Guided auto mode paused after a server restart; explicit resume is required.",
+        {
+          missionId: id,
+          actionsCompleted: run.autopilot.actionsCompleted,
+          reason: run.autopilot.pauseReason
+        }
+      );
+    }
     return this.present(run);
   }
 
   async list(): Promise<MissionRun[]> {
     return this.repository.listMissionRuns(20);
+  }
+
+  async events(id: string, limit = 500, before?: string): Promise<RealityEvent[]> {
+    const run = await this.requireRun(id);
+    const events = await this.repository.listMissionEvents(
+      id,
+      Math.max(1, Math.min(limit, 100_000)),
+      before
+    );
+    const [beforeTime, beforeId] = before?.split("|") ?? [];
+    return events.length
+      ? events
+      : run.events
+          .filter((event) => !beforeTime
+            || event.occurredAt < beforeTime
+            || (event.occurredAt === beforeTime && event.id < (beforeId ?? "")))
+          .slice(-limit);
+  }
+
+  async controlAutopilot(
+    id: string,
+    command: MissionAutopilotCommand
+  ): Promise<MissionSnapshot> {
+    const run = await this.requireRun(id);
+    const active = this.requireActive(run);
+    const timestamp = now();
+    if (command.command === "start") {
+      if (run.status === "stabilised") {
+        throw new Error("This Reality is already stabilised.");
+      }
+      const options = command.options ?? {};
+      run.autopilot = {
+        mode: "running",
+        kind: "guided-real",
+        maxActions: Math.max(1, Math.min(options.maxActions ?? 30, 100)),
+        maxMinutes: Math.max(1, Math.min(options.maxMinutes ?? 60, 180)),
+        pauseOnDream: options.pauseOnDream ?? true,
+        pauseOnIntervention: options.pauseOnIntervention ?? true,
+        actionsCompleted: 0,
+        startedAt: timestamp,
+        updatedAt: timestamp
+      };
+      this.autopilotControls.set(id, { ...run.autopilot });
+      await this.emit(run, active, "autopilot.started", "Guided auto mode started; parent-owned gates remain armed.", {
+        missionId: id,
+        kind: run.autopilot.kind,
+        maxActions: run.autopilot.maxActions,
+        maxMinutes: run.autopilot.maxMinutes,
+        pauseOnDream: run.autopilot.pauseOnDream,
+        pauseOnIntervention: run.autopilot.pauseOnIntervention
+      });
+      this.startAutopilotLoop(id);
+    } else if (command.command === "resume") {
+      if (run.autopilot.mode !== "paused") {
+        throw new Error("Guided auto mode is not paused.");
+      }
+      run.autopilot = {
+        ...run.autopilot,
+        mode: "running",
+        approvedAction: this.describeAction(run, active)?.id,
+        pauseReason: undefined,
+        updatedAt: timestamp
+      };
+      this.autopilotControls.set(id, { ...run.autopilot });
+      await this.repository.saveMissionRun(MissionRunSchema.parse(run));
+      this.startAutopilotLoop(id);
+    } else {
+      const mode = command.command === "pause" ? "paused" as const : "stopped" as const;
+      run.autopilot = {
+        ...run.autopilot,
+        mode,
+        pauseReason: command.command === "pause"
+          ? "Paused by the operator after the current action."
+          : "Stopped by the operator after the current action.",
+        updatedAt: timestamp
+      };
+      this.autopilotControls.set(id, { ...run.autopilot });
+      await this.emit(
+        run,
+        active,
+        command.command === "pause" ? "autopilot.paused" : "autopilot.stopped",
+        command.command === "pause"
+          ? "Guided auto mode paused by the operator."
+          : "Guided auto mode stopped by the operator.",
+        { missionId: id, actionsCompleted: run.autopilot.actionsCompleted }
+      );
+    }
+    return this.snapshot(id);
   }
 
   async act(id: string, action: MissionAction): Promise<MissionSnapshot> {
@@ -378,6 +536,11 @@ export class MissionOrchestrator {
       constraints: run.definition.constraints,
       parentTruths: run.definition.parentTruths,
       wakeContract: run.definition.wakeContract,
+      runtimeLaws: run.definition.runtimeLaws,
+      safetyProfile: run.definition.safetyProfile,
+      memoryPolicy: run.definition.memoryPolicy,
+      dreamStrategy: run.definition.dreamStrategy,
+      maxSiblingDreams: run.definition.maxSiblingDreams,
       proofs: run.definition.proofs.map(({ id: _id, ...proof }) => proof),
       subjects: run.definition.subjects.map(({ id: _id, ...subject }) => subject),
       intervention: intervention ? {
@@ -547,7 +710,7 @@ export class MissionOrchestrator {
     const ledger = this.requireInterventionLedger(run, reality);
     ledger.status = "injecting";
     ledger.startedAt = now();
-    await this.emit(run, reality, "intervention.started", `Adversarial Subject entered ${reality.name} under a sealed intervention contract.`, {
+    await this.emit(run, reality, "intervention.started", `Controlled resilience Subject entered ${reality.name} under a sealed intervention contract.`, {
       missionId: run.id,
       contractId: contract.id,
       subjectId: contract.subject.id,
@@ -572,10 +735,15 @@ export class MissionOrchestrator {
         contract,
         async (event) => this.emitSealedInterventionEvent(run, reality, contract, event)
       );
+      const boundReality = await this.bindRealityThread(
+        run,
+        reality.id,
+        result.coordinatorThreadId
+      );
       const actualChangedFiles = await worktrees.listChangedFiles(reality.worktreePath!);
       const validated = await this.validateIntervention(
         worktrees,
-        reality,
+        boundReality,
         contract,
         result.report,
         actualChangedFiles,
@@ -604,7 +772,7 @@ export class MissionOrchestrator {
         findings: []
       }));
       const updated: Reality = {
-        ...reality,
+        ...boundReality,
         subjects: investigatorSubjects,
         worldState: {
           ...reality.worldState,
@@ -668,6 +836,7 @@ export class MissionOrchestrator {
     const childDepth = parent.depth + 1;
     const interventionContract = run.definition.intervention?.enabled
       && run.definition.intervention.targetDepth === childDepth
+      && run.interventions.length === 0
       ? run.definition.intervention
       : undefined;
     const child = RealityEntity.create({
@@ -689,7 +858,7 @@ export class MissionOrchestrator {
         runtimeLaws: interventionContract
           ? [
               ...(parent.constitution.runtimeLaws ?? []),
-              "A sealed adversarial intervention may exist; diagnose it only from observable code, behavior, and test evidence."
+              "A sealed controlled intervention may exist; diagnose it only from observable code, behavior, and test evidence."
             ]
           : parent.constitution.runtimeLaws
       },
@@ -765,24 +934,41 @@ export class MissionOrchestrator {
     await this.emit(run, reality, "kick.triggered", `Kick triggered: ${reality.name} must return what generalises.`, {
       missionId: run.id
     });
+    await this.emit(run, reality, "wake.collecting", `Collecting evidence, artefacts, and changed beliefs from ${reality.name}.`, {
+      missionId: run.id,
+      wakeStage: "collecting",
+      wakeStageIndex: 1
+    });
     const result = await this.codexRuntime.wake(
       reality,
       async (event) => this.emitCodexEvent(run, reality, event)
     );
-    const entity = RealityEntity.hydrate(reality)
+    const bound = RealityEntity.hydrate(reality)
       .bindRuntime(result.threadId, reality.worktreePath!, reality.branchName!)
-      .setWakeReport(result.report);
-    const kicked = entity.snapshot();
-    this.replaceReality(run, kicked);
+      .snapshot();
+    this.replaceReality(run, bound);
     const parent = this.requireReality(run, reality.parentId);
     const parentEntity = RealityEntity.hydrate(parent);
     const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
-    const interventionOutcome = await this.revealIntervention(run, kicked);
+    const interventionOutcome = await this.revealIntervention(run, bound);
+    const report = await this.containIntervention(
+      run,
+      bound,
+      result.report,
+      worktrees
+    );
+    const kicked = RealityEntity.hydrate(bound).setWakeReport(report).snapshot();
+    this.replaceReality(run, kicked);
+    await this.emit(run, kicked, "wake.sealing", `Reality Totem is sealing ${reality.name}'s structured memory to its Git source and descendant lineage.`, {
+      missionId: run.id,
+      wakeStage: "sealing",
+      wakeStageIndex: 2
+    });
     const integritySeal = await this.sealMemoryIntegrity(
       run,
       kicked,
       parent,
-      result.report,
+      report,
       worktrees,
       interventionOutcome
     );
@@ -820,21 +1006,28 @@ export class MissionOrchestrator {
       descendantSealCount: integritySeal.descendantSealIds.length,
       policyVersion: integritySeal.policyVersion
     });
+    await this.emit(run, kicked, "wake.returning", `Validated memory is returning from ${reality.name} to ${parent.name}.`, {
+      missionId: run.id,
+      parentRealityId: parent.id,
+      wakeStage: "returning",
+      wakeStageIndex: 3
+    });
     run.memories = [
-      ...run.memories.filter((memory) => memory.realityId !== result.report.realityId),
-      result.report
+      ...run.memories.filter((memory) => memory.realityId !== report.realityId),
+      report
     ];
     if (proposal) parentEntity.updateProposal(proposal.id, "resolved");
     const awakenedParent = parentEntity
-      .advanceTime(4, "Receiving validated memory", result.report.recommendation)
+      .advanceTime(4, "Receiving validated memory", report.recommendation)
       .snapshot();
     this.replaceReality(run, awakenedParent);
     run.activeRealityId = parent.id;
+    await this.reflectSiblingMemories(run, awakenedParent);
     await this.emit(run, kicked, "memory.returned", `Memory returned from ${reality.name}.`, {
       missionId: run.id,
       parentRealityId: parent.id,
-      artefactCount: result.report.artefacts.length,
-      invariantCount: result.report.invariants.length
+      artefactCount: report.artefacts.length,
+      invariantCount: report.invariants.length
     });
   }
 
@@ -893,7 +1086,41 @@ export class MissionOrchestrator {
     if (unverifiedMemories.length) {
       throw new Error("Synthesis rejected Dream memory whose report, lineage, or sealed Git source changed.");
     }
-    await this.promoteArtefacts(run, root, worktrees);
+    const reflectedMemories = run.definition.dreamStrategy === "competing-siblings"
+      ? run.memories.map((memory) => {
+          const reflections = run.reflections.filter((reflection) =>
+            reflection.realityIds.includes(memory.realityId)
+          );
+          if (!reflections.length) return memory;
+          const shared = new Set(
+            reflections
+              .flatMap((reflection) => reflection.sharedInvariants)
+              .map((invariant) => invariant.trim().toLowerCase())
+          );
+          const invariants = memory.invariants.filter((invariant) =>
+            shared.has(invariant.trim().toLowerCase())
+          );
+          return {
+            ...memory,
+            invariants,
+            recommendation: invariants.length
+              ? `Only these conclusions survived the sibling Reality Mirror: ${invariants.join("; ")}. Preserve every recorded disagreement as uncertainty.`
+              : "No conclusion survived every sibling Reality. Preserve the disagreement and use only reproducible evidence plus parent-owned proofs."
+          };
+        })
+      : run.memories;
+    const synthesisMemories = run.definition.memoryPolicy === "verified-invariants-only"
+      ? reflectedMemories.map((memory) => ({
+          ...memory,
+          experiences: [],
+          changedBeliefs: [],
+          artefacts: [],
+          recommendation: `Generalise only these verified invariants: ${memory.invariants.join("; ")}`
+        }))
+      : reflectedMemories;
+    if (run.definition.memoryPolicy === "verified-reports-and-artefacts") {
+      await this.promoteArtefacts(run, root, worktrees);
+    }
     const result = await this.codexRuntime.synthesise(
       {
         ...root,
@@ -901,7 +1128,7 @@ export class MissionOrchestrator {
           ? undefined
           : root.codexThreadId
       },
-      run.memories,
+      synthesisMemories,
       async (event) => this.emitCodexEvent(run, root, event),
       repairContext
     );
@@ -918,7 +1145,11 @@ export class MissionOrchestrator {
     await this.emit(run, updated, "synthesis.completed", repairContext ? "Reality repair returned from Codex." : "Returned memories synthesised into the waking Reality.", {
       missionId: run.id,
       appliedMemoryCount: result.report.appliedMemories.length,
-      changedFileCount: result.report.changedFiles.length
+      changedFileCount: result.report.changedFiles.length,
+      siblingReflectionCount: run.reflections.length,
+      conclusionPolicy: run.definition.dreamStrategy === "competing-siblings"
+        ? "shared-invariants-only"
+        : "single-chain"
     });
   }
 
@@ -1021,10 +1252,12 @@ export class MissionOrchestrator {
     this.replaceReality(run, stabilised);
     run.status = "stabilised";
     run.finalDiff = await worktrees.diff(root.worktreePath!);
+    run.outcome = this.reflections.outcome(run, stabilised, now());
     await this.emit(run, stabilised, "reality.stabilised", "Reality stabilised: returned knowledge and implementation survived every immutable proof.", {
       missionId: run.id,
       memoryCount: run.memories.length,
-      proofCount: run.proofResults.length
+      proofCount: run.proofResults.length,
+      outcomeMetrics: run.outcome.metrics
     });
   }
 
@@ -1058,10 +1291,24 @@ export class MissionOrchestrator {
           .filter((id): id is string => Boolean(id))
       });
     }
-    if (report.dreamProposal) {
+    const proposals = [
+      report.dreamProposal,
+      report.alternativeDreamProposal
+    ].filter((proposal): proposal is NonNullable<typeof proposal> => Boolean(proposal));
+    const admittedProposals = entity.snapshot().constitution.safetyProfile === "authorized-local-defensive-review"
+      ? proposals.map((proposal) => ({
+          ...proposal,
+          title: defensiveLanguage(proposal.title),
+          premise: defensiveLanguage(proposal.premise),
+          uncertainty: defensiveLanguage(proposal.uncertainty),
+          rationale: defensiveLanguage(proposal.rationale),
+          expectedInsight: defensiveLanguage(proposal.expectedInsight)
+        }))
+      : proposals;
+    for (const proposal of admittedProposals) {
       entity.addProposal({
         id: randomUUID(),
-        ...report.dreamProposal,
+        ...proposal,
         status: "open"
       });
     }
@@ -1224,6 +1471,78 @@ export class MissionOrchestrator {
     return outcome;
   }
 
+  private async containIntervention(
+    run: MissionRun,
+    reality: Reality,
+    report: WakeReport,
+    worktrees: WorktreeManagerPort
+  ): Promise<WakeReport> {
+    const ledger = run.interventions.find((entry) =>
+      entry.realityId === reality.id && entry.status === "revealed"
+    );
+    if (!ledger?.report || !ledger.baselineCommit) return report;
+
+    const injectedPaths = new Set(ledger.report.changedFiles);
+    const excludedArtefactPaths = report.artefacts
+      .filter((artefact) => injectedPaths.has(artefact.path))
+      .map((artefact) => artefact.path);
+    const retainedArtefacts = await Promise.all(
+      report.artefacts
+        .filter((artefact) => !injectedPaths.has(artefact.path))
+        .map(async (artefact) => {
+          if (
+            artefact.content !== undefined
+            || artefact.kind === "note"
+            || !safeRelativePath(artefact.path)
+          ) {
+            return artefact;
+          }
+          try {
+            return {
+              ...artefact,
+              content: await worktrees.readFile(reality.worktreePath!, artefact.path)
+            };
+          } catch {
+            return artefact;
+          }
+        })
+    );
+    const sanitized = WakeReportSchema.parse({
+      ...report,
+      artefacts: retainedArtefacts
+    });
+
+    await worktrees.restoreCheckpoint(reality.worktreePath!, ledger.baselineCommit);
+    for (const artefact of sanitized.artefacts) {
+      if (
+        artefact.kind === "note"
+        || artefact.content === undefined
+        || !safeRelativePath(artefact.path)
+      ) {
+        continue;
+      }
+      await worktrees.writeFile(reality.worktreePath!, artefact.path, artefact.content);
+    }
+
+    ledger.containedAt = now();
+    ledger.excludedArtefactPaths = excludedArtefactPaths;
+    await this.emit(
+      run,
+      reality,
+      "intervention.contained",
+      `Controlled fault contained: ${ledger.report.changedFiles.length} injected path${ledger.report.changedFiles.length === 1 ? "" : "s"} restored before memory could ascend.`,
+      {
+        missionId: run.id,
+        contractId: ledger.contractId,
+        rollbackCommit: ledger.baselineCommit,
+        injectedPathCount: ledger.report.changedFiles.length,
+        excludedArtefactPaths,
+        retainedInvestigatorArtefactCount: retainedArtefacts.length
+      }
+    );
+    return sanitized;
+  }
+
   private async sealMemoryIntegrity(
     run: MissionRun,
     reality: Reality,
@@ -1299,7 +1618,7 @@ export class MissionOrchestrator {
   ): MissionInterventionContract {
     const contract = run.definition.intervention;
     if (!contract || contract.targetDepth !== reality.depth) {
-      throw new Error("No adversarial intervention is configured for this Reality.");
+      throw new Error("No controlled intervention is configured for this Reality.");
     }
     return contract;
   }
@@ -1355,6 +1674,66 @@ export class MissionOrchestrator {
     }
   }
 
+  private canCreateDream(run: MissionRun, parent: Reality): boolean {
+    if (parent.depth >= run.definition.maxDreamDepth) return false;
+    if (!parent.proposals.some((proposal) => proposal.status === "open")) return false;
+    const childCount = run.realities.filter((reality) => reality.parentId === parent.id).length;
+    const siblingLimit = run.definition.dreamStrategy === "competing-siblings"
+      ? run.definition.maxSiblingDreams
+      : 1;
+    return childCount < siblingLimit;
+  }
+
+  private async reflectSiblingMemories(
+    run: MissionRun,
+    parent: Reality
+  ): Promise<void> {
+    if (run.definition.dreamStrategy !== "competing-siblings") return;
+    const siblings = run.realities
+      .filter((reality) => reality.parentId === parent.id && Boolean(reality.wakeReport))
+      .map((reality) => ({
+        reality,
+        report: run.memories.find((memory) => memory.realityId === reality.id)
+      }))
+      .filter((entry): entry is { reality: Reality; report: WakeReport } => Boolean(entry.report))
+      .filter(({ reality }) => run.memoryIntegrity.some((seal) =>
+        seal.realityId === reality.id && seal.verdict === "verified"
+      ))
+      .slice(0, run.definition.maxSiblingDreams);
+    if (siblings.length < 2) return;
+    const realityIds = siblings.map(({ reality }) => reality.id).sort();
+    if (run.reflections.some((reflection) =>
+      [...reflection.realityIds].sort().join(":") === realityIds.join(":")
+    )) return;
+
+    const reflection = this.reflections.compare(parent, siblings, now());
+    run.reflections.push(reflection);
+    const reflectedParent = RealityEntity.hydrate(parent)
+      .advanceTime(
+        2,
+        "Reflecting across sibling Dreams",
+        reflection.sharedInvariants.length
+          ? `${reflection.sharedInvariants.length} invariant${reflection.sharedInvariants.length === 1 ? "" : "s"} survived competing worlds.`
+          : "Sibling Dreams disagreed; synthesis must preserve the disagreement."
+      )
+      .snapshot();
+    this.replaceReality(run, reflectedParent);
+    await this.emit(
+      run,
+      reflectedParent,
+      "reflection.created",
+      `Reality Mirror compared ${siblings.length} sibling Dreams: ${reflection.sharedInvariants.length} shared invariants and ${reflection.disagreements.length} disagreements.`,
+      {
+        missionId: run.id,
+        reflectionId: reflection.id,
+        realityIds: reflection.realityIds,
+        sharedInvariantCount: reflection.sharedInvariants.length,
+        disagreementCount: reflection.disagreements.length,
+        confidence: reflection.confidence
+      }
+    );
+  }
+
   private describeAction(run: MissionRun, active: Reality): MissionNextAction | null {
     if (run.status === "stabilised") return null;
     if (active.kind === "dream") {
@@ -1367,8 +1746,16 @@ export class MissionOrchestrator {
           kind: "intervene",
           executor: "codex",
           label: intervention.status === "rejected"
-            ? `Retry the bounded adversarial intervention in ${active.name}`
-            : `Run the bounded adversarial intervention in ${active.name}`
+            ? `Retry the bounded controlled intervention in ${active.name}`
+            : `Inject the controlled resilience Subject into ${active.name}`
+        };
+      }
+      if (intervention?.status === "sealed" && !intervention.diagnosis) {
+        return {
+          id: "inspect",
+          kind: "advance",
+          executor: "codex",
+          label: `Ask investigator Subjects to diagnose the sealed fault in ${active.name}`
         };
       }
       if (active.codexThreadId?.startsWith("unbound:")) {
@@ -1379,8 +1766,7 @@ export class MissionOrchestrator {
           label: `Ask Codex and ${active.subjects.length} Subject${active.subjects.length === 1 ? "" : "s"} to investigate ${active.name}`
         };
       }
-      const openProposal = active.proposals.some((proposal) => proposal.status === "open");
-      if (openProposal && active.depth < run.definition.maxDreamDepth) {
+      if (this.canCreateDream(run, active)) {
         return {
           id: "create_dream",
           kind: "dream",
@@ -1402,6 +1788,16 @@ export class MissionOrchestrator {
         kind: "advance",
         executor: "codex",
         label: `Ask Codex to review ${run.definition.scope} in local source and surface the highest-value uncertainty`
+      };
+    }
+    if (this.canCreateDream(run, active)) {
+      return {
+        id: "create_dream",
+        kind: "dream",
+        executor: "orchestrator",
+        label: run.memories.length
+          ? "Create competing sibling Dream from the remaining uncertainty"
+          : "Create Dream from the highest-value uncertainty"
       };
     }
     if (!run.memories.length) {
@@ -1460,14 +1856,7 @@ export class MissionOrchestrator {
   }
 
   private observedTokens(run: MissionRun): number {
-    return run.events.reduce((total, event) => {
-      const metadata = event.payload.metadata;
-      if (!metadata || typeof metadata !== "object") return total;
-      const values = metadata as Record<string, unknown>;
-      return total
-        + (typeof values.inputTokens === "number" ? values.inputTokens : 0)
-        + (typeof values.outputTokens === "number" ? values.outputTokens : 0);
-    }, 0);
+    return run.observedTokens;
   }
 
   private assertTurnWithinTokenCeiling(
@@ -1529,6 +1918,16 @@ ${truths || "- No inherited parent truths."}
 ## Runtime Laws
 
 ${laws || "- No additional runtime laws."}
+
+## Memory Admission Policy
+
+${reality.constitution.memoryPolicy ?? "verified-reports-and-artefacts"}
+
+## Authorization Boundary
+
+${reality.constitution.safetyProfile === "authorized-local-defensive-review"
+    ? "Authorized local defensive review: source and synthetic local tests only; no running or external target."
+    : "General software development inside the operator-provided Reality worktree."}
 
 ## Admitted Evidence
 
@@ -1657,7 +2056,18 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
       occurredAt: now()
     };
     run.events.push(event);
+    run.eventCount += 1;
+    const metadata = event.payload.metadata;
+    if (metadata && typeof metadata === "object") {
+      const values = metadata as Record<string, unknown>;
+      run.observedTokens +=
+        (typeof values.inputTokens === "number" ? values.inputTokens : 0)
+        + (typeof values.outputTokens === "number" ? values.outputTokens : 0);
+    }
     run.updatedAt = event.occurredAt;
+    const autopilot = this.autopilotControls.get(run.id);
+    if (autopilot) run.autopilot = { ...autopilot };
+    await this.repository.appendMissionEvent(run.id, event);
     await this.repository.saveMissionRun(MissionRunSchema.parse(run));
     this.eventBus.publish(event);
   }
@@ -1667,6 +2077,119 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
     if (index < 0) run.realities.push(reality);
     else run.realities[index] = reality;
     run.updatedAt = now();
+  }
+
+  private startAutopilotLoop(id: string): void {
+    if (this.autopilotLoops.has(id)) return;
+    const loop = this.runAutopilot(id)
+      .finally(() => this.autopilotLoops.delete(id));
+    this.autopilotLoops.set(id, loop);
+  }
+
+  private async runAutopilot(id: string): Promise<void> {
+    while (true) {
+      const run = await this.requireRun(id);
+      const control = this.autopilotControls.get(id) ?? run.autopilot;
+      if (control.mode !== "running") return;
+      const active = this.requireActive(run);
+      const elapsedMinutes = control.startedAt
+        ? (Date.now() - new Date(control.startedAt).getTime()) / 60_000
+        : 0;
+      if (control.actionsCompleted >= control.maxActions) {
+        await this.pauseAutopilot(run, active, "The configured auto-mode action limit was reached.");
+        return;
+      }
+      if (elapsedMinutes >= control.maxMinutes) {
+        await this.pauseAutopilot(run, active, "The configured auto-mode wall-clock limit was reached.");
+        return;
+      }
+      if (run.status === "fractured") {
+        await this.pauseAutopilot(run, active, "Reality fractured; inspect the validated failure before continuing.");
+        return;
+      }
+      const next = this.describeAction(run, active);
+      if (!next) {
+        const completed = {
+          ...control,
+          mode: "completed" as const,
+          updatedAt: now(),
+          pauseReason: undefined,
+          approvedAction: undefined
+        };
+        this.autopilotControls.set(id, completed);
+        run.autopilot = completed;
+        await this.emit(run, active, "autopilot.completed", "Guided auto mode reached a stabilised Reality.", {
+          missionId: id,
+          actionsCompleted: completed.actionsCompleted
+        });
+        return;
+      }
+      const proofFailure = next.id === "repair"
+        && run.proofResults.some((proof) => proof.status === "failed");
+      const gated = (next.kind === "dream" && control.pauseOnDream)
+        || (next.kind === "intervene" && control.pauseOnIntervention)
+        || proofFailure;
+      if (gated && control.approvedAction !== next.id) {
+        const reason = proofFailure
+          ? "Immutable proof failed; inspect the evidence before authorizing repair."
+          : next.kind === "dream"
+            ? "A new counterfactual premise requires explicit approval."
+            : "A controlled intervention requires explicit approval.";
+        await this.pauseAutopilot(run, active, reason);
+        return;
+      }
+      const executing = {
+        ...control,
+        approvedAction: undefined,
+        lastAction: next.id,
+        updatedAt: now()
+      };
+      this.autopilotControls.set(id, executing);
+      try {
+        await this.act(id, next.id);
+      } catch (error) {
+        const current = await this.requireRun(id);
+        await this.pauseAutopilot(
+          current,
+          this.requireActive(current),
+          `Action ${next.id} stopped: ${safeFailure(error)}`
+        );
+        return;
+      }
+      const current = await this.requireRun(id);
+      const latest = this.autopilotControls.get(id) ?? current.autopilot;
+      if (latest.mode !== "running") return;
+      const advanced = {
+        ...latest,
+        actionsCompleted: latest.actionsCompleted + 1,
+        lastAction: next.id,
+        updatedAt: now()
+      };
+      this.autopilotControls.set(id, advanced);
+      current.autopilot = advanced;
+      await this.repository.saveMissionRun(MissionRunSchema.parse(current));
+    }
+  }
+
+  private async pauseAutopilot(
+    run: MissionRun,
+    reality: Reality,
+    reason: string
+  ): Promise<void> {
+    const current = this.autopilotControls.get(run.id) ?? run.autopilot;
+    const paused = {
+      ...current,
+      mode: "paused" as const,
+      pauseReason: reason,
+      updatedAt: now()
+    };
+    this.autopilotControls.set(run.id, paused);
+    run.autopilot = paused;
+    await this.emit(run, reality, "autopilot.paused", `Guided auto mode paused: ${reason}`, {
+      missionId: run.id,
+      actionsCompleted: paused.actionsCompleted,
+      reason
+    });
   }
 
   private present(run: MissionRun): MissionSnapshot {

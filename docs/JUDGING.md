@@ -2,26 +2,29 @@
 
 **Guide version:** 0.1.0
 **Target track:** Developer Tools
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-19
 
-## Fastest Reliable Evaluation — No Docker Required
+## Recommended Evaluation - Live Codex, No Docker
 
-The recommended evaluation path requires Node.js 22.5+, npm, and Git:
+The primary judging path uses the judge's own Codex CLI authentication and runs GPT-5.6 in full-power real mode:
 
 ```bash
 git clone https://github.com/alangunning/inception-reality-engine.git
 cd inception-reality-engine
 npm ci
-npm run dev:mock
+codex login              # skip if already authenticated
+npm run judge:demo
 ```
 
-Open `http://localhost:3000`. No account, key, Codex usage, Prisma generation, or external service is required. Opening and refreshing the app never launches Codex.
+Open `http://localhost:3000`. An ignored `.env` containing `CODEX_API_KEY` or `OPENAI_API_KEY` is the alternative to CLI auth. Opening, refreshing, forming a Mission, inspecting Admin, and moving the timeline never launches Codex. Each Codex-backed action is explicit.
 
-Docker and a published container image are not required. Judges who prefer an isolated container can build the same deterministic mock experience locally:
+For offline product inspection, or to reproduce the submitted three-minute video exactly:
 
 ```bash
-docker compose up --build
+npm run record:demo
 ```
+
+Recording mode is deterministic and credential-free. It exercises the same domain and presentation contracts, but live mode is the technical-evaluation path. Docker and a prebuilt image are not required.
 
 ## Three-Minute Demo Script
 
@@ -37,7 +40,7 @@ docker compose up --build
 | 2:00 | Synthesise returned memories | Knowledge changes the waking implementation |
 | 2:20 | Run anchors and regression suite | Parent truth gates the agent |
 | 2:35 | Stabilise, reveal memories and diff, move timeline | Complete product outcome and replayability |
-| 2:50 | Show Mission Control's VAmPI preset and shared library | Password reset is an immutable Demo Mission, not hardcoding |
+| 2:50 | Show the branching graph, Reality Mirror, and VAmPI preset | Multiple futures and generalized use, not hardcoding |
 
 ## Real Codex Evaluation
 
@@ -52,9 +55,9 @@ Or set `CODEX_API_KEY`/`OPENAI_API_KEY` in an ignored `.env`. Real mode pins `gp
 
 Reality Engine reuses the judge's CLI authentication while isolating personal Codex plugins and MCPs by default. This makes the evaluation reproducible even when the judge has unrelated integrations configured; `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` is an explicit opt-in for missions that need them.
 
-**Mission Control** is available at `/missions`. Its default is a pinned VAmPI repository-maintenance Mission for one documented ownership regression. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit local source-review action. The prompt prohibits running a service or contacting targets, accounts, credentials, or network systems. The optional sealed intervention is off by default for VAmPI because its published defects already provide authorized counterfactual evidence.
+**Mission Control** is available at `/missions`. Its default is a pinned VAmPI repository-maintenance Mission for one documented ownership regression. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit local source-review action. The prompt prohibits running a service or contacting targets, accounts, credentials, or network systems. The controlled intervention is on by default at Dream depth two, remains bounded to configured local paths, fault class, files, lines, tokens, time, and a rollback checkpoint, and can be disabled before forming the Mission.
 
-The Mission Library lists the immutable password-reset Demo Mission beside user-created Missions. Password reset can be opened, exported, and reset but not deleted; user-created runs expose the full lifecycle. Every Mission opens in the same product shell: branded live-status header, five-stage phase tracker, Admin runtime controls, fixed action dock, Reality topology, ledgers, timeline, Memories, proofs, event stream, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
+The Mission Library lists the immutable password-reset Demo Mission beside user-created Missions. Password reset can be opened, exported, and reset but not deleted; user-created runs expose the full lifecycle. Every Mission opens in the same product shell and generalized runs also receive the Dream gate, waking outcome, Reality Mirror, memory-ascent view, staged Kick, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
 
 ## What to Inspect
 
@@ -74,12 +77,12 @@ The Mission Library lists the immutable password-reset Demo Mission beside user-
 - One persisted Codex SDK thread and Git worktree per Reality.
 - GPT-5.6 with high reasoning and full worktree capability in real mode.
 - Native Codex subagents must produce auditable spawn and terminal return events.
-- Three nested Reality levels, structured Wake Reports, automatic memory-integrity seals, stale-memory rejection, SSE, Prisma/SQLite, worktree recovery, and proof-gated synthesis.
+- Branching nested Reality graphs, competing sibling comparison, structured Wake Reports, automatic memory-integrity seals, controlled-fault containment, stale-memory rejection, SSE, Prisma/SQLite, worktree recovery, and proof-gated synthesis.
 - Mock and real modes use the same schemas and orchestration boundaries.
 
 ### Design
 
-- The UI centres the Reality tree, current premise, Subjects, evidence, belief changes, dream-time, memories, proofs, and diff.
+- The UI centres the branching Reality graph, current premise, Subjects, evidence, belief changes, dream-time, sibling reflection, memory ascent, proofs, and diff.
 - Action names state who acts, what changes, and whether Codex usage begins.
 - Refresh-stable operations, wall-clock timestamps, live filtering, timeline replay, usage visibility, and isolated Admin controls support first-time comprehension.
 

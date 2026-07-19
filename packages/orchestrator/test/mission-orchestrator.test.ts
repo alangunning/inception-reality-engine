@@ -63,6 +63,11 @@ class FakeMissionWorktrees implements WorktreeManagerPort {
   }
   async restoreCheckpoint(): Promise<void> {
     this.restoreCalls += 1;
+    for (const changedFile of this.changedFiles) {
+      for (const key of this.files.keys()) {
+        if (key.endsWith(`/${changedFile}`)) this.files.delete(key);
+      }
+    }
     this.changedFiles = [];
     this.changedDiff = "";
   }
@@ -106,6 +111,110 @@ function realRuntime(mock = new MockCodexRuntime()): CodexRuntime {
 }
 
 describe("MissionOrchestrator", () => {
+  it("compares sibling Dreams and admits only conclusions that survive the Reality Mirror", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      ...basicMission(),
+      dreamStrategy: "competing-siblings",
+      maxSiblingDreams: 2,
+      maxDreamDepth: 1
+    });
+
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    expect(snapshot.activeReality.proposals).toHaveLength(2);
+    for (let sibling = 0; sibling < 2; sibling += 1) {
+      snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+      snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+      snapshot = await orchestrator.act(snapshot.run.id, "kick");
+    }
+
+    expect(snapshot.run.realities.filter((reality) => reality.parentId === snapshot.activeReality.id))
+      .toHaveLength(2);
+    expect(snapshot.run.reflections).toHaveLength(1);
+    expect(snapshot.run.reflections[0]).toMatchObject({
+      parentRealityId: snapshot.activeReality.id,
+      realityIds: expect.arrayContaining(
+        snapshot.run.realities
+          .filter((reality) => reality.depth === 1)
+          .map((reality) => reality.id)
+      )
+    });
+    expect(snapshot.run.reflections[0]?.evidenceMatrix).toHaveLength(2);
+    expect(snapshot.run.events.some((event) => event.type === "reflection.created")).toBe(true);
+    expect(snapshot.nextAction?.id).toBe("synthesise");
+
+    snapshot = await orchestrator.act(snapshot.run.id, "synthesise");
+    snapshot = await orchestrator.act(snapshot.run.id, "verify");
+    snapshot = await orchestrator.act(snapshot.run.id, "stabilise");
+    expect(snapshot.run.outcome).toMatchObject({
+      metrics: {
+        realitiesExplored: 2,
+        maximumDepth: 1,
+        memoriesVerified: 2,
+        memoriesQuarantined: 0,
+        interventionsDetected: 0,
+        interventionsMissed: 0,
+        proofsPassed: 1,
+        proofsTotal: 1
+      }
+    });
+    expect(snapshot.run.events.find((event) => event.type === "synthesis.completed")?.payload)
+      .toMatchObject({
+        siblingReflectionCount: 1,
+        conclusionPolicy: "shared-invariants-only"
+      });
+  });
+
+  it("runs guided real auto mode only after explicit start and pauses at a Dream gate", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    const created = await orchestrator.create({
+      ...basicMission(),
+      maxDreamDepth: 1
+    });
+    expect(created.run.autopilot.mode).toBe("off");
+    expect(created.run.events.some((event) => event.type === "autopilot.started")).toBe(false);
+
+    await orchestrator.controlAutopilot(created.run.id, {
+      command: "start",
+      options: { maxActions: 10, maxMinutes: 5 }
+    });
+    let paused = await orchestrator.snapshot(created.run.id);
+    for (let attempt = 0; attempt < 50 && paused.run.autopilot.mode === "running"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      paused = await orchestrator.snapshot(created.run.id);
+    }
+    expect(paused.run.autopilot).toMatchObject({
+      mode: "paused",
+      actionsCompleted: 1
+    });
+    expect(paused.nextAction?.id).toBe("create_dream");
+    expect(paused.run.events.some((event) => event.type === "autopilot.paused")).toBe(true);
+
+    await orchestrator.controlAutopilot(created.run.id, { command: "resume" });
+    let completed = await orchestrator.snapshot(created.run.id);
+    for (let attempt = 0; attempt < 100 && completed.run.autopilot.mode === "running"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      completed = await orchestrator.snapshot(created.run.id);
+    }
+    expect(completed.run.autopilot.mode).toBe("completed");
+    expect(completed.run.status).toBe("stabilised");
+    expect(completed.run.events.some((event) => event.type === "autopilot.completed")).toBe(true);
+  });
+
   it("forms without Codex usage, then supports auditable nested real-mode Dreams", async () => {
     const mock = new MockCodexRuntime();
     let inspections = 0;
@@ -276,9 +385,32 @@ describe("MissionOrchestrator", () => {
       intervene: async (reality, contract, onEvent) => {
         worktrees.changedFiles = ["src/sealed-intervention.ts"];
         worktrees.changedDiff = "diff --git a/src/sealed-intervention.ts b/src/sealed-intervention.ts\n+permission regression\n";
+        await worktrees.writeFile(
+          reality.worktreePath!,
+          "src/sealed-intervention.ts",
+          "export const permissionRegression = true;\n"
+        );
         return mock.intervene(reality, contract, onEvent);
       },
-      wake: (...args) => mock.wake(...args),
+      wake: async (reality, onEvent) => {
+        const result = await mock.wake(reality, onEvent);
+        return {
+          ...result,
+          report: {
+            ...result.report,
+            artefacts: [
+              ...result.report.artefacts,
+              {
+                name: "Injected permission regression",
+                path: "src/sealed-intervention.ts",
+                kind: "patch" as const,
+                summary: "The controlled mutation must never leave this Dream.",
+                content: "export const permissionRegression = true;\n"
+              }
+            ]
+          }
+        };
+      },
       synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
     };
     const orchestrator = new MissionOrchestrator(
@@ -331,6 +463,7 @@ describe("MissionOrchestrator", () => {
     expect(snapshot.nextAction?.id).toBe("intervene");
     snapshot = await orchestrator.act(snapshot.run.id, "intervene");
     const sealed = snapshot.run.interventions[0]!;
+    expect(snapshot.activeReality.codexThreadId).toBe(`mock-thread-${snapshot.activeReality.id}`);
     expect(sealed.status).toBe("sealed");
     expect(sealed.changedFileCount).toBe(1);
     expect(sealed.report).toBeUndefined();
@@ -351,7 +484,18 @@ describe("MissionOrchestrator", () => {
       faultClassMatched: true,
       missedFiles: []
     });
+    expect(revealed.containedAt).toBeTruthy();
+    expect(revealed.excludedArtefactPaths).toEqual(["src/sealed-intervention.ts"]);
+    expect(snapshot.run.memories[0]?.artefacts).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "src/sealed-intervention.ts" })
+    ]));
+    expect(worktrees.restoreCalls).toBe(2);
     expect(snapshot.run.events.some((event) => event.type === "intervention.revealed")).toBe(true);
+    expect(snapshot.run.events.some((event) => event.type === "intervention.contained")).toBe(true);
+
+    snapshot = await orchestrator.act(snapshot.run.id, "synthesise");
+    const root = snapshot.run.realities.find((entry) => entry.kind === "waking")!;
+    expect(worktrees.files.has(`${root.worktreePath}/src/sealed-intervention.ts`)).toBe(false);
   });
 
   it("restores the Dream baseline when an intervention changes a protected path", async () => {
@@ -450,6 +594,11 @@ describe("MissionOrchestrator", () => {
       intervene: async (reality, contract, onEvent) => {
         worktrees.changedFiles = ["src/sealed-intervention.ts"];
         worktrees.changedDiff = "+permission regression\n";
+        await worktrees.writeFile(
+          reality.worktreePath!,
+          "src/sealed-intervention.ts",
+          "permission regression\n"
+        );
         return mock.intervene(reality, contract, onEvent);
       },
       wake: (...args) => mock.wake(...args),

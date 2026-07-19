@@ -41,7 +41,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260718.9";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.1";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,
@@ -136,6 +136,7 @@ function createRepository(repoRoot: string): {
         || !prisma.demoSessionRecord
         || !prisma.realityRunArchiveRecord
         || !prisma.missionRunRecord
+        || !prisma.missionEventRecord
       ) {
         throw new Error("Generated Prisma models are unavailable");
       }

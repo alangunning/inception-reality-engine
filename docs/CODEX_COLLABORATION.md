@@ -1,7 +1,7 @@
 # Codex and GPT-5.6 Collaboration
 
 **Version:** 0.1.0
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-19
 
 ## How Codex Accelerated the Build
 
@@ -17,7 +17,7 @@ High-leverage contributions included:
 - enriching SDK events without persisting raw reasoning or raw tool output;
 - building refresh-stable operation state and retrospective safe logs;
 - validating nested Wake artefacts against executable proof;
-- creating responsive Playwright coverage for the complete demo.
+- creating desktop and tablet Playwright coverage for the complete demo.
 
 ## Human Product and Engineering Decisions
 
@@ -31,7 +31,9 @@ The human owner made the decisions that define the product:
 - retain the timeline replay because it improves comprehension and compresses a three-minute demo;
 - treat schema validation as necessary but insufficient, adding automatic memory-integrity seals and descendant lineage before synthesis;
 - use a pinned VAmPI training target for the general security demo while keeping clone, execution, and Codex usage explicit;
-- bound the chaos-engineer Subject with operator-owned paths, fault classes, budgets, rollback, and automatic quarantine rather than allowing unrelated mutation;
+- bound the controlled resilience Subject with operator-owned paths, fault classes, budgets, automatic rollback, injected-artefact exclusion, and quarantine rather than allowing unrelated mutation;
+- make sibling counterfactuals and their disagreements visible in a branching Reality graph instead of reducing the engine to a depth counter;
+- recommend real Codex for judge evaluation while preserving deterministic mock mode for a repeatable recording;
 - keep Admin stop/reset controls outside the narrative UI;
 - reject generic activity messages in favour of evidence-rich events.
 

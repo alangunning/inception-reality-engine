@@ -28,8 +28,13 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       context.params,
       request.json().then((value) => MissionActionSchema.parse(value))
     ]);
-    const snapshot = await getRuntime().missionOrchestrator.act(id, action);
-    return Response.json(snapshot, { headers: { "Cache-Control": "no-store" } });
+    const orchestrator = getRuntime().missionOrchestrator;
+    const snapshot = await orchestrator.act(id, action);
+    const events = await orchestrator.events(id, 500);
+    return Response.json({
+      ...snapshot,
+      run: { ...snapshot.run, events }
+    }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     const validation = error instanceof CodexOutputValidationError
       ? {

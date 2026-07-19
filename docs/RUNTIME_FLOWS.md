@@ -2,7 +2,7 @@
 
 **Flow version:** 0.1.0
 **Status:** Hackathon submission candidate
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-19
 
 ## Canonical Three-Level Flow
 
@@ -48,7 +48,7 @@ sequenceDiagram
   O->>P: execute anchors and inherited regression
   P-->>O: proof results
   Judge->>UI: Stabilise
-  O-->>UI: final diff, beliefs, memories, Reality tree
+  O-->>UI: final diff, beliefs, memories, branching Reality graph
 ```
 
 The nested attack artefact is not prewritten in real mode. The nested Reality must create a real test in its own worktree, retain it, and execute it. The orchestrator requires the pre-synthesis test to fail, proving that the counterfactual exposed a real missing invariant.
@@ -124,14 +124,16 @@ sequenceDiagram
     opt Bounded intervention at configured depth
       Developer->>O: Run sealed intervention
       O->>G: Retain rollback checkpoint
-      O->>C: Start fresh coordinator
-      C->>S: spawn exact chaos-engineer Subject
+      O->>C: Resume the Reality's persisted coordinator thread
+      C->>S: spawn exact controlled resilience Subject
       S-->>C: one bounded reversible mutation
       O->>G: validate diff and seal private commit
     end
   end
   Developer->>O: Kick deepest Dream
   C-->>O: Validated Wake Report
+  O->>O: Reveal and score any sealed intervention diagnosis
+  O->>G: Restore intervention baseline and retain only safe investigator artefacts
   O->>O: Verify Reality Totem and descendant seals
   alt Any integrity check fails
     O-->>M: Memory quarantined; uncertainty reopened
@@ -146,6 +148,36 @@ sequenceDiagram
   O->>G: Execute structured proof commands
   O-->>M: Stabilised or repair required
 ```
+
+## Competing Sibling Flow
+
+```mermaid
+sequenceDiagram
+  actor Developer
+  participant P as Parent Reality
+  participant A as Dream A
+  participant B as Dream B
+  participant M as Reality Mirror
+  participant W as Waking Reality
+
+  P->>A: Create first counterfactual from proposal A
+  A-->>P: Kick with verified memory A
+  P->>B: Create competing counterfactual from proposal B
+  B-->>P: Kick with verified memory B
+  P->>M: Compare evidence matrices
+  M-->>P: Shared invariants + explicit disagreements
+  P->>W: Synthesise shared invariants only
+  M-->>W: Retain disagreement as remaining uncertainty
+```
+
+The UI lays every parent, sibling, and descendant out as a scrollable graph. A returned-memory animation follows the exact child-to-parent edge; the Reality Mirror shows what survived both worlds before waking synthesis.
+
+## Explicit Auto Modes
+
+- **Recording autopilot** runs only in deterministic mock mode and only after **Start recording auto**. It supports pause, resume, and stop.
+- **Guided real auto** is persisted server-side and bounded by actions, wall time, Dream depth, and the Mission's observed token ceiling.
+- Guided real auto pauses before a Dream, controlled intervention, proof failure, quarantine, safety refusal, fracture, or budget boundary.
+- A server restart converts a persisted `running` controller into `paused`; opening a page can never resume Codex implicitly.
 
 ## Refresh and Failure Recovery
 

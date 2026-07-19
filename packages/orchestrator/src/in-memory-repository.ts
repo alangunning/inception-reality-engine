@@ -13,6 +13,7 @@ export class InMemoryRealityRepository implements RealityRepository {
   private session: DemoSession | null = null;
   private archives: RealityRunArchive[] = [];
   private missionRuns = new Map<string, MissionRun>();
+  private missionEvents = new Map<string, RealityEvent[]>();
 
   async saveReality(reality: Reality): Promise<void> {
     this.realities.set(reality.id, structuredClone(reality));
@@ -51,7 +52,21 @@ export class InMemoryRealityRepository implements RealityRepository {
     this.missionRuns.set(run.id, structuredClone(run));
   }
   async getMissionRun(id: string): Promise<MissionRun | null> {
-    return structuredClone(this.missionRuns.get(id) ?? null);
+    const run = structuredClone(this.missionRuns.get(id) ?? null);
+    if (!run) return null;
+    const events = this.missionEvents.get(id) ?? run.events;
+    run.eventCount = Math.max(run.eventCount, events.length);
+    if (!run.observedTokens) {
+      run.observedTokens = events.reduce((total, event) => {
+        const metadata = event.payload.metadata;
+        if (!metadata || typeof metadata !== "object") return total;
+        const values = metadata as Record<string, unknown>;
+        return total
+          + (typeof values.inputTokens === "number" ? values.inputTokens : 0)
+          + (typeof values.outputTokens === "number" ? values.outputTokens : 0);
+      }, 0);
+    }
+    return run;
   }
   async listMissionRuns(limit = 20): Promise<MissionRun[]> {
     return [...this.missionRuns.values()]
@@ -59,8 +74,25 @@ export class InMemoryRealityRepository implements RealityRepository {
       .slice(0, limit)
       .map((run) => structuredClone(run));
   }
+  async appendMissionEvent(missionId: string, event: RealityEvent): Promise<void> {
+    const events = this.missionEvents.get(missionId) ?? [];
+    if (!events.some((candidate) => candidate.id === event.id)) {
+      events.push(structuredClone(event));
+      this.missionEvents.set(missionId, events);
+    }
+  }
+  async listMissionEvents(missionId: string, limit = 500, before?: string): Promise<RealityEvent[]> {
+    const [beforeTime, beforeId] = before?.split("|") ?? [];
+    return (this.missionEvents.get(missionId) ?? [])
+      .filter((event) => !beforeTime
+        || event.occurredAt < beforeTime
+        || (event.occurredAt === beforeTime && event.id < (beforeId ?? "")))
+      .slice(-limit)
+      .map((event) => structuredClone(event));
+  }
   async deleteMissionRun(id: string): Promise<void> {
     this.missionRuns.delete(id);
+    this.missionEvents.delete(id);
   }
   async deleteAll(): Promise<void> {
     this.realities.clear();

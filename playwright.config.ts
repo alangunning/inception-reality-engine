@@ -18,6 +18,7 @@ export default defineConfig({
   },
   use: {
     baseURL: "http://127.0.0.1:3100",
+    reducedMotion: "reduce",
     trace: "retain-on-failure",
     screenshot: "only-on-failure"
   },
@@ -48,9 +49,10 @@ export default defineConfig({
       }
     },
     {
-      name: "mobile",
+      name: "tablet",
       use: {
-        ...devices["Pixel 5"]
+        ...devices["Desktop Chrome"],
+        viewport: { width: 1024, height: 900 }
       }
     }
   ]

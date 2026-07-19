@@ -2,7 +2,7 @@
 
 **Architecture version:** 0.1.0
 **Status:** Hackathon submission candidate
-**Last reviewed:** 2026-07-18
+**Last reviewed:** 2026-07-19
 
 ## Purpose
 
@@ -121,7 +121,27 @@ classDiagram
 - **Memory Integrity Seal / Reality Totem:** orchestrator-owned admission record binding one Wake Report to its source state, parent anchors, evidence, artefacts, descendant seals, and intervention verdict.
 - **Reality Anchor:** immutable parent-owned proof; a child inherits it but cannot mutate it.
 - **Kick:** the transition that stops exploration and requests a Wake Report.
-- **Sealed intervention:** optional operator-bounded adversarial mutation applied before investigator Subjects enter; its private ledger is revealed only after diagnosis.
+- **Sealed intervention:** optional operator-bounded controlled mutation applied before investigator Subjects enter; its private ledger is revealed only after diagnosis, then its changed paths are rolled back and excluded before memory is sealed.
+
+## Reality Graph and Reflection
+
+```mermaid
+flowchart LR
+  R0[Waking Reality] --> A[Dream A]
+  R0 --> B[Competing Dream B]
+  A --> A1[Nested Dream A.1]
+  A --> A2[Nested Dream A.2]
+  B --> B1[Nested Dream B.1]
+  A1 -->|verified memory| A
+  A2 -->|verified or quarantined| A
+  B1 -->|verified memory| B
+  A --> M[Reality Mirror]
+  B --> M
+  M -->|shared invariants only| R0
+  M -->|disagreements retained| U[Remaining uncertainty]
+```
+
+The topology is a real parent-child graph layout, not a depth meter. Every sibling and nested Reality remains selectable and replayable. Under `competing-siblings`, Codex proposes two materially different worlds; the orchestrator creates siblings, compares their evidence and invariants in a `DreamReflection`, and limits synthesis to conclusions shared across those worlds. Disagreements remain visible rather than being averaged away.
 
 ## Runtime Modes
 
@@ -163,6 +183,8 @@ Zod validation establishes structure, not truth. Every Kick therefore runs `Memo
 8. require verified seals and unchanged Git sources for all returned descendant memories;
 9. compare any sealed intervention with the investigator diagnosis.
 
+For a sealed intervention, comparison happens while the controlled mutation is still observable. The orchestrator then captures only non-injected investigator artefacts, restores the pre-intervention Git checkpoint, removes every injected path from the Wake Report, and seals that sanitized source. A partial diagnosis quarantines the report; an exact diagnosis admits knowledge, never the planted mutation.
+
 New seals use `memory-integrity/v2`; persisted `v1` seals remain readable for retrospective logs. A failed check produces a durable `quarantined` seal and `memory.quarantined` event. The parent reopens the uncertainty; the Wake Report never enters the admitted memory list. Synthesis rechecks report digests, descendant seal IDs, source `HEAD`, and worktree cleanliness, rejecting stale or altered memory without asking for a human approval click.
 
 Confidence values and Dream costs are labelled as model-reported estimates. Trust is derived from evidence:
@@ -191,9 +213,9 @@ This prevents test resets from deleting live worktrees. If a persisted Reality l
 
 ## Persistence
 
-Prisma is the production adapter and SQLite is the portable fallback. Both persist validated Reality state, event history, demo sessions, run archives, and Mission runs. The in-memory event bus carries the same validated `RealityEvent` objects over SSE.
+Prisma is the production adapter and SQLite is the portable fallback. Both persist validated Reality state, append-only Mission events, demo sessions, run archives, and Mission runs. Mission snapshots retain a bounded recent window while cursor APIs page through the durable history; SSE pushes each validated event incrementally and schedules a debounced state reconciliation instead of reloading the run for every progress signal.
 
-The password-reset Demo Mission and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, memory reports, integrity seals, immutable proofs, inspectable event feed, and final diff. Mission Control exposes them through one capability-aware library contract. The Demo Mission has a stable route and supports open, export, and reset, but not deletion. User-created Mission deletion is scoped to that Mission's worktrees and branches. Password-reset archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
+The password-reset Demo Mission and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, branching Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, Dream confirmation, staged Kick, memory ascent, Reality Mirror, waking outcome, integrity seals, immutable proofs, inspectable event feed, and final diff. Mission Control exposes them through one capability-aware library contract. The Demo Mission has a stable route and supports open, export, and reset, but not deletion. User-created Mission deletion is scoped to that Mission's worktrees and branches. Password-reset archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
 
 ## Architecture Decisions
 
