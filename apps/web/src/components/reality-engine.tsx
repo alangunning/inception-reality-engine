@@ -2165,6 +2165,7 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
   const progress = snapshot.session.phase * 10;
   const isDream = next?.kind === "dream";
   const isKick = next?.kind === "kick";
+  const isRetryingKick = isKick && next.retry;
   const isStandard = next && !isDream && !isKick;
   const complete = snapshot.session.phase === 10 && !next;
   const runsCodex = (operation?.executor ?? next?.executor) === "codex";
@@ -2202,7 +2203,7 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
         <MoonStar size={17} /> {isDream ? next.label : "Dream"}
       </button>
       <button type="button" className={`kick-command ${isKick ? "is-next" : ""}`} data-testid="kick-action" onClick={() => next && onAction(next.id)} disabled={busy || !isKick}>
-        <ArrowUpFromLine size={17} /> {isKick ? "Kick and return memory" : "Kick"}
+        <ArrowUpFromLine size={17} /> {isRetryingKick ? "Retry Kick and return memory" : isKick ? "Kick and return memory" : "Kick"}
       </button>
       <button
         type="button"

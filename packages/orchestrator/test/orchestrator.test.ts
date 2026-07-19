@@ -988,6 +988,58 @@ describe("RealityOrchestrator", () => {
     }
   });
 
+  it("presents a rejected nested Kick as an explicit retry without advancing the Reality", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-kick-retry-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const actions: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream"
+      ];
+      for (const action of actions) await orchestrator.act(action);
+      const failed = await orchestrator.snapshot();
+      await repository.saveSession({
+        ...failed.session,
+        autopilot: {
+          mode: "paused",
+          kind: "guided-real",
+          maxActions: 20,
+          maxMinutes: 180,
+          paceMilliseconds: 1_000,
+          pauseOnDream: true,
+          actionsCompleted: 8,
+          activeMilliseconds: 0,
+          startedAt: "2026-07-19T19:11:26.479Z",
+          lastAction: "wake_nested",
+          pauseReason: "The configured guided-auto wall-clock limit was reached.",
+          updatedAt: new Date().toISOString()
+        }
+      });
+
+      const retry = await orchestrator.snapshot();
+      expect(retry.session.phase).toBe(5);
+      expect(retry.nextAction).toMatchObject({
+        id: "wake_nested",
+        retry: true,
+        label: expect.stringMatching(/^Retry Kick .*return validated memory$/)
+      });
+      expect(retry.session.autopilot.pauseReason).toContain("Inactive and paused time was excluded");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
   it("does not admit a configuration failure as decisive counterfactual evidence", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-test-evidence-"));
     try {

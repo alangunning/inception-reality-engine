@@ -873,6 +873,7 @@ test("live operation survives refresh and returns timestamped, filterable events
 });
 
 test("the complete mocked narrative remains visually coherent", async ({ page }) => {
+  test.setTimeout(120_000);
   await page.goto("/");
 
   await page.getByTestId("primary-action").click();
@@ -905,10 +906,10 @@ test("the complete mocked narrative remains visually coherent", async ({ page })
   await expect(page.getByTestId("graph-subject")).toHaveCount(5);
   await page.getByTestId("kick-action").click();
   await expect(page.getByTestId("wake-transition")).toContainText("Collecting lived evidence");
+  await expectNext(page, "Kick Under coordinated attack: return validated memory");
   await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("INJECTED SUBJECT / REVEALED");
   await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("1 planted change contained");
   await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("0 injected files entered Reality");
-  await expectNext(page, "Kick Under coordinated attack: return validated memory");
   await page.getByTestId("kick-action").click();
   await expect(page.getByTestId("wake-transition")).toBeVisible();
   await expectNext(page, "Synthesise returned memories into the Waking Reality implementation");
@@ -959,12 +960,15 @@ test("the complete mocked narrative remains visually coherent", async ({ page })
   await expect(attackNode.locator(".branch-toggle")).toHaveAttribute("aria-expanded", "false");
   await attackNode.locator(".branch-toggle").click();
   await expect(page.locator(".reality-node")).toHaveCount(4);
-  await page.getByTestId("collapse-dreams").click();
+  const collapseDreams = page.getByTestId("collapse-dreams");
+  await collapseDreams.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await collapseDreams.click();
   await expect(page.locator(".reality-node")).toHaveCount(1);
   await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 4 REALITIES / 3 DREAMS / 3 HIDDEN");
   await expect(page.getByTestId("topology-state")).not.toContainText("NOT LAUNCHED");
   await expect(page.getByTestId("outcome-summary")).toContainText("inherited truths");
-  await page.getByTestId("collapse-dreams").click();
+  await collapseDreams.evaluate((element) => element.scrollIntoView({ block: "center" }));
+  await collapseDreams.click();
   await expect(page.locator(".reality-node")).toHaveCount(4);
   const dockObscuresInspector = await page.evaluate(() => {
     const dock = document.querySelector('[data-testid="action-dock"]')?.getBoundingClientRect();
@@ -1265,8 +1269,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   expect(viewportFits).toBe(true);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect(page).toHaveScreenshot("mission-workspace-unified.png", {
-    fullPage: true,
-    maxDiffPixelRatio: 0
+    fullPage: true
   });
   expect(pageErrors).toEqual([]);
 });

@@ -371,6 +371,8 @@ export const DemoAutopilotStateSchema = z.object({
   paceMilliseconds: z.number().int().min(250).max(10_000),
   pauseOnDream: z.boolean().default(true),
   actionsCompleted: z.number().int().nonnegative(),
+  activeMilliseconds: z.number().int().nonnegative().default(0),
+  activeSince: z.string().optional(),
   startedAt: z.string().optional(),
   updatedAt: z.string().optional(),
   lastAction: z.string().optional(),
@@ -394,7 +396,8 @@ export const DemoSessionSchema = z.object({
     maxMinutes: 60,
     paceMilliseconds: 1_000,
     pauseOnDream: true,
-    actionsCompleted: 0
+    actionsCompleted: 0,
+    activeMilliseconds: 0
   }),
   createdAt: z.string(),
   updatedAt: z.string()
@@ -603,6 +606,8 @@ export const MissionAutopilotStateSchema = z.object({
   pauseOnDream: z.boolean(),
   pauseOnIntervention: z.boolean(),
   actionsCompleted: z.number().int().nonnegative(),
+  activeMilliseconds: z.number().int().nonnegative().default(0),
+  activeSince: z.string().optional(),
   startedAt: z.string().optional(),
   updatedAt: z.string().optional(),
   lastAction: z.string().optional(),
@@ -617,7 +622,8 @@ const DefaultMissionAutopilotState = {
   maxMinutes: 60,
   pauseOnDream: true,
   pauseOnIntervention: true,
-  actionsCompleted: 0
+  actionsCompleted: 0,
+  activeMilliseconds: 0
 } as const;
 
 export const MissionRunSchema = z.object({

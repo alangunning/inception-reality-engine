@@ -39,6 +39,14 @@ function normaliseIdentity(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+function matchesAgentPath(agentPath: string, subject: Subject): boolean {
+  const taskIdentity = normaliseIdentity(agentPath);
+  const identities = [subject.name, subject.role]
+    .map(normaliseIdentity)
+    .filter((identity) => identity.length >= 4);
+  return identities.some((identity) => taskIdentity.includes(identity));
+}
+
 export interface CodexSubjectRegistryOptions {
   codexHome: string;
   sqliteHome: string;
@@ -217,17 +225,20 @@ export class CodexSubjectRegistryTrace {
     const candidates = charterIds
       .map((id) => this.subjects.get(id))
       .filter((subject): subject is Subject => Boolean(subject));
-    const taskIdentity = normaliseIdentity(row.agent_path ?? "");
-    const taskMatches = candidates.filter((subject) => {
-      const name = normaliseIdentity(subject.name);
-      const role = normaliseIdentity(subject.role);
-      return (name.length > 0 && taskIdentity.includes(name))
-        || (role.length > 0 && taskIdentity.includes(role));
-    });
+    const agentPath = row.agent_path ?? "";
+    const taskMatches = candidates.filter((subject) => matchesAgentPath(agentPath, subject));
+    const activePathMatches = [...this.subjects.values()]
+      .filter((subject) => matchesAgentPath(agentPath, subject));
     const charter = taskMatches.length === 1
       ? taskMatches[0]
       : candidates.length === 1
+        && (
+          activePathMatches.length === 0
+          || (activePathMatches.length === 1 && activePathMatches[0]?.id === candidates[0]?.id)
+        )
         ? candidates[0]
+        : candidates.length === 0 && activePathMatches.length === 1
+          ? activePathMatches[0]
         : undefined;
     const identity = charter?.id
       ?? row.agent_path?.trim()

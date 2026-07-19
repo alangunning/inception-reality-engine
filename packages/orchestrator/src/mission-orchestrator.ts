@@ -30,6 +30,11 @@ import {
 import type { RealityEventBus, RealityRepository } from "./ports";
 import { MemoryIntegrityService } from "./memory-integrity-service";
 import { CounterfactualReflectionService } from "./counterfactual-reflection-service";
+import {
+  autopilotActiveMilliseconds,
+  pauseAutopilotClock,
+  resumeAutopilotClock
+} from "./autopilot-clock";
 import type {
   MissionWorkspaceFactoryPort,
   WorktreeManagerPort
@@ -308,7 +313,8 @@ export class MissionOrchestrator {
         maxMinutes: 60,
         pauseOnDream: true,
         pauseOnIntervention: true,
-        actionsCompleted: 0
+        actionsCompleted: 0,
+        activeMilliseconds: 0
       },
       proofResults: [],
       finalDiff: "",
@@ -326,16 +332,31 @@ export class MissionOrchestrator {
   async snapshot(id: string): Promise<MissionSnapshot> {
     const run = await this.requireRun(id);
     if (
+      run.autopilot.mode === "paused"
+      && run.autopilot.pauseReason === "The configured auto-mode wall-clock limit was reached."
+      && run.autopilot.activeMilliseconds < run.autopilot.maxMinutes * 60_000
+    ) {
+      run.autopilot = {
+        ...run.autopilot,
+        pauseReason: "Inactive and paused time was excluded from the active-runtime limit. Retry the pending Reality action when ready.",
+        approvedAction: undefined,
+        updatedAt: now()
+      };
+      await this.repository.saveMissionRun(MissionRunSchema.parse(run));
+    }
+    if (
       run.autopilot.mode === "running"
       && !this.autopilotControls.has(id)
       && !this.autopilotLoops.has(id)
     ) {
       const active = this.requireActive(run);
+      const timestamp = now();
       run.autopilot = {
         ...run.autopilot,
+        ...pauseAutopilotClock(run.autopilot, run.autopilot.updatedAt ?? timestamp),
         mode: "paused",
         pauseReason: "The server restarted; resume explicitly so page load never starts Codex.",
-        updatedAt: now()
+        updatedAt: timestamp
       };
       await this.emit(
         run,
@@ -393,6 +414,8 @@ export class MissionOrchestrator {
         pauseOnDream: options.pauseOnDream ?? true,
         pauseOnIntervention: options.pauseOnIntervention ?? true,
         actionsCompleted: 0,
+        activeMilliseconds: 0,
+        activeSince: timestamp,
         startedAt: timestamp,
         updatedAt: timestamp
       };
@@ -412,6 +435,7 @@ export class MissionOrchestrator {
       }
       run.autopilot = {
         ...run.autopilot,
+        ...resumeAutopilotClock(run.autopilot, timestamp),
         mode: "running",
         approvedAction: this.describeAction(run, active)?.id,
         pauseReason: undefined,
@@ -424,6 +448,7 @@ export class MissionOrchestrator {
       const mode = command.command === "pause" ? "paused" as const : "stopped" as const;
       run.autopilot = {
         ...run.autopilot,
+        ...pauseAutopilotClock(run.autopilot, timestamp),
         mode,
         pauseReason: command.command === "pause"
           ? "Paused by the operator after the current action."
@@ -504,6 +529,7 @@ export class MissionOrchestrator {
     if (retry && run.autopilot.mode === "paused") {
       run.autopilot = {
         ...run.autopilot,
+        ...resumeAutopilotClock(run.autopilot, approvedAt),
         mode: "running",
         approvedAction: "intervene",
         pauseReason: undefined,
@@ -2203,15 +2229,13 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
       const control = this.autopilotControls.get(id) ?? run.autopilot;
       if (control.mode !== "running") return;
       const active = this.requireActive(run);
-      const elapsedMinutes = control.startedAt
-        ? (Date.now() - new Date(control.startedAt).getTime()) / 60_000
-        : 0;
+      const elapsedMinutes = autopilotActiveMilliseconds(control) / 60_000;
       if (control.actionsCompleted >= control.maxActions) {
         await this.pauseAutopilot(run, active, "The configured auto-mode action limit was reached.");
         return;
       }
       if (elapsedMinutes >= control.maxMinutes) {
-        await this.pauseAutopilot(run, active, "The configured auto-mode wall-clock limit was reached.");
+        await this.pauseAutopilot(run, active, "The configured auto-mode active-runtime limit was reached.");
         return;
       }
       if (run.status === "fractured") {
@@ -2220,10 +2244,12 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
       }
       const next = this.describeAction(run, active);
       if (!next) {
+        const timestamp = now();
         const completed = {
           ...control,
+          ...pauseAutopilotClock(control, timestamp),
           mode: "completed" as const,
-          updatedAt: now(),
+          updatedAt: timestamp,
           pauseReason: undefined,
           approvedAction: undefined
         };
@@ -2293,11 +2319,13 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
     reason: string
   ): Promise<void> {
     const current = this.autopilotControls.get(run.id) ?? run.autopilot;
+    const timestamp = now();
     const paused = {
       ...current,
+      ...pauseAutopilotClock(current, timestamp),
       mode: "paused" as const,
       pauseReason: reason,
-      updatedAt: now()
+      updatedAt: timestamp
     };
     this.autopilotControls.set(run.id, paused);
     run.autopilot = paused;

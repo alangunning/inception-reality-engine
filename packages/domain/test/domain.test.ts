@@ -230,10 +230,23 @@ describe("Reality domain", () => {
       finalDiff: "",
       anchorResults: [],
       memoryIntegrity: [],
+      autopilot: {
+        mode: "paused",
+        kind: "guided-real",
+        maxActions: 20,
+        maxMinutes: 180,
+        paceMilliseconds: 1_000,
+        pauseOnDream: true,
+        actionsCompleted: 8,
+        startedAt: "2026-07-19T19:11:26.479Z",
+        pauseReason: "Waiting for operator review."
+      },
       createdAt: timestamp,
       updatedAt: timestamp
     });
     expect(parsed.interventions).toEqual([]);
+    expect(parsed.autopilot.activeMilliseconds).toBe(0);
+    expect(parsed.autopilot.activeSince).toBeUndefined();
   });
 
   it("keeps v1 memory seals readable while requiring every v2 integrity check", () => {

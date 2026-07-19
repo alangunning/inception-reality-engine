@@ -100,7 +100,8 @@ describe("SqliteRealityRepository", () => {
         maxMinutes: 60,
         paceMilliseconds: 1_000,
         pauseOnDream: true,
-        actionsCompleted: 0
+        actionsCompleted: 0,
+        activeMilliseconds: 0
       },
       regressionResult: {
         status: "passed",

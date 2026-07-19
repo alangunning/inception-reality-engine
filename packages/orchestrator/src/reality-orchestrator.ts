@@ -36,6 +36,11 @@ import {
 } from "./demo-fixture";
 import type { RealityEventBus, RealityRepository } from "./ports";
 import { SynthesisService } from "./synthesis-service";
+import {
+  autopilotActiveMilliseconds,
+  pauseAutopilotClock,
+  resumeAutopilotClock
+} from "./autopilot-clock";
 
 export type DemoAction =
   | "inspect"
@@ -67,6 +72,7 @@ export interface DemoNextAction {
   verb: string;
   target: string;
   label: string;
+  retry: boolean;
 }
 
 export interface DemoSnapshot {
@@ -288,7 +294,8 @@ export class RealityOrchestrator {
           maxMinutes: 60,
           paceMilliseconds: 1_000,
           pauseOnDream: true,
-          actionsCompleted: 0
+          actionsCompleted: 0,
+          activeMilliseconds: 0
         },
         createdAt: timestamp,
         updatedAt: timestamp
@@ -319,10 +326,25 @@ export class RealityOrchestrator {
       && !this.demoAutopilotControl
       && !this.demoAutopilotLoop
     ) {
+      const timestamp = new Date().toISOString();
       session.autopilot = {
         ...session.autopilot,
+        ...pauseAutopilotClock(session.autopilot, session.autopilot.updatedAt ?? timestamp),
         mode: "paused",
         pauseReason: "The server restarted; resume explicitly to continue without starting Codex on page load.",
+        updatedAt: timestamp
+      };
+      await this.repository.saveSession(session);
+    }
+    if (
+      session.autopilot.mode === "paused"
+      && session.autopilot.pauseReason === "The configured guided-auto wall-clock limit was reached."
+      && session.autopilot.activeMilliseconds < session.autopilot.maxMinutes * 60_000
+    ) {
+      session.autopilot = {
+        ...session.autopilot,
+        pauseReason: "Inactive and paused time was excluded from the active-runtime limit. Retry the pending Reality action when ready.",
+        approvedAction: undefined,
         updatedAt: new Date().toISOString()
       };
       await this.repository.saveSession(session);
@@ -424,6 +446,8 @@ export class RealityOrchestrator {
         paceMilliseconds: Math.max(250, Math.min(command.paceMilliseconds ?? 1_000, 10_000)),
         pauseOnDream: command.pauseOnDream ?? true,
         actionsCompleted: 0,
+        activeMilliseconds: 0,
+        activeSince: timestamp,
         startedAt: timestamp,
         updatedAt: timestamp
       };
@@ -449,6 +473,7 @@ export class RealityOrchestrator {
       }
       session.autopilot = {
         ...session.autopilot,
+        ...resumeAutopilotClock(session.autopilot, timestamp),
         mode: "running",
         approvedAction: this.describeAction(session, reality)?.id,
         pauseReason: undefined,
@@ -460,6 +485,7 @@ export class RealityOrchestrator {
     } else {
       session.autopilot = {
         ...session.autopilot,
+        ...pauseAutopilotClock(session.autopilot, timestamp),
         mode: command.command === "pause" ? "paused" : "stopped",
         pauseReason: command.command === "pause"
           ? "Paused by the operator after the current Reality action."
@@ -529,6 +555,7 @@ export class RealityOrchestrator {
       }
       session.autopilot = {
         ...session.autopilot,
+        ...resumeAutopilotClock(session.autopilot, approvedAt),
         mode: "running",
         approvedAction: "intervene",
         pauseReason: undefined,
@@ -564,11 +591,13 @@ export class RealityOrchestrator {
 
   async reset(): Promise<DemoSnapshot> {
     if (this.demoAutopilotControl?.mode === "running") {
+      const timestamp = new Date().toISOString();
       this.demoAutopilotControl = {
         ...this.demoAutopilotControl,
+        ...pauseAutopilotClock(this.demoAutopilotControl, timestamp),
         mode: "stopped",
         pauseReason: "Stopped for full reset.",
-        updatedAt: new Date().toISOString()
+        updatedAt: timestamp
       };
     }
     if (this.activeOperation) {
@@ -2237,6 +2266,8 @@ ${laws || "- No additional runtime laws."}
       : ACTION_PLAN[session.phase];
     if (!definition || !reality) return null;
     const scope = reality.constitution.scope ?? reality.name;
+    const retryingRejectedAction = session.autopilot.mode === "paused"
+      && session.autopilot.lastAction === definition.id;
     const target = (() => {
       switch (definition.id) {
         case "inspect": return scope;
@@ -2264,14 +2295,14 @@ ${laws || "- No additional runtime laws."}
           ? `Retry the bounded controlled Subject in ${target}`
           : `Inject Mal under a sealed reversible contract in ${target}`;
         case "wake_nested":
-        case "wake_parent": return `Kick ${target}: ${definition.verb}`;
+        case "wake_parent": return `${retryingRejectedAction ? "Retry Kick" : "Kick"} ${target}: ${definition.verb}`;
         case "synthesise": return `Synthesise returned memories into the ${target}`;
         case "run_anchors": return `Run ${target}`;
         case "repair": return `Ask Codex to repair ${target}`;
         case "stabilise": return `Stabilise ${target}`;
       }
     })();
-    return { ...definition, target, label };
+    return { ...definition, target, label, retry: retryingRejectedAction };
   }
 
   private proofPassed(session: DemoSession, reality?: Reality | null): boolean {
@@ -2671,10 +2702,12 @@ ${laws || "- No additional runtime laws."}
         const active = session.activeRealityId
           ? await this.repository.getReality(session.activeRealityId)
           : null;
+        const timestamp = new Date().toISOString();
         const completed: DemoAutopilotState = {
           ...control,
+          ...pauseAutopilotClock(control, timestamp),
           mode: "completed",
-          updatedAt: new Date().toISOString(),
+          updatedAt: timestamp,
           pauseReason: undefined
         };
         this.demoAutopilotControl = completed;
@@ -2690,11 +2723,9 @@ ${laws || "- No additional runtime laws."}
         await this.pauseDemoAutopilot("The configured guided-auto action limit was reached.");
         return;
       }
-      const elapsedMinutes = control.startedAt
-        ? (Date.now() - new Date(control.startedAt).getTime()) / 60_000
-        : 0;
+      const elapsedMinutes = autopilotActiveMilliseconds(control) / 60_000;
       if (elapsedMinutes >= control.maxMinutes) {
-        await this.pauseDemoAutopilot("The configured guided-auto wall-clock limit was reached.");
+        await this.pauseDemoAutopilot("The configured guided-auto active-runtime limit was reached.");
         return;
       }
       const active = session.activeRealityId
@@ -2764,11 +2795,13 @@ ${laws || "- No additional runtime laws."}
   private async pauseDemoAutopilot(reason: string): Promise<void> {
     const session = await this.requireSession();
     const current = this.demoAutopilotControl ?? session.autopilot;
+    const timestamp = new Date().toISOString();
     const paused: DemoAutopilotState = {
       ...current,
+      ...pauseAutopilotClock(current, timestamp),
       mode: "paused",
       pauseReason: reason,
-      updatedAt: new Date().toISOString()
+      updatedAt: timestamp
     };
     this.demoAutopilotControl = paused;
     await this.repository.saveSession({ ...session, autopilot: paused });

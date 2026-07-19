@@ -356,7 +356,7 @@ Do not reuse a Subject or subjectReports entry from an earlier rejected turn. If
   return `SUBJECT ORCHESTRATION
 Use Codex subagent collaboration tools to spawn one direct subagent for each Subject below. Run them in parallel when capacity allows, keep every investigation bounded to its charter, and wait for every Subject to return before synthesis.
 ${charters}
-Include the exact SUBJECT_ID marker in each spawn_agent task so the returned child thread can be bound to its charter. Use wait_agent with timeout_ms=3600000 and wait again until every Subject is terminal.
+Start each spawn_agent task with only that Subject's exact SUBJECT_ID marker so the returned child thread can be bound to its charter. Do not copy markers belonging to returned or unrelated Subjects into the task. Use wait_agent with timeout_ms=3600000 and wait again until every Subject is terminal.
 You may close a Subject only after its native terminal status is completed; a running, interrupted, errored, or missing Subject is not return evidence.
 Do not reuse a Subject or subjectReports entry from an earlier rejected turn. Every report must be backed by a Subject spawned in this turn.
 Subjects inherit this Reality's worktree, constitution, model, and immutable anchors. They must return concise evidence and artefacts only, and must not spawn further subagents.`;

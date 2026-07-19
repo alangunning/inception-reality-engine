@@ -673,6 +673,147 @@ describe("Codex runtime", () => {
     }
   });
 
+  it("binds a completed chartered Subject by its unique agent path when the child task carries a stale marker", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-stale-subject-marker-"));
+    const sessions = path.join(root, "sessions");
+    const worktree = path.join(root, "worktree");
+    const parentThreadId = "parent-arthur-thread";
+    const childThreadId = "child-arthur-thread";
+    const subjectId = "b2da6527-bbd1-4a50-aeb1-836cb04cc3bc";
+    const rolloutPath = path.join(sessions, `${childThreadId}.jsonl`);
+    fs.mkdirSync(sessions);
+    fs.mkdirSync(worktree);
+    fs.writeFileSync(rolloutPath, JSON.stringify({
+      type: "event_msg",
+      payload: { type: "task_complete", last_agent_message: "hidden output" }
+    }));
+    const database = new DatabaseSync(path.join(root, "state_5.sqlite"));
+    database.exec(`
+      CREATE TABLE thread_spawn_edges (
+        parent_thread_id TEXT NOT NULL,
+        child_thread_id TEXT NOT NULL PRIMARY KEY,
+        status TEXT NOT NULL
+      );
+      CREATE TABLE threads (
+        id TEXT PRIMARY KEY,
+        agent_path TEXT,
+        agent_nickname TEXT,
+        agent_role TEXT,
+        first_user_message TEXT NOT NULL,
+        rollout_path TEXT NOT NULL,
+        cwd TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL
+      );
+    `);
+    const createdAtMs = Date.now();
+    database.prepare(
+      "INSERT INTO thread_spawn_edges (parent_thread_id, child_thread_id, status) VALUES (?, ?, ?)"
+    ).run(parentThreadId, childThreadId, "open");
+    database.prepare(`
+      INSERT INTO threads (
+        id, agent_path, agent_nickname, agent_role, first_user_message,
+        rollout_path, cwd, created_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      childThreadId,
+      "/root/arthur_memory_integrity",
+      "Einstein",
+      null,
+      "Inherited context named SUBJECT_ID:demo-controlled-subject-mal, but this bounded task belongs to Arthur.",
+      rolloutPath,
+      worktree,
+      createdAtMs
+    );
+    database.close();
+
+    try {
+      const reality = RealityEntity.create({
+        depth: 2,
+        kind: "dream",
+        name: "Boundary trial",
+        premise: constitution.premise,
+        constitution
+      }).bindRuntime(parentThreadId, worktree, "inception/reality").snapshot();
+      const trace = new CodexSubjectRegistryTrace({
+        codexHome: root,
+        sqliteHome: root,
+        reality,
+        subjects: [{
+          id: subjectId,
+          realityId: reality.id,
+          name: "Arthur",
+          role: "Memory integrity investigator",
+          mission: "Diagnose observable behavior.",
+          status: "entered",
+          findings: []
+        }],
+        startedAtMs: createdAtMs
+      });
+      const events = trace.observe(parentThreadId);
+      const reports = [{
+        subjectId,
+        name: "Arthur",
+        role: "Memory integrity investigator",
+        findings: ["The boundary regression is observable."],
+        artefactPaths: ["tests/boundary.spec.ts"]
+      }];
+
+      expect(events).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            subjectId,
+            subjectThreadId: childThreadId,
+            subjectState: "completed"
+          })
+        })
+      ]));
+      expect(trace.bindReports(parentThreadId, reports)).toEqual([{
+        id: subjectId,
+        name: "Arthur",
+        role: "Memory integrity investigator",
+        mission: "Bounded independent investigation selected by Codex.",
+        threadId: childThreadId
+      }]);
+      expect(JSON.stringify(events)).not.toContain("hidden output");
+
+      const ambiguousTrace = new CodexSubjectRegistryTrace({
+        codexHome: root,
+        sqliteHome: root,
+        reality,
+        subjects: [
+          {
+            id: subjectId,
+            realityId: reality.id,
+            name: "Arthur",
+            role: "Memory integrity investigator",
+            mission: "Diagnose observable behavior.",
+            status: "entered",
+            findings: []
+          },
+          {
+            id: "memory-integrity-reviewer",
+            realityId: reality.id,
+            name: "Memory integrity",
+            role: "Independent reviewer",
+            mission: "Review observable behavior.",
+            status: "entered",
+            findings: []
+          }
+        ],
+        startedAtMs: createdAtMs
+      });
+      expect(() => ambiguousTrace.bindReports(parentThreadId, reports)).toThrowError(
+        expect.objectContaining({
+          issues: expect.arrayContaining([
+            expect.objectContaining({ code: "subject_native_trace_mismatch" })
+          ])
+        })
+      );
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("rejects opportunistic Subject reports without matching native return evidence", () => {
     const trace = new SubjectCollaborationTrace([]);
     trace.observe({
