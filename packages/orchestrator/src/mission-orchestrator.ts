@@ -74,6 +74,11 @@ export interface MissionAutopilotOptions {
   pauseOnIntervention?: boolean;
 }
 
+export interface InterventionBudgetApproval {
+  tokenBudget: number;
+  retry?: boolean;
+}
+
 export type MissionAutopilotCommand =
   | { command: "start"; options?: MissionAutopilotOptions }
   | { command: "resume" }
@@ -439,6 +444,97 @@ export class MissionOrchestrator {
     return this.snapshot(id);
   }
 
+  async approveInterventionBudget(
+    id: string,
+    approval: InterventionBudgetApproval
+  ): Promise<MissionSnapshot> {
+    if (this.activeOperations.has(id)) {
+      throw new Error("Wait for the active Reality operation before changing its intervention budget.");
+    }
+    const run = await this.requireRun(id);
+    const active = this.requireActive(run);
+    const contract = this.requireInterventionContract(run, active);
+    const ledger = run.interventions.find((entry) => entry.realityId === active.id);
+    if (!ledger || ledger.status !== "rejected") {
+      throw new Error("No rejected controlled intervention is waiting for a budget approval.");
+    }
+    if (
+      ledger.rejectionCode !== "intervention_token_budget_exceeded"
+      && !ledger.rejectionReason?.includes("intervention_token_budget_exceeded")
+    ) {
+      throw new Error("This intervention was rejected for a contract violation that more tokens cannot resolve.");
+    }
+
+    const requested = approval.tokenBudget;
+    if (!Number.isInteger(requested) || requested <= contract.tokenBudget) {
+      throw new Error(
+        `Approve an intervention ceiling above the current ${contract.tokenBudget.toLocaleString("en-US")} tokens.`
+      );
+    }
+    if (requested > 500_000) {
+      throw new Error("The controlled intervention ceiling cannot exceed 500,000 tokens.");
+    }
+    const remainingMissionTokens = Math.max(
+      0,
+      run.definition.tokenBudget - this.observedTokens(run)
+    );
+    if (requested > remainingMissionTokens) {
+      throw new Error(
+        `The requested retry ceiling exceeds the Mission's remaining ${remainingMissionTokens.toLocaleString("en-US")} observed-token budget.`
+      );
+    }
+
+    const previousTokenBudget = contract.tokenBudget;
+    const approvedAt = now();
+    run.definition = MissionDefinitionSchema.parse({
+      ...run.definition,
+      intervention: {
+        ...contract,
+        tokenBudget: requested
+      }
+    });
+    ledger.budgetApprovals.push({
+      previousTokenBudget,
+      approvedTokenBudget: requested,
+      failedAttemptTokens: ledger.lastAttemptTokens,
+      approvedAt
+    });
+
+    const retry = approval.retry ?? true;
+    if (retry && run.autopilot.mode === "paused") {
+      run.autopilot = {
+        ...run.autopilot,
+        mode: "running",
+        approvedAction: "intervene",
+        pauseReason: undefined,
+        updatedAt: approvedAt
+      };
+      this.autopilotControls.set(id, { ...run.autopilot });
+    }
+    await this.emit(
+      run,
+      active,
+      "intervention.budget.approved",
+      `Operator approved a bounded intervention retry ceiling of ${requested.toLocaleString("en-US")} tokens.`,
+      {
+        missionId: id,
+        contractId: contract.id,
+        previousTokenBudget,
+        approvedTokenBudget: requested,
+        failedAttemptTokens: ledger.lastAttemptTokens,
+        remainingMissionTokens,
+        retry
+      }
+    );
+
+    if (!retry) return this.snapshot(id);
+    if (run.autopilot.mode === "running") {
+      this.startAutopilotLoop(id);
+      return this.snapshot(id);
+    }
+    return this.act(id, "intervene");
+  }
+
   async act(id: string, action: MissionAction): Promise<MissionSnapshot> {
     const prior = this.operationQueues.get(id) ?? Promise.resolve();
     const runOperation = prior.then(async () => {
@@ -710,6 +806,9 @@ export class MissionOrchestrator {
     const ledger = this.requireInterventionLedger(run, reality);
     ledger.status = "injecting";
     ledger.startedAt = now();
+    ledger.rejectionReason = undefined;
+    ledger.rejectionCode = undefined;
+    ledger.lastAttemptTokens = undefined;
     await this.emit(run, reality, "intervention.started", `Controlled resilience Subject entered ${reality.name} under a sealed intervention contract.`, {
       missionId: run.id,
       contractId: contract.id,
@@ -724,6 +823,7 @@ export class MissionOrchestrator {
     });
 
     let baselineCommit: string | undefined;
+    const observedBeforeAttempt = run.observedTokens;
     try {
       baselineCommit = await worktrees.checkpoint(
         reality.worktreePath!,
@@ -735,6 +835,9 @@ export class MissionOrchestrator {
         contract,
         async (event) => this.emitSealedInterventionEvent(run, reality, contract, event)
       );
+      ledger.lastAttemptTokens = runtimeTokenEvidence(result.events);
+      const tokensAlreadyRecorded = Math.max(0, run.observedTokens - observedBeforeAttempt);
+      run.observedTokens += Math.max(0, ledger.lastAttemptTokens - tokensAlreadyRecorded);
       const boundReality = await this.bindRealityThread(
         run,
         reality.id,
@@ -805,17 +908,24 @@ export class MissionOrchestrator {
       if (baselineCommit) {
         await worktrees.restoreCheckpoint(reality.worktreePath!, baselineCommit).catch(() => undefined);
       }
+      const validation = safeValidationFailure(error);
       ledger.status = "rejected";
-      ledger.rejectionReason = safeFailure(error);
+      ledger.rejectionCode = validation?.issues[0]?.code;
+      ledger.rejectionReason = ledger.rejectionCode === "intervention_token_budget_exceeded"
+        ? `The controlled Subject used ${(ledger.lastAttemptTokens ?? 0).toLocaleString("en-US")} tokens, above the approved ${contract.tokenBudget.toLocaleString("en-US")} ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.`
+        : safeFailure(error);
       ledger.report = undefined;
       ledger.interventionCommit = undefined;
       ledger.subjectThreadId = undefined;
       ledger.changedFileCount = undefined;
       ledger.patchLineCount = undefined;
-      await this.emit(run, reality, "intervention.rejected", `Sealed intervention rejected and the Dream restored to its baseline: ${safeFailure(error)}`, {
+      await this.emit(run, reality, "intervention.rejected", `Sealed intervention rejected and the Dream restored to its baseline: ${ledger.rejectionReason}`, {
         missionId: run.id,
         contractId: contract.id,
-        rollbackApplied: Boolean(baselineCommit)
+        rollbackApplied: Boolean(baselineCommit),
+        rejectionCode: ledger.rejectionCode,
+        attemptTokens: ledger.lastAttemptTokens,
+        approvedTokenBudget: contract.tokenBudget
       });
       throw error;
     }
@@ -903,7 +1013,8 @@ export class MissionOrchestrator {
         contractId: interventionContract.id,
         realityId: dream.id,
         status: "armed",
-        armedAt: now()
+        armedAt: now(),
+        budgetApprovals: []
       };
       run.interventions.push(ledger);
       await this.emit(run, dream, "intervention.armed", `Sealed intervention armed for ${dream.name}; no mutation has run.`, {
@@ -2149,10 +2260,15 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
         await this.act(id, next.id);
       } catch (error) {
         const current = await this.requireRun(id);
+        const rejectedIntervention = next.id === "intervene"
+          ? current.interventions.find((entry) =>
+              entry.realityId === current.activeRealityId && entry.status === "rejected"
+            )
+          : undefined;
         await this.pauseAutopilot(
           current,
           this.requireActive(current),
-          `Action ${next.id} stopped: ${safeFailure(error)}`
+          `Action ${next.id} stopped: ${rejectedIntervention?.rejectionReason ?? safeFailure(error)}`
         );
         return;
       }

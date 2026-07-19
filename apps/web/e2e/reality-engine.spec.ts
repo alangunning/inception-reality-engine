@@ -689,6 +689,85 @@ test("real Demo Mission exposes explicit bounded guided auto controls", async ({
   await expect(auto).toContainText("Advancing one bounded, validated Reality action at a time");
 });
 
+test("the Demo Mission can approve and retry its saved intervention budget rejection", async ({ page }) => {
+  const response = await page.request.get("/api/demo");
+  expect(response.ok()).toBe(true);
+  const snapshot = await response.json();
+  const activeRealityId = snapshot.session.activeRealityId as string;
+  snapshot.runtime = {
+    ...snapshot.runtime,
+    codexMode: "real",
+    model: "gpt-5.6-sol",
+    authSource: "cli"
+  };
+  snapshot.session.phase = 5;
+  snapshot.session.autopilot = {
+    mode: "paused",
+    kind: "guided-real",
+    maxActions: 20,
+    maxMinutes: 180,
+    paceMilliseconds: 1_000,
+    pauseOnDream: true,
+    actionsCompleted: 7,
+    lastAction: "intervene",
+    pauseReason: "Action intervene stopped after exceeding the approved token ceiling."
+  };
+  snapshot.session.interventions = [{
+    id: "canonical-budget-rejection",
+    contractId: "demo-enumeration-boundary-intervention-v1",
+    realityId: activeRealityId,
+    status: "rejected",
+    armedAt: "2026-07-19T20:08:45.058Z",
+    startedAt: "2026-07-19T20:11:27.389Z",
+    rejectionReason: "AdversarialInterventionReportSchema rejected tokenBudget (intervention_token_budget_exceeded).",
+    budgetApprovals: [] as Array<{
+      previousTokenBudget: number;
+      approvedTokenBudget: number;
+      approvedAt: string;
+    }>
+  }];
+  snapshot.nextAction = {
+    id: "intervene",
+    kind: "intervene",
+    executor: "codex",
+    verb: "inject bounded controlled Subject",
+    target: "Identifier-store pressure and boundary-burst trial",
+    label: "Retry the bounded controlled Subject in Identifier-store pressure and boundary-burst trial"
+  };
+
+  let approval: { tokenBudget: number; retry: boolean } | undefined;
+  await page.route("**/api/demo/intervention-budget", async (route) => {
+    approval = route.request().postDataJSON() as { tokenBudget: number; retry: boolean };
+    snapshot.session.interventions[0].budgetApprovals.push({
+      previousTokenBudget: 16_000,
+      approvedTokenBudget: approval.tokenBudget,
+      approvedAt: "2026-07-19T20:15:00.000Z"
+    });
+    Object.assign(snapshot.session.autopilot, {
+      mode: "running",
+      approvedAction: "intervene",
+      pauseReason: undefined
+    });
+    await route.fulfill({ json: snapshot });
+  });
+  await page.route("**/api/demo", (route) => route.fulfill({ json: snapshot }));
+
+  await page.goto("/");
+  const recovery = page.getByTestId("demo-intervention-budget-recovery");
+  await expect(recovery).toContainText("Prior attempt exceeded the 16,000 approved ceiling");
+  await expect(recovery).toContainText("No Codex usage resumes until you approve");
+  await expect(page.getByLabel("Approved Demo intervention token ceiling")).toHaveValue("32000");
+  await expect(page.getByTestId("demo-autopilot").getByRole("button", { name: "Resume" }))
+    .toHaveCount(0);
+  await recovery.getByRole("button", { name: "Approve 32,000 and retry" }).click();
+
+  expect(approval).toEqual({ tokenBudget: 32_000, retry: true });
+  await expect(page.getByTestId("demo-autopilot")).toContainText(
+    "Advancing one bounded, validated Reality action at a time"
+  );
+  await expect(recovery).toHaveCount(0);
+});
+
 test("saved password-reset runs open as read-only timelines and return to live state", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Archive navigation needs one browser target.");
   const liveResponse = await page.request.get("/api/demo");
@@ -1236,6 +1315,121 @@ test("General Missions use the same explicit Dream proposal gate as the Demo Mis
   await expect(gate).toContainText("MODEL-ESTIMATED CODEX BUDGET");
   await gate.getByRole("button", { name: "Keep waking Reality" }).click();
   await expect(gate).toHaveCount(0);
+});
+
+test("a token-budget rejection can be explicitly increased and retried from guided auto mode", async ({ page }) => {
+  const fixture = missionSnapshotFixture();
+  const dream = fixture.run.realities.find((reality) => reality.id === "dream-reality")!;
+  const contract = {
+    id: "intervention-contract-budget",
+    enabled: true,
+    subject: {
+      id: "controlled-subject-budget",
+      name: "Mal",
+      role: "Controlled resilience engineer",
+      mission: "Introduce one bounded reversible owner-check fault."
+    },
+    hypothesis: "Independent Subjects can detect an owner-check regression.",
+    faultClasses: ["permission"],
+    allowedPaths: ["api_views/**"],
+    protectedPaths: ["tests/**"],
+    maxChangedFiles: 1,
+    maxPatchLines: 10,
+    tokenBudget: 16_000,
+    maxMinutes: 12,
+    targetDepth: 1,
+    revealPolicy: "after-diagnosis",
+    requireRollbackCommit: true
+  };
+  const ledger = {
+    id: "intervention-ledger-budget",
+    contractId: contract.id,
+    realityId: dream.id,
+    status: "rejected",
+    armedAt: "2026-07-18T15:20:00.000Z",
+    startedAt: "2026-07-18T15:21:00.000Z",
+    rejectionReason: "The controlled Subject used 18,000 tokens, above the approved 16,000 ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.",
+    rejectionCode: "intervention_token_budget_exceeded",
+    lastAttemptTokens: 18_000,
+    budgetApprovals: [] as Array<{
+      previousTokenBudget: number;
+      approvedTokenBudget: number;
+      failedAttemptTokens: number;
+      approvedAt: string;
+    }>
+  };
+  Object.assign(fixture.run.definition, { intervention: contract });
+  Object.assign(fixture.run, {
+    interventions: [ledger],
+    observedTokens: 18_000,
+    autopilot: {
+      mode: "paused",
+      kind: "guided-real",
+      maxActions: 20,
+      maxMinutes: 60,
+      pauseOnDream: true,
+      pauseOnIntervention: true,
+      actionsCompleted: 7,
+      pauseReason: "Action intervene stopped after exceeding the approved token ceiling."
+    }
+  });
+  fixture.nextAction = {
+    id: "intervene",
+    kind: "intervene",
+    label: "Retry the bounded controlled intervention in Cross-user book secret",
+    executor: "codex"
+  };
+
+  let approvedBody: { tokenBudget: number; retry: boolean } | undefined;
+  await page.route("**/api/missions/events?**", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream",
+    body: "data: {\"type\":\"connected\"}\n\n"
+  }));
+  await page.route("**/api/missions/mission-1/intervention-budget", async (route) => {
+    approvedBody = route.request().postDataJSON() as { tokenBudget: number; retry: boolean };
+    contract.tokenBudget = approvedBody.tokenBudget;
+    ledger.budgetApprovals.push({
+      previousTokenBudget: 16_000,
+      approvedTokenBudget: approvedBody.tokenBudget,
+      failedAttemptTokens: 18_000,
+      approvedAt: "2026-07-18T15:32:00.000Z"
+    });
+    Object.assign(fixture.run.autopilot, {
+      mode: "running",
+      approvedAction: "intervene",
+      pauseReason: undefined
+    });
+    await route.fulfill({ json: fixture });
+  });
+  await page.route("**/api/missions/mission-1", (route) => route.fulfill({
+    json: {
+      snapshot: fixture,
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" }
+    }
+  }));
+  await page.route("**/api/missions/targets", (route) => route.fulfill({ json: { targets: [] } }));
+  await page.route("**/api/missions", (route) => route.fulfill({
+    json: {
+      runs: [],
+      library: [],
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" },
+      enabled: true
+    }
+  }));
+
+  await page.goto("/missions/mission-1");
+  const recovery = page.getByTestId("intervention-budget-recovery");
+  await expect(recovery).toContainText("18,000 used / 16,000 approved");
+  await expect(recovery).toContainText("No Codex usage resumes until you approve");
+  await expect(page.getByLabel("Approved intervention token ceiling")).toHaveValue("32000");
+  await expect(page.getByTestId("mission-autopilot").getByRole("button", { name: "Approve and continue" }))
+    .toHaveCount(0);
+  await recovery.getByRole("button", { name: "Approve 32,000 and retry" }).click();
+
+  expect(approvedBody).toEqual({ tokenBudget: 32_000, retry: true });
+  await expect(page.getByTestId("mission-autopilot")).toContainText("Advancing one validated Reality action at a time");
+  await expect(recovery).toHaveCount(0);
 });
 
 test("a controlled Subject is visibly contained before its memory ascends", async ({ page }) => {

@@ -2224,19 +2224,44 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
 function DemoAutoModeBar({
   snapshot,
   busy,
-  onControl
+  onControl,
+  onApproveInterventionBudget
 }: {
   snapshot: PresentedDemoSnapshot;
   busy: boolean;
   onControl(command: "start" | "resume" | "pause" | "stop"): void;
+  onApproveInterventionBudget(tokenBudget: number): void;
 }) {
   const state = snapshot.session.autopilot;
   const guidedReal = snapshot.runtime.codexMode === "real";
   const running = state.mode === "running";
   const paused = state.mode === "paused";
+  const rejectedIntervention = [...snapshot.session.interventions].reverse().find((entry) =>
+    entry.status === "rejected"
+    && (
+      entry.rejectionCode === "intervention_token_budget_exceeded"
+      || entry.rejectionReason?.includes("intervention_token_budget_exceeded")
+    )
+  );
+  const currentBudget = rejectedIntervention?.budgetApprovals?.at(-1)?.approvedTokenBudget
+    ?? 16_000;
+  const suggestedBudget = Math.min(
+    500_000,
+    Math.ceil(Math.max(
+      currentBudget * 2,
+      (rejectedIntervention?.lastAttemptTokens ?? currentBudget) * 1.25
+    ) / 1_000) * 1_000
+  );
+  const budgetRecovery = guidedReal && paused && Boolean(rejectedIntervention);
+  const [approvedBudget, setApprovedBudget] = useState(suggestedBudget);
+
+  useEffect(() => {
+    setApprovedBudget(suggestedBudget);
+  }, [rejectedIntervention?.id, rejectedIntervention?.lastAttemptTokens, suggestedBudget]);
+
   return (
     <section className={`mission-autopilot autopilot-${state.mode}`} data-testid="demo-autopilot">
-      <div>
+      <div className="autopilot-summary">
         <span><Play size={15} /></span>
         <p>
           <small>
@@ -2249,13 +2274,15 @@ function DemoAutoModeBar({
               ? guidedReal
                 ? "Advancing one bounded, validated Reality action at a time"
                 : "Advancing the Demo Mission for a consistent recording"
-              : paused
-                ? state.pauseReason ?? "Guided Reality path paused"
-                : state.mode === "completed"
-                  ? "Demo Mission reached a stable Reality"
-                  : guidedReal
-                    ? "Manual control; Codex will not start until guided auto is explicitly started"
-                    : "Manual control"}
+              : budgetRecovery
+                ? "Controlled Subject exceeded its approved token ceiling"
+                : paused
+                  ? state.pauseReason ?? "Guided Reality path paused"
+                  : state.mode === "completed"
+                    ? "Demo Mission reached a stable Reality"
+                    : guidedReal
+                      ? "Manual control; Codex will not start until guided auto is explicitly started"
+                      : "Manual control"}
           </strong>
         </p>
       </div>
@@ -2277,7 +2304,7 @@ function DemoAutoModeBar({
             <Pause size={14} /> Pause
           </button>
         )}
-        {paused && (
+        {paused && !budgetRecovery && (
           <button type="button" className="is-primary" onClick={() => onControl("resume")} disabled={busy}>
             <Play size={14} /> Resume
           </button>
@@ -2288,6 +2315,37 @@ function DemoAutoModeBar({
           </button>
         )}
       </nav>
+      {budgetRecovery && rejectedIntervention && (
+        <div className="autopilot-budget-recovery" data-testid="demo-intervention-budget-recovery">
+          <span>
+            <small>BOUNDED RETRY APPROVAL</small>
+            <strong>{rejectedIntervention.lastAttemptTokens !== undefined
+              ? `${rejectedIntervention.lastAttemptTokens.toLocaleString()} used / ${currentBudget.toLocaleString()} approved`
+              : `Prior attempt exceeded the ${currentBudget.toLocaleString()} approved ceiling`}</strong>
+            <p>The nested Dream baseline was restored. No Codex usage resumes until you approve a new ceiling.</p>
+          </span>
+          <label>
+            <small>NEW RETRY CEILING</small>
+            <input
+              aria-label="Approved Demo intervention token ceiling"
+              type="number"
+              min={currentBudget + 1_000}
+              max={500_000}
+              step={1_000}
+              value={approvedBudget}
+              onChange={(event) => setApprovedBudget(Number(event.target.value))}
+            />
+          </label>
+          <button
+            type="button"
+            className="is-primary"
+            onClick={() => onApproveInterventionBudget(approvedBudget)}
+            disabled={busy || approvedBudget <= currentBudget || approvedBudget > 500_000}
+          >
+            <ShieldCheck size={14} /> Approve {approvedBudget.toLocaleString()} and retry
+          </button>
+        </div>
+      )}
     </section>
   );
 }
@@ -2841,6 +2899,31 @@ export function RealityEngine() {
     }
   };
 
+  const approveDemoInterventionBudget = async (tokenBudget: number) => {
+    setLoading("acting");
+    setError(null);
+    try {
+      const response = await fetch("/api/demo/intervention-budget", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tokenBudget, retry: true })
+      });
+      const body = await readApiResponse<PresentedDemoSnapshot & { error?: string }>(
+        response,
+        "The bounded Demo intervention budget could not be approved."
+      );
+      if (!response.ok) {
+        throw new Error(body.error ?? "The bounded Demo intervention budget could not be approved.");
+      }
+      setSnapshot(body);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await loadSnapshot(true).catch(() => undefined);
+    } finally {
+      setLoading("idle");
+    }
+  };
+
   const reset = async () => {
     if (!window.confirm("Full reset archives the validated run log, deletes active Reality state, and removes its Git worktrees before forming a clean waking Reality. Continue?")) return;
     setLoading("resetting");
@@ -2992,6 +3075,8 @@ export function RealityEngine() {
         snapshot={snapshot}
         busy={loading !== "idle" || Boolean(activeOperation)}
         onControl={(command) => void controlDemoAutopilot(command)}
+        onApproveInterventionBudget={(tokenBudget) =>
+          void approveDemoInterventionBudget(tokenBudget)}
       />
 
       {loadedArchive && (

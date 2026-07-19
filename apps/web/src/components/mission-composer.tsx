@@ -285,22 +285,61 @@ function missionPhaseSteps(run: MissionRun): RealityPhaseStep[] {
 function MissionAutoModeBar({
   run,
   busy,
-  onControl
+  onControl,
+  onApproveInterventionBudget
 }: {
   run: MissionRun;
   busy: boolean;
   onControl(command: AutopilotCommand): void;
+  onApproveInterventionBudget(tokenBudget: number): void;
 }) {
   const state = missionAutopilot(run);
   const running = state.mode === "running";
   const paused = state.mode === "paused";
+  const rejectedIntervention = [...(run.interventions ?? [])].reverse().find((entry) =>
+    entry.status === "rejected"
+    && (
+      entry.rejectionCode === "intervention_token_budget_exceeded"
+      || entry.rejectionReason?.includes("intervention_token_budget_exceeded")
+    )
+  );
+  const currentBudget = run.definition.intervention?.tokenBudget ?? 0;
+  const remainingMissionBudget = Math.max(
+    0,
+    run.definition.tokenBudget - (run.observedTokens ?? observedMissionTokens(run.events))
+  );
+  const maximumBudget = Math.min(500_000, remainingMissionBudget);
+  const suggestedBudget = Math.min(
+    maximumBudget,
+    Math.ceil(Math.max(
+      currentBudget * 2,
+      (rejectedIntervention?.lastAttemptTokens ?? currentBudget) * 1.25
+    ) / 1_000) * 1_000
+  );
+  const budgetRecovery = paused
+    && Boolean(rejectedIntervention)
+    && currentBudget > 0;
+  const [approvedBudget, setApprovedBudget] = useState(suggestedBudget);
+
+  useEffect(() => {
+    setApprovedBudget(suggestedBudget);
+  }, [run.id, rejectedIntervention?.id, rejectedIntervention?.lastAttemptTokens, suggestedBudget]);
+
   return (
     <section className={`mission-autopilot autopilot-${state.mode}`} data-testid="mission-autopilot">
-      <div>
+      <div className="autopilot-summary">
         <span><Play size={15} /></span>
         <p>
           <small>GUIDED AUTO MODE / PARENT GATES ARMED</small>
-          <strong>{running ? "Advancing one validated Reality action at a time" : paused ? state.pauseReason ?? "Waiting at a parent-owned gate" : state.mode === "completed" ? "Auto mode reached a stable Reality" : "Manual control"}</strong>
+          <strong>{running
+            ? "Advancing one validated Reality action at a time"
+            : budgetRecovery
+              ? "Controlled Subject exceeded its approved token ceiling"
+              : paused
+                ? state.pauseReason ?? "Waiting at a parent-owned gate"
+                : state.mode === "completed"
+                  ? "Auto mode reached a stable Reality"
+                  : "Manual control"}</strong>
         </p>
       </div>
       <dl>
@@ -318,7 +357,7 @@ function MissionAutoModeBar({
             <Pause size={14} /> Pause
           </button>
         )}
-        {paused && (
+        {paused && !budgetRecovery && (
           <button type="button" className="is-primary" onClick={() => onControl("resume")} disabled={busy}>
             <Play size={14} /> Approve and continue
           </button>
@@ -329,6 +368,48 @@ function MissionAutoModeBar({
           </button>
         )}
       </nav>
+      {budgetRecovery && rejectedIntervention && (
+        <div className="autopilot-budget-recovery" data-testid="intervention-budget-recovery">
+          <span>
+            <small>BOUNDED RETRY APPROVAL</small>
+            <strong>
+              {rejectedIntervention.lastAttemptTokens !== undefined
+                ? `${rejectedIntervention.lastAttemptTokens.toLocaleString()} used / ${currentBudget.toLocaleString()} approved`
+                : `Prior attempt exceeded the ${currentBudget.toLocaleString()} approved ceiling`}
+            </strong>
+            <p>The Dream baseline was restored. No Codex usage resumes until you approve a new ceiling.</p>
+          </span>
+          <label>
+            <small>NEW RETRY CEILING</small>
+            <input
+              aria-label="Approved intervention token ceiling"
+              type="number"
+              min={Math.min(currentBudget + 1_000, maximumBudget)}
+              max={maximumBudget}
+              step={1_000}
+              value={approvedBudget}
+              onChange={(event) => setApprovedBudget(Number(event.target.value))}
+            />
+          </label>
+          <button
+            type="button"
+            className="is-primary"
+            onClick={() => onApproveInterventionBudget(approvedBudget)}
+            disabled={
+              busy
+              || approvedBudget <= currentBudget
+              || approvedBudget > maximumBudget
+            }
+          >
+            <ShieldCheck size={14} /> Approve {approvedBudget.toLocaleString()} and retry
+          </button>
+          {maximumBudget <= currentBudget && (
+            <small className="budget-limit-warning">
+              No bounded retry remains under this Mission&apos;s overall ceiling. Stop this run and form a Mission with a larger overall budget.
+            </small>
+          )}
+        </div>
+      )}
     </section>
   );
 }
@@ -733,6 +814,34 @@ function MissionRunView({
     }
   };
 
+  const approveInterventionBudget = async (tokenBudget: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/missions/${encodeURIComponent(run.id)}/intervention-budget`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tokenBudget, retry: true })
+        }
+      );
+      const body = await readJson<MissionSnapshot & { error?: string }>(
+        response,
+        "The bounded intervention budget could not be approved."
+      );
+      if (!response.ok) {
+        throw new Error(body.error ?? "The bounded intervention budget could not be approved.");
+      }
+      onReload(body);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadEarlierEvents = async () => {
     const earliest = run.events[0];
     if (!earliest) return;
@@ -831,6 +940,8 @@ function MissionRunView({
         run={run}
         busy={busy}
         onControl={(command) => void controlAutopilot(command)}
+        onApproveInterventionBudget={(tokenBudget) =>
+          void approveInterventionBudget(tokenBudget)}
       />
 
       {error && (
@@ -885,6 +996,13 @@ function MissionRunView({
               {intervention.status === "armed" && <p>No mutation has run. The operator-owned contract is armed for an explicit action.</p>}
               {intervention.status === "sealed" && <p>{intervention.changedFileCount ?? 0} changed file{intervention.changedFileCount === 1 ? "" : "s"} sealed. Cause and paths remain hidden until Kick.</p>}
               {intervention.status === "rejected" && <p>{intervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>}
+              {intervention.status === "rejected" && intervention.lastAttemptTokens !== undefined && (
+                <dl>
+                  <div><dt>ATTEMPT USED</dt><dd>{intervention.lastAttemptTokens.toLocaleString()} tokens</dd></div>
+                  <div><dt>APPROVED CEILING</dt><dd>{interventionContract.tokenBudget.toLocaleString()} tokens</dd></div>
+                  <div><dt>APPROVALS</dt><dd>{intervention.budgetApprovals?.length ?? 0} recorded</dd></div>
+                </dl>
+              )}
               {intervention.status === "revealed" && intervention.report && intervention.assessment && (
                 <p>
                   {intervention.assessment.outcome.toUpperCase()}: {intervention.report.summary}

@@ -203,6 +203,15 @@ describe("Reality domain", () => {
       }
     });
     expect(parsed.intervention?.targetDepth).toBe(1);
+    expect(AdversarialInterventionLedgerSchema.parse({
+      id: "ledger-1",
+      contractId: "contract-1",
+      realityId: "dream-1",
+      status: "rejected",
+      armedAt: new Date().toISOString(),
+      rejectionCode: "intervention_token_budget_exceeded",
+      lastAttemptTokens: 18_000
+    }).budgetApprovals).toEqual([]);
     expect(() => AdversarialInterventionLedgerSchema.parse({
       id: "ledger-1",
       contractId: "contract-1",

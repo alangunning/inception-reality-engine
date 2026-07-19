@@ -226,6 +226,7 @@ export const RealityEventTypeSchema = z.enum([
   "intervention.started",
   "intervention.sealed",
   "intervention.rejected",
+  "intervention.budget.approved",
   "intervention.revealed",
   "intervention.contained",
   "evidence.discovered",
@@ -510,6 +511,13 @@ export const AdversarialInterventionAssessmentSchema = z.object({
   assessedAt: z.string()
 });
 
+export const AdversarialInterventionBudgetApprovalSchema = z.object({
+  previousTokenBudget: z.number().int().min(1_000).max(500_000),
+  approvedTokenBudget: z.number().int().min(1_000).max(500_000),
+  failedAttemptTokens: z.number().int().nonnegative().optional(),
+  approvedAt: z.string()
+});
+
 export const AdversarialInterventionLedgerSchema = z.object({
   id: z.string(),
   contractId: z.string(),
@@ -529,7 +537,10 @@ export const AdversarialInterventionLedgerSchema = z.object({
   diagnosis: AdversarialDiagnosisSchema.optional(),
   assessment: AdversarialInterventionAssessmentSchema.optional(),
   excludedArtefactPaths: z.array(z.string().min(1).max(500)).max(20).optional(),
-  rejectionReason: z.string().max(500).optional()
+  rejectionReason: z.string().max(500).optional(),
+  rejectionCode: z.string().max(100).optional(),
+  lastAttemptTokens: z.number().int().nonnegative().optional(),
+  budgetApprovals: z.array(AdversarialInterventionBudgetApprovalSchema).max(10).default([])
 });
 
 export const DreamReflectionSchema = z.object({

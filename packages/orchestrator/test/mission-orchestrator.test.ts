@@ -616,6 +616,127 @@ describe("MissionOrchestrator", () => {
     expect(rejected.run.events.some((event) => event.type === "intervention.rejected")).toBe(true);
   });
 
+  it("persists an explicit intervention budget increase and retries from a restored Dream", async () => {
+    const mock = new MockCodexRuntime();
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    let interventionAttempts = 0;
+    const runtime: CodexRuntime = {
+      mode: "real",
+      info: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }),
+      activeOperations: () => [],
+      abortAll: () => 0,
+      inspect: (...args) => mock.inspect(...args),
+      intervene: async (reality, contract, onEvent) => {
+        interventionAttempts += 1;
+        worktrees.changedFiles = ["src/sealed-intervention.ts"];
+        worktrees.changedDiff = "+bounded permission regression\n";
+        const result = await mock.intervene(reality, contract, onEvent);
+        return {
+          ...result,
+          events: [
+            ...result.events,
+            {
+              type: "progress",
+              summary: "Bounded intervention token usage recorded.",
+              metadata: {
+                stage: "turn",
+                status: "completed",
+                inputTokens: 12_000,
+                outputTokens: 6_000
+              }
+            }
+          ]
+        };
+      },
+      wake: (...args) => mock.wake(...args),
+      synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
+    };
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      runtime,
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      ...basicMission(),
+      intervention: {
+        enabled: true,
+        subject: { name: "Mal", role: "Bounded chaos engineer", mission: "Inject one reversible fault." },
+        hypothesis: "A bounded permission fault remains diagnosable.",
+        faultClasses: ["permission"],
+        allowedPaths: ["src/**"],
+        protectedPaths: ["tests/**"],
+        maxChangedFiles: 1,
+        maxPatchLines: 10,
+        tokenBudget: 10_000,
+        maxMinutes: 5,
+        targetDepth: 1,
+        revealPolicy: "after-diagnosis",
+        requireRollbackCommit: true
+      },
+      tokenBudget: 100_000,
+      maxDreamDepth: 1
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+
+    await expect(orchestrator.act(snapshot.run.id, "intervene"))
+      .rejects.toThrow(/intervention_token_budget_exceeded/);
+    let rejected = await orchestrator.snapshot(snapshot.run.id);
+    expect(rejected.run.interventions[0]).toMatchObject({
+      status: "rejected",
+      rejectionCode: "intervention_token_budget_exceeded",
+      lastAttemptTokens: 18_000
+    });
+    expect(rejected.run.observedTokens).toBe(18_000);
+    expect(worktrees.restoreCalls).toBe(2);
+
+    await orchestrator.controlAutopilot(snapshot.run.id, {
+      command: "start",
+      options: { maxActions: 1, maxMinutes: 5 }
+    });
+    for (let attempt = 0; attempt < 50 && rejected.run.autopilot.mode !== "paused"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      rejected = await orchestrator.snapshot(snapshot.run.id);
+    }
+    expect(rejected.run.autopilot.mode).toBe("paused");
+
+    await orchestrator.approveInterventionBudget(snapshot.run.id, {
+      tokenBudget: 32_000,
+      retry: true
+    });
+    let retried = await orchestrator.snapshot(snapshot.run.id);
+    for (let attempt = 0; attempt < 100 && retried.run.autopilot.mode === "running"; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      retried = await orchestrator.snapshot(snapshot.run.id);
+    }
+
+    expect(interventionAttempts).toBe(2);
+    expect(retried.run.definition.intervention?.tokenBudget).toBe(32_000);
+    expect(retried.run.interventions[0]).toMatchObject({
+      status: "sealed",
+      lastAttemptTokens: 18_000,
+      budgetApprovals: [{
+        previousTokenBudget: 10_000,
+        approvedTokenBudget: 32_000,
+        failedAttemptTokens: 18_000
+      }]
+    });
+    expect(retried.run.autopilot).toMatchObject({
+      mode: "paused",
+      actionsCompleted: 1
+    });
+    expect(retried.run.events.find((event) =>
+      event.type === "intervention.budget.approved"
+    )?.payload).toMatchObject({
+      previousTokenBudget: 10_000,
+      approvedTokenBudget: 32_000,
+      failedAttemptTokens: 18_000,
+      retry: true
+    });
+  });
+
   it("quarantines a planted memory when Subjects only partially diagnose the sealed fault", async () => {
     const mock = new MockCodexRuntime();
     const repository = new InMemoryRealityRepository();

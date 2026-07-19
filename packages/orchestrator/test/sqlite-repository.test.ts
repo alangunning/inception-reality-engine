@@ -82,7 +82,8 @@ describe("SqliteRealityRepository", () => {
       subjectThreadId: "subject-thread-1",
       changedFileCount: 1,
       patchLineCount: 2,
-      excludedArtefactPaths: []
+      excludedArtefactPaths: [],
+      budgetApprovals: []
     }] satisfies DemoSession["interventions"];
     const session: DemoSession = {
       id: "singleton",

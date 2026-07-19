@@ -7,11 +7,12 @@ import {
   MockCodexRuntime,
   WakeReportValidationError,
   type CodexExecutionResult,
+  type CodexInterventionResult,
   type CodexRuntime,
   type CodexRuntimeEvent,
   type CodexWakeResult
 } from "@inception/codex-runtime";
-import type { Reality, RealityEvent } from "@inception/domain";
+import type { MissionInterventionContract, Reality, RealityEvent } from "@inception/domain";
 import type { WorktreeDescriptor, WorktreeManager } from "@inception/worktree-manager";
 import {
   InMemoryRealityEventBus,
@@ -206,6 +207,35 @@ class QuotaFailureRuntime extends MockCodexRuntime {
       "OpenAI API-key quota rejected this turn. Reality Engine used API-key authentication; "
       + "check that key's project budget, or set INCEPTION_CODEX_AUTH_MODE=cli to use the Codex CLI login."
     );
+  }
+}
+
+class TokenHeavyInterventionRuntime extends MockCodexRuntime {
+  interventionAttempts = 0;
+
+  override async intervene(
+    reality: Reality,
+    contract: MissionInterventionContract,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexInterventionResult> {
+    this.interventionAttempts += 1;
+    const result = await super.intervene(reality, contract, onEvent);
+    return {
+      ...result,
+      events: [
+        ...result.events,
+        {
+          type: "progress",
+          summary: "Bounded intervention token usage recorded.",
+          metadata: {
+            stage: "turn",
+            status: "completed",
+            inputTokens: 12_000,
+            outputTokens: 6_000
+          }
+        }
+      ]
+    };
   }
 }
 
@@ -503,6 +533,94 @@ describe("RealityOrchestrator", () => {
       expect(archives[0]?.session.phase).toBe(10);
       expect(archives[0]?.events.some((event) => event.type === "reality.stabilised")).toBe(true);
       expect((await orchestrator.snapshot()).session.phase).toBe(0);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("approves and retries an over-budget controlled Subject in the Demo Mission", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-demo-budget-retry-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const runtime = new TokenHeavyInterventionRuntime();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        runtime,
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const actions: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream",
+        "wake_nested",
+        "create_nested_dream"
+      ];
+      for (const action of actions) await orchestrator.act(action);
+
+      await expect(orchestrator.act("intervene"))
+        .rejects.toThrow(/intervention_token_budget_exceeded/);
+      let rejected = await orchestrator.snapshot();
+      expect(rejected.session.interventions[0]).toMatchObject({
+        status: "rejected",
+        rejectionCode: "intervention_token_budget_exceeded",
+        lastAttemptTokens: 18_000
+      });
+
+      Object.defineProperty(runtime, "mode", { value: "real" });
+      Object.defineProperty(runtime, "info", {
+        value: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" })
+      });
+      await orchestrator.controlAutopilot({
+        command: "start",
+        paceMilliseconds: 250,
+        maxActions: 1,
+        maxMinutes: 5
+      });
+      for (let attempt = 0; attempt < 50 && rejected.session.autopilot.mode !== "paused"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        rejected = await orchestrator.snapshot();
+      }
+      expect(rejected.session.autopilot.mode).toBe("paused");
+      expect(rejected.nextAction?.id).toBe("intervene");
+
+      await orchestrator.approveInterventionBudget({
+        tokenBudget: 32_000,
+        retry: true
+      });
+      let retried = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 100 && retried.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        retried = await orchestrator.snapshot();
+      }
+
+      expect(runtime.interventionAttempts).toBe(2);
+      expect(retried.session.interventions[0]?.rejectionReason).toBeUndefined();
+      expect(retried.session.interventions[0]).toMatchObject({
+        status: "sealed",
+        lastAttemptTokens: 18_000,
+        budgetApprovals: [{
+          previousTokenBudget: 16_000,
+          approvedTokenBudget: 32_000,
+          failedAttemptTokens: 18_000
+        }]
+      });
+      expect(retried.session.autopilot).toMatchObject({
+        mode: "paused",
+        actionsCompleted: 1
+      });
+      expect(retried.events.find((event) =>
+        event.type === "intervention.budget.approved"
+      )?.payload).toMatchObject({
+        previousTokenBudget: 16_000,
+        approvedTokenBudget: 32_000,
+        failedAttemptTokens: 18_000,
+        retry: true
+      });
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

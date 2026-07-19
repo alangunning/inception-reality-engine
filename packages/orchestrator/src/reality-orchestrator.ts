@@ -90,6 +90,11 @@ export type DemoAutopilotCommand =
   | { command: "pause" }
   | { command: "stop" };
 
+export interface DemoInterventionBudgetApproval {
+  tokenBudget: number;
+  retry?: boolean;
+}
+
 interface ActionDefinition {
   id: DemoAction;
   kind: DemoNextAction["kind"];
@@ -475,6 +480,88 @@ export class RealityOrchestrator {
     return this.snapshot();
   }
 
+  async approveInterventionBudget(
+    approval: DemoInterventionBudgetApproval
+  ): Promise<DemoSnapshot> {
+    await this.ensureSeeded();
+    if (this.activeOperation) {
+      throw new Error(`Wait for "${this.activeOperation.label}" to finish before changing its intervention budget.`);
+    }
+    const session = await this.requireSession();
+    const reality = session.activeRealityId
+      ? await this.repository.getReality(session.activeRealityId)
+      : null;
+    if (!reality) throw new Error("The active Demo Reality is unavailable.");
+    const ledger = session.interventions.find((entry) => entry.realityId === reality.id);
+    if (!ledger || ledger.status !== "rejected") {
+      throw new Error("No rejected controlled intervention is waiting for a budget approval.");
+    }
+    if (
+      ledger.rejectionCode !== "intervention_token_budget_exceeded"
+      && !ledger.rejectionReason?.includes("intervention_token_budget_exceeded")
+    ) {
+      throw new Error("This intervention was rejected for a contract violation that more tokens cannot resolve.");
+    }
+
+    const currentBudget = this.canonicalInterventionContract(ledger).tokenBudget;
+    const requested = approval.tokenBudget;
+    if (!Number.isInteger(requested) || requested <= currentBudget) {
+      throw new Error(
+        `Approve an intervention ceiling above the current ${currentBudget.toLocaleString("en-US")} tokens.`
+      );
+    }
+    if (requested > 500_000) {
+      throw new Error("The controlled intervention ceiling cannot exceed 500,000 tokens.");
+    }
+
+    const approvedAt = new Date().toISOString();
+    ledger.budgetApprovals ??= [];
+    ledger.budgetApprovals.push({
+      previousTokenBudget: currentBudget,
+      approvedTokenBudget: requested,
+      failedAttemptTokens: ledger.lastAttemptTokens,
+      approvedAt
+    });
+    const retry = approval.retry ?? true;
+    if (retry && session.autopilot.mode === "paused") {
+      if (this.describeAction(session, reality)?.id !== "intervene") {
+        throw new Error("The controlled intervention is no longer the pending Reality action.");
+      }
+      session.autopilot = {
+        ...session.autopilot,
+        mode: "running",
+        approvedAction: "intervene",
+        pauseReason: undefined,
+        updatedAt: approvedAt
+      };
+      this.demoAutopilotControl = { ...session.autopilot };
+    }
+    await this.repository.saveSession({
+      ...session,
+      interventions: [...session.interventions],
+      updatedAt: approvedAt
+    });
+    await this.emit(
+      reality,
+      "intervention.budget.approved",
+      `Operator approved a bounded intervention retry ceiling of ${requested.toLocaleString("en-US")} tokens.`,
+      {
+        contractId: ledger.contractId,
+        previousTokenBudget: currentBudget,
+        approvedTokenBudget: requested,
+        failedAttemptTokens: ledger.lastAttemptTokens,
+        retry
+      }
+    );
+
+    if (!retry) return this.snapshot();
+    if (session.autopilot.mode === "running") {
+      this.startDemoAutopilotLoop();
+      return this.snapshot();
+    }
+    return this.act("intervene");
+  }
+
   async reset(): Promise<DemoSnapshot> {
     if (this.demoAutopilotControl?.mode === "running") {
       this.demoAutopilotControl = {
@@ -738,7 +825,8 @@ export class RealityOrchestrator {
           contractId: CANONICAL_INTERVENTION.id,
           realityId: created.id,
           status: "armed",
-          armedAt: new Date().toISOString()
+          armedAt: new Date().toISOString(),
+          budgetApprovals: []
         }
       : undefined;
     await this.materialiseRealityContext(created);
@@ -769,6 +857,15 @@ export class RealityOrchestrator {
     }, 5, created.id);
   }
 
+  private canonicalInterventionContract(
+    ledger: AdversarialInterventionLedger
+  ): MissionInterventionContract {
+    const approvedTokenBudget = ledger.budgetApprovals?.at(-1)?.approvedTokenBudget;
+    return approvedTokenBudget
+      ? { ...CANONICAL_INTERVENTION, tokenBudget: approvedTokenBudget }
+      : CANONICAL_INTERVENTION;
+  }
+
   private async interveneCanonicalDream(session: DemoSession): Promise<void> {
     if (!session.activeRealityId) throw new Error("Controlled intervention locus missing.");
     const reality = await this.repository.getReality(session.activeRealityId);
@@ -779,25 +876,28 @@ export class RealityOrchestrator {
     if (!ledger || !["armed", "rejected"].includes(ledger.status)) {
       throw new Error("The sealed intervention is not ready to run.");
     }
+    const contract = this.canonicalInterventionContract(ledger);
 
     ledger.status = "injecting";
     ledger.startedAt = new Date().toISOString();
     ledger.rejectionReason = undefined;
+    ledger.rejectionCode = undefined;
+    ledger.lastAttemptTokens = undefined;
     await this.repository.saveSession({
       ...session,
       interventions: [...session.interventions],
       updatedAt: new Date().toISOString()
     });
     await this.emit(reality, "intervention.started", `Controlled resilience Subject entered ${reality.name} under a sealed, reversible contract.`, {
-      contractId: CANONICAL_INTERVENTION.id,
-      subjectId: CANONICAL_INTERVENTION.subject.id,
-      subjectName: CANONICAL_INTERVENTION.subject.name,
-      subjectRole: CANONICAL_INTERVENTION.subject.role,
-      faultClasses: CANONICAL_INTERVENTION.faultClasses,
-      maxChangedFiles: CANONICAL_INTERVENTION.maxChangedFiles,
-      maxPatchLines: CANONICAL_INTERVENTION.maxPatchLines,
-      tokenBudget: CANONICAL_INTERVENTION.tokenBudget,
-      maxMinutes: CANONICAL_INTERVENTION.maxMinutes
+      contractId: contract.id,
+      subjectId: contract.subject.id,
+      subjectName: contract.subject.name,
+      subjectRole: contract.subject.role,
+      faultClasses: contract.faultClasses,
+      maxChangedFiles: contract.maxChangedFiles,
+      maxPatchLines: contract.maxPatchLines,
+      tokenBudget: contract.tokenBudget,
+      maxMinutes: contract.maxMinutes
     });
     await this.emit(reality, "subject.entered", `Subject entered: ${CANONICAL_INTERVENTION.subject.name}, ${CANONICAL_INTERVENTION.subject.role}.`, {
       subjectId: CANONICAL_INTERVENTION.subject.id,
@@ -819,13 +919,17 @@ export class RealityOrchestrator {
             ? undefined
             : reality.codexThreadId
         },
-        CANONICAL_INTERVENTION,
+        contract,
         async (event) => {
           if (event.type === "subject" || event.metadata?.stage === "model") {
             await this.emitCodexEvent(reality, event);
           }
         }
       );
+      ledger.lastAttemptTokens = result.events.reduce((total, event) =>
+        total
+        + (event.metadata?.inputTokens ?? 0)
+        + (event.metadata?.outputTokens ?? 0), 0);
       const boundReality = await this.bindRealityThread(reality.id, result.coordinatorThreadId);
       const deterministicIntervention = this.codexRuntime.info().model === "deterministic-mock";
 
@@ -852,6 +956,7 @@ export class RealityOrchestrator {
       const actualChangedFiles = await this.worktrees.listChangedFiles(reality.worktreePath);
       const validated = await this.validateCanonicalIntervention(
         reality,
+        contract,
         result.report,
         actualChangedFiles,
         result.events
@@ -913,8 +1018,14 @@ export class RealityOrchestrator {
       if (baselineCommit) {
         await this.worktrees.restoreCheckpoint(reality.worktreePath, baselineCommit).catch(() => undefined);
       }
+      const validation = error instanceof CodexOutputValidationError
+        ? error.issues[0]
+        : undefined;
       ledger.status = "rejected";
-      ledger.rejectionReason = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+      ledger.rejectionCode = validation?.code;
+      ledger.rejectionReason = ledger.rejectionCode === "intervention_token_budget_exceeded"
+        ? `The controlled Subject used ${(ledger.lastAttemptTokens ?? 0).toLocaleString("en-US")} tokens, above the approved ${contract.tokenBudget.toLocaleString("en-US")} ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.`
+        : (error instanceof Error ? error.message : String(error)).slice(0, 500);
       ledger.report = undefined;
       ledger.interventionCommit = undefined;
       ledger.subjectThreadId = undefined;
@@ -928,7 +1039,10 @@ export class RealityOrchestrator {
       await this.emit(reality, "intervention.rejected", `Sealed intervention rejected and ${reality.name} restored to its baseline.`, {
         contractId: CANONICAL_INTERVENTION.id,
         rollbackApplied: Boolean(baselineCommit),
-        failure: ledger.rejectionReason
+        failure: ledger.rejectionReason,
+        rejectionCode: ledger.rejectionCode,
+        attemptTokens: ledger.lastAttemptTokens,
+        approvedTokenBudget: contract.tokenBudget
       });
       throw error;
     }
@@ -936,6 +1050,7 @@ export class RealityOrchestrator {
 
   private async validateCanonicalIntervention(
     reality: Reality,
+    contract: MissionInterventionContract,
     report: AdversarialInterventionReport,
     actualChangedFiles: string[],
     events: CodexRuntimeEvent[]
@@ -967,7 +1082,7 @@ export class RealityOrchestrator {
     const patchLines = patch.split("\n").filter((line) =>
       (/^[+-]/.test(line) && !line.startsWith("+++") && !line.startsWith("---"))
     ).length;
-    if (patchLines > CANONICAL_INTERVENTION.maxPatchLines) {
+    if (patchLines > contract.maxPatchLines) {
       throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
         path: "changedFiles",
         code: "patch_line_budget_exceeded"
@@ -977,7 +1092,7 @@ export class RealityOrchestrator {
       total
       + (event.metadata?.inputTokens ?? 0)
       + (event.metadata?.outputTokens ?? 0), 0);
-    if (observedTokens > CANONICAL_INTERVENTION.tokenBudget) {
+    if (observedTokens > contract.tokenBudget) {
       throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
         path: "tokenBudget",
         code: "intervention_token_budget_exceeded"
@@ -2618,8 +2733,16 @@ ${laws || "- No additional runtime laws."}
       try {
         await this.act(next.id);
       } catch (error) {
+        const failedSession = await this.requireSession();
+        const rejectedIntervention = next.id === "intervene"
+          ? failedSession.interventions.find((entry) =>
+              entry.realityId === failedSession.activeRealityId
+              && entry.status === "rejected"
+            )
+          : undefined;
         await this.pauseDemoAutopilot(
-          `Action ${next.id} stopped: ${error instanceof Error ? error.message : "unknown failure"}`
+          `Action ${next.id} stopped: ${rejectedIntervention?.rejectionReason
+            ?? (error instanceof Error ? error.message : "unknown failure")}`
         );
         return;
       }
