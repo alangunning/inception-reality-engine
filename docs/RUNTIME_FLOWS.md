@@ -27,7 +27,7 @@ sequenceDiagram
   O->>C: investigate Dream
   C->>S: spawn attacker, investigator, test engineer
   S-->>C: terminal bounded findings
-  C-->>O: validated evidence + nested proposal
+  C-->>O: validated evidence + two competing nested proposals
   Judge->>UI: Create Rotating IP swarm Dream
   O->>G: fork attack-Dream state
   Judge->>UI: Kick nested Dream
@@ -36,7 +36,13 @@ sequenceDiagram
   O->>C: request WakeReport on same thread
   C-->>O: validated memory + test artefact
   O->>T: seal report, source, anchors, evidence, artefacts
-  T-->>O: verified depth-two memory
+  T-->>O: verified rotating-source memory
+  Judge->>UI: Create Account enumeration oracle sibling
+  O->>G: fork the same attack-Dream state
+  Judge->>UI: Kick sibling Dream
+  O->>C: create response-equivalence regression and Wake Report
+  O->>T: seal sibling report and source independently
+  T-->>O: verified enumeration memory
   Judge->>UI: Kick parent Dream
   C-->>O: validated parent memory
   O->>T: verify depth-two seal and seal parent memory
@@ -48,10 +54,12 @@ sequenceDiagram
   O->>P: execute anchors and inherited regression
   P-->>O: proof results
   Judge->>UI: Stabilise
-  O-->>UI: final diff, beliefs, memories, branching Reality graph
+  O-->>UI: final diff, beliefs, memories, nested Reality graph
 ```
 
 The nested attack artefact is not prewritten in real mode. The nested Reality must create a real test in its own worktree, retain it, and execute it. The orchestrator requires the pre-synthesis test to fail, proving that the counterfactual exposed a real missing invariant.
+
+The canonical Demo Mission follows one parent Dream into two materially distinct depth-two siblings. General Missions using `competing-siblings` request two proposals at every explorable Reality, traverse the bounded graph depth-first, and create a Reality Mirror after each sibling set returns.
 
 ## Subject Lifecycle
 
@@ -175,9 +183,10 @@ The UI lays every parent, sibling, and descendant out as a scrollable graph. A r
 ## Explicit Auto Modes
 
 - **Recording autopilot** runs only in deterministic mock mode and only after **Start recording auto**. It supports pause, resume, and stop.
-- **Guided real auto** is persisted server-side and bounded by actions, wall time, Dream depth, and the Mission's observed token ceiling.
+- **Guided real auto** is available in both the canonical password-reset Demo Mission and generalized Missions. It is persisted server-side and bounded by actions, wall time, Dream depth, and the applicable observed token ceiling.
 - Guided real auto pauses before a Dream, controlled intervention, proof failure, quarantine, safety refusal, fracture, or budget boundary.
 - A server restart converts a persisted `running` controller into `paused`; opening a page can never resume Codex implicitly.
+- Returning one sibling keeps the parent at the same phase while another proposal remains open; the parent can wake only after every selected sibling has returned or the configured budget explicitly retains the remaining uncertainty.
 
 ## Refresh and Failure Recovery
 
@@ -204,3 +213,5 @@ flowchart TD
   F --> S
   P -->|Yes| Z[Reality stabilised]
 ```
+
+Before `Reality stabilised`, proposal identity is deduplicated within each Reality. Explored proposals are resolved; unvisited proposals beyond the configured run budget become retained uncertainty. Neither state is rendered as an active Dream action after proof succeeds.

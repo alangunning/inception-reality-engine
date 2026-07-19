@@ -26,7 +26,11 @@ import {
 } from "./codex-port";
 import type { WorktreeManagerPort } from "./worktree-port";
 import { MemoryIntegrityService } from "./memory-integrity-service";
-import { ROTATING_IP_TEST, SECURE_PASSWORD_RESET_IMPLEMENTATION } from "./demo-fixture";
+import {
+  ENUMERATION_RESPONSE_TEST,
+  ROTATING_IP_TEST,
+  SECURE_PASSWORD_RESET_IMPLEMENTATION
+} from "./demo-fixture";
 import type { RealityEventBus, RealityRepository } from "./ports";
 import { SynthesisService } from "./synthesis-service";
 
@@ -71,7 +75,13 @@ export interface DemoSnapshot {
 }
 
 export type DemoAutopilotCommand =
-  | { command: "start"; paceMilliseconds?: number }
+  | {
+      command: "start";
+      paceMilliseconds?: number;
+      maxActions?: number;
+      maxMinutes?: number;
+      pauseOnDream?: boolean;
+    }
   | { command: "resume" }
   | { command: "pause" }
   | { command: "stop" };
@@ -91,7 +101,7 @@ const ACTION_PLAN: Record<number, ActionDefinition> = {
   4: { id: "create_nested_dream", kind: "dream", executor: "orchestrator", verb: "create nested Dream" },
   5: { id: "wake_nested", kind: "kick", executor: "codex", verb: "return validated memory" },
   6: { id: "wake_parent", kind: "kick", executor: "codex", verb: "return validated memory" },
-  7: { id: "synthesise", kind: "advance", executor: "orchestrator", verb: "synthesise returned memories" },
+  7: { id: "synthesise", kind: "advance", executor: "codex", verb: "synthesise returned memories" },
   8: { id: "run_anchors", kind: "verify", executor: "orchestrator", verb: "run immutable anchors" },
   9: { id: "stabilise", kind: "advance", executor: "orchestrator", verb: "stabilise" }
 };
@@ -145,7 +155,9 @@ export class RealityOrchestrator {
             "Do not alter parent-owned Reality Anchors.",
             "Prefer decisive tests over speculative discussion.",
             "Use repository scripts from the Reality worktree and keep generated caches inside that worktree.",
-            "Classify a non-zero command as test evidence, environment failure, or configuration failure before retrying."
+            "Classify a non-zero command as test evidence, environment failure, or configuration failure before retrying.",
+            "Keep exploration focused on demo/password-reset and the generated .inception Reality context. Do not inspect or modify Reality Engine control-plane packages.",
+            "During exploration, run only focused password-reset tests. Do not run monorepo-wide test, typecheck, or build commands; immutable anchor verification owns the full proof phase."
           ],
           wakeContract: [
             "State initial beliefs and what changed.",
@@ -158,6 +170,8 @@ export class RealityOrchestrator {
             "The public API shape must remain stable."
           ],
           timeDilation: 1,
+          dreamStrategy: "single-chain",
+          maxSiblingDreams: 1,
           runtimeLaws: [
             "Production behavior must be supported by executable repository evidence.",
             "A failed proof prevents Reality stabilisation."
@@ -221,8 +235,11 @@ export class RealityOrchestrator {
         memoryIntegrity: [],
         autopilot: {
           mode: "off",
-          maxActions: 10,
+          kind: this.codexRuntime.mode === "real" ? "guided-real" : "demo",
+          maxActions: 20,
+          maxMinutes: 60,
           paceMilliseconds: 1_000,
+          pauseOnDream: true,
           actionsCompleted: 0
         },
         createdAt: timestamp,
@@ -240,12 +257,15 @@ export class RealityOrchestrator {
   async snapshot(): Promise<DemoSnapshot> {
     await this.ensureSeeded();
     await this.ensureRealityWorktrees();
-    const [session, realities, events] = await Promise.all([
+    const [session, persistedRealities, events] = await Promise.all([
       this.repository.getSession(),
       this.repository.listRealities(),
       this.repository.listEvents(500)
     ]);
     if (!session) throw new Error("Demo session is missing.");
+    const realities = session.phase >= 10
+      ? await this.deferOpenProposals(persistedRealities)
+      : persistedRealities;
     if (
       session.autopilot.mode === "running"
       && !this.demoAutopilotControl
@@ -275,10 +295,6 @@ export class RealityOrchestrator {
       await this.ensureSeeded();
       await this.ensureRealityWorktrees();
       const session = await this.requireSession();
-      const expected = this.expectedAction(session);
-      if (action !== expected) {
-        throw new Error(`Action ${action} is not valid in phase ${session.phase}; expected ${expected ?? "none"}.`);
-      }
       if (!session.activeRealityId) {
         throw new Error("The Reality operation has no active locus.");
       }
@@ -289,6 +305,9 @@ export class RealityOrchestrator {
       const nextAction = this.describeAction(session, activeReality);
       if (!nextAction) {
         throw new Error(`No Reality action exists for phase ${session.phase}.`);
+      }
+      if (action !== nextAction.id) {
+        throw new Error(`Action ${action} is not valid in phase ${session.phase}; expected ${nextAction.id}.`);
       }
 
       const operation = {
@@ -336,8 +355,8 @@ export class RealityOrchestrator {
 
   async controlAutopilot(command: DemoAutopilotCommand): Promise<DemoSnapshot> {
     await this.ensureSeeded();
-    if (this.codexRuntime.mode !== "mock") {
-      throw new Error("Demo auto mode is deterministic mock-only. Use guided auto mode for real Codex Missions.");
+    if (this.activeOperation) {
+      throw new Error(`Wait for "${this.activeOperation.label}" to finish before changing guided auto mode.`);
     }
     const session = await this.requireSession();
     const reality = session.activeRealityId
@@ -345,22 +364,34 @@ export class RealityOrchestrator {
       : null;
     if (!reality) throw new Error("The active Demo Reality is unavailable.");
     const timestamp = new Date().toISOString();
+    const guidedReal = this.codexRuntime.mode === "real";
     if (command.command === "start") {
       if (session.phase >= 10) throw new Error("The Demo Mission is already stabilised.");
       session.autopilot = {
         mode: "running",
-        maxActions: 10,
+        kind: guidedReal ? "guided-real" : "demo",
+        maxActions: Math.max(1, Math.min(command.maxActions ?? 20, 20)),
+        maxMinutes: Math.max(1, Math.min(command.maxMinutes ?? (guidedReal ? 180 : 60), 180)),
         paceMilliseconds: Math.max(250, Math.min(command.paceMilliseconds ?? 1_000, 10_000)),
+        pauseOnDream: command.pauseOnDream ?? true,
         actionsCompleted: 0,
         startedAt: timestamp,
         updatedAt: timestamp
       };
       this.demoAutopilotControl = { ...session.autopilot };
       await this.repository.saveSession(session);
-      await this.emit(reality, "autopilot.started", "Demo auto mode started; the deterministic Reality path will advance without Codex usage.", {
-        kind: "demo",
+      await this.emit(
+        reality,
+        "autopilot.started",
+        guidedReal
+          ? "Guided real auto mode started; bounded Codex actions will advance while parent-owned gates remain armed."
+          : "Recording auto mode started; the deterministic Reality path will advance without Codex usage.",
+        {
+        kind: session.autopilot.kind,
         paceMilliseconds: session.autopilot.paceMilliseconds,
-        maxActions: session.autopilot.maxActions
+        maxActions: session.autopilot.maxActions,
+        maxMinutes: session.autopilot.maxMinutes,
+        pauseOnDream: session.autopilot.pauseOnDream
       });
       this.startDemoAutopilotLoop();
     } else if (command.command === "resume") {
@@ -370,6 +401,7 @@ export class RealityOrchestrator {
       session.autopilot = {
         ...session.autopilot,
         mode: "running",
+        approvedAction: this.describeAction(session, reality)?.id,
         pauseReason: undefined,
         updatedAt: timestamp
       };
@@ -381,8 +413,8 @@ export class RealityOrchestrator {
         ...session.autopilot,
         mode: command.command === "pause" ? "paused" : "stopped",
         pauseReason: command.command === "pause"
-          ? "Paused by the operator after the current deterministic action."
-          : "Stopped by the operator after the current deterministic action.",
+          ? "Paused by the operator after the current Reality action."
+          : "Stopped by the operator after the current Reality action.",
         updatedAt: timestamp
       };
       this.demoAutopilotControl = { ...session.autopilot };
@@ -391,8 +423,8 @@ export class RealityOrchestrator {
         reality,
         command.command === "pause" ? "autopilot.paused" : "autopilot.stopped",
         command.command === "pause"
-          ? "Demo auto mode paused by the operator."
-          : "Demo auto mode stopped by the operator.",
+          ? "Guided auto mode paused by the operator."
+          : "Guided auto mode stopped by the operator.",
         { actionsCompleted: session.autopilot.actionsCompleted }
       );
     }
@@ -493,6 +525,8 @@ export class RealityOrchestrator {
         wakeContract: root.constitution.wakeContract,
         parentTruths: [...root.constitution.parentTruths, "Per-IP throttling exists in the parent implementation."],
         timeDilation: 12,
+        dreamStrategy: "competing-siblings",
+        maxSiblingDreams: 2,
         runtimeLaws: [
           "Coordinated attackers may use independent accounts and network sources.",
           "Subject claims require code, response, or executable test evidence."
@@ -550,6 +584,17 @@ export class RealityOrchestrator {
     if (!runtimeResult.report.dreamProposal) {
       await this.rejectContract(dream, "InvestigationReportSchema", "dreamProposal", "required_uncertainty");
     }
+    if (
+      dream.constitution.dreamStrategy === "competing-siblings"
+      && !runtimeResult.report.alternativeDreamProposal
+    ) {
+      await this.rejectContract(
+        dream,
+        "InvestigationReportSchema",
+        "alternativeDreamProposal",
+        "required_competing_uncertainty"
+      );
+    }
     const entity = RealityEntity.hydrate(dream);
     entity.bindRuntime(runtimeResult.threadId, dream.worktreePath!, dream.branchName!);
     const applied = this.applyInvestigationReport(entity, runtimeResult.report, true);
@@ -571,19 +616,24 @@ export class RealityOrchestrator {
         findings: subject.findings
       });
     }
-    await this.emit(
-      updated,
-      "uncertainty.discovered",
-      `Uncertainty surfaced: ${runtimeResult.report.dreamProposal!.uncertainty}`,
-      { proposal: runtimeResult.report.dreamProposal!.title }
-    );
+    for (const proposal of [
+      runtimeResult.report.dreamProposal,
+      runtimeResult.report.alternativeDreamProposal
+    ].filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))) {
+      await this.emit(
+        updated,
+        "uncertainty.discovered",
+        `Uncertainty surfaced: ${proposal.uncertainty}`,
+        { proposal: proposal.title }
+      );
+    }
     await this.advanceSession(session, 4, updated.id);
   }
 
   private async createNestedDream(session: DemoSession): Promise<void> {
     const parent = await this.requireDreamAtDepth(1);
     const proposal = parent.proposals.find((entry) => entry.status === "open");
-    if (!proposal) throw new Error("Rotating-IP proposal missing.");
+    if (!proposal) throw new Error("Nested Dream proposal missing.");
     const parentEntity = RealityEntity.hydrate(parent).updateProposal(proposal.id, "dreaming");
     const nested = RealityEntity.create({
       parentId: parent.id,
@@ -592,21 +642,23 @@ export class RealityOrchestrator {
       name: proposal.title,
       premise: proposal.premise,
       constitution: {
-        mission: "Produce a deterministic rotating-IP attack artefact and wake immediately when the result is decisive.",
-        scope: "rotating-IP abuse",
+        mission: `Produce one deterministic regression artefact that decides this bounded uncertainty: ${proposal.uncertainty}`,
+        scope: proposal.title,
         premise: proposal.premise,
         constraints: parent.constitution.constraints,
         wakeContract: parent.constitution.wakeContract,
-        parentTruths: [...parent.constitution.parentTruths, "The same identifier is targeted from independent addresses."],
+        parentTruths: parent.constitution.parentTruths,
         timeDilation: 120,
+        dreamStrategy: parent.constitution.dreamStrategy,
+        maxSiblingDreams: parent.constitution.maxSiblingDreams,
         runtimeLaws: [
-          "Every request may originate from a fresh source address.",
+          "Retain at least one decisive test artefact; other worktree-local exploration remains allowed.",
           "Wake immediately after one deterministic test decides the premise."
         ]
       },
       inheritedAnchors: parent.anchors,
       initialBeliefs: [{
-        statement: "Per-IP throttling will still constrain a repeated attack.",
+        statement: "The parent defence probably survives this bounded counterfactual.",
         confidence: 0.64,
         origin: "inherited"
       }]
@@ -618,7 +670,7 @@ export class RealityOrchestrator {
     );
     nested.bindRuntime(`unbound:${nested.snapshot().id}`, descriptor.path, descriptor.branchName)
       .setStatus("exploring", "Nested Dream entered")
-      .advanceTime(4, "Preparing one decisive rotating-source experiment");
+      .advanceTime(4, `Preparing one decisive ${proposal.title} experiment`);
     const created = nested.snapshot();
     await this.materialiseRealityContext(created);
     await this.repository.saveReality(parentEntity.snapshot());
@@ -633,8 +685,28 @@ export class RealityOrchestrator {
   }
 
   private async wakeNestedDream(session: DemoSession): Promise<void> {
-    const nested = await this.requireDreamAtDepth(2);
-    const returned = await this.experienceAndWakeNestedDream(nested);
+    if (!session.activeRealityId) throw new Error("Nested Dream locus missing.");
+    const nested = await this.repository.getReality(session.activeRealityId);
+    if (!nested || nested.kind !== "dream" || nested.depth !== 2) {
+      throw new Error("The active locus is not a nested Dream.");
+    }
+    const quarantinedSeal = session.memoryIntegrity.find((seal) =>
+      seal.realityId === nested.id
+      && seal.verdict === "quarantined"
+    );
+    const evidenceOnlyQuarantine = quarantinedSeal?.checks
+      .filter((check) => check.status === "failed")
+      .every((check) => check.name === "evidence-lineage") === true;
+    const canCorrectReturnedMemory = Boolean(
+      nested.wakeReport
+      && quarantinedSeal
+      && evidenceOnlyQuarantine
+      && await this.hasPromotableNestedMemory(nested)
+      && await this.matchesCanonicalSealedSource(nested, quarantinedSeal)
+    );
+    const returned = canCorrectReturnedMemory
+      ? await this.correctNestedWakeReport(nested)
+      : await this.experienceAndWakeNestedDream(nested);
     const report = returned.wakeReport!;
 
     const parent = await this.requireDreamAtDepth(1);
@@ -650,12 +722,12 @@ export class RealityOrchestrator {
     parentEntity.addEvidence({
       id: randomUUID(),
       kind: "test",
-      title: "Memory: rotating-IP attack fails the parent assumption",
+      title: `Memory returned from ${nested.name}`,
       summary: report.recommendation,
       source: `wake-report:${nested.id}`,
       artefactPath: report.artefacts[0]?.path
     });
-    parentEntity.advanceTime(5, "Receiving nested memory", "A decisive failing test returned from depth two.");
+    parentEntity.advanceTime(5, "Receiving nested memory", `A decisive failing test returned from ${nested.name}.`);
     const updatedParent = parentEntity.snapshot();
     await this.repository.saveReality(updatedParent);
     await this.emit(returned, "wake.returning", "Validated nested memory is returning to the coordinated-attack Dream.", {
@@ -663,8 +735,61 @@ export class RealityOrchestrator {
       wakeStage: "returning",
       wakeStageIndex: 3
     });
-    await this.emit(returned, "memory.returned", "Memory returned from the rotating-IP Dream with a failing test artefact.", { report });
-    await this.advanceSession(integritySession, 6, updatedParent.id);
+    await this.emit(returned, "memory.returned", `Memory returned from ${nested.name} with a failing test artefact.`, { report });
+    const remainingProposal = updatedParent.proposals.some((entry) => entry.status === "open");
+    await this.advanceSession(
+      integritySession,
+      remainingProposal ? 5 : 6,
+      updatedParent.id
+    );
+  }
+
+  private async correctNestedWakeReport(nested: Reality): Promise<Reality> {
+    const priorTestPath = nested.wakeReport?.artefacts.find((artefact) =>
+      artefact.kind === "test"
+    )?.path;
+    if (!priorTestPath) {
+      throw new Error("The quarantined memory has no retained regression artefact to revalidate.");
+    }
+    const waking = RealityEntity.hydrate(nested)
+      .setStatus("waking", "Correcting quarantined evidence lineage");
+    const correcting = waking.snapshot();
+    await this.repository.saveReality(correcting);
+    await this.emit(
+      correcting,
+      "wake.collecting",
+      "Correcting the quarantined Wake Report against the source Reality's exact evidence ledger.",
+      {
+        correction: "evidence-lineage",
+        retainedArtefactPath: priorTestPath,
+        evidenceIds: correcting.evidence.map((entry) => entry.id),
+        wakeStage: "collecting",
+        wakeStageIndex: 1
+      }
+    );
+    const result = await this.requestWake({
+      ...correcting,
+      codexThreadId: nested.codexThreadId?.startsWith("unbound:")
+        ? undefined
+        : nested.codexThreadId
+    });
+    const returnedTest = result.report.artefacts.find((artefact) =>
+      artefact.kind === "test" && artefact.path === priorTestPath
+    );
+    if (!returnedTest) {
+      await this.rejectContract(
+        correcting,
+        "WakeReportSchema",
+        "artefacts.path",
+        "retained_decisive_test_not_returned"
+      );
+    }
+    waking
+      .bindRuntime(result.threadId, nested.worktreePath!, nested.branchName!)
+      .setWakeReport(result.report);
+    const corrected = waking.snapshot();
+    await this.repository.saveReality(corrected);
+    return corrected;
   }
 
   private async experienceAndWakeNestedDream(nested: Reality): Promise<Reality> {
@@ -675,20 +800,31 @@ export class RealityOrchestrator {
     const experienced = RealityEntity.hydrate(nested)
       .bindRuntime(investigation.threadId, nested.worktreePath!, nested.branchName!);
     this.addObservedSubjects(experienced, investigation);
-    const applied = this.applyInvestigationReport(experienced, investigation.report, false);
+    const applied = this.applyInvestigationReport(experienced, investigation.report, false, false);
+    const enumerationDream = /enumeration|response oracle/i.test(nested.name);
     let attackPath = investigation.report.evidence.find((entry) =>
       entry.kind === "test" && entry.artefactPath
     )?.artefactPath ?? investigation.report.changedFiles.find((entry) =>
-      /(?:attack|abuse).*\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(entry)
+      /\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(entry)
     );
     if (this.codexRuntime.mode === "mock") {
-      attackPath = "demo/password-reset/tests/rotating-ip.attack.spec.ts";
-      await this.worktrees.writeFile(nested.worktreePath!, attackPath, ROTATING_IP_TEST);
+      attackPath = enumerationDream
+        ? "demo/password-reset/tests/enumeration.attack.spec.ts"
+        : "demo/password-reset/tests/rotating-ip.attack.spec.ts";
+      await this.worktrees.writeFile(
+        nested.worktreePath!,
+        attackPath,
+        enumerationDream ? ENUMERATION_RESPONSE_TEST : ROTATING_IP_TEST
+      );
       experienced.addEvidence({
         id: randomUUID(),
         kind: "test",
-        title: "Rotating-IP attack test prepared",
-        summary: "The nested Reality encoded the inherited delivery limit as a deterministic regression test.",
+        title: enumerationDream
+          ? "Enumeration response test prepared"
+          : "Rotating-IP attack test prepared",
+        summary: enumerationDream
+          ? "The nested Reality encoded the public response boundary as a deterministic regression test."
+          : "The nested Reality encoded the inherited delivery limit as a deterministic regression test.",
         source: "nested-dream-codex",
         artefactPath: attackPath,
         provenance: "synthetic"
@@ -707,17 +843,26 @@ export class RealityOrchestrator {
       "--config",
       "demo/password-reset/vitest.config.ts"
     ]);
+    const attackCommandOutput = [attackResult.stdout, attackResult.stderr]
+      .filter(Boolean)
+      .join("\n")
+      .trim();
     if (attackResult.exitCode === 0) {
       throw new Error("The nested Dream's regression artefact passed before synthesis, so it did not prove the counterfactual vulnerability.");
     }
-    const attackOutput = [attackResult.stdout, attackResult.stderr]
-      .filter(Boolean)
-      .join("\n")
-      .trim()
+    const assertionFailed = /\b(?:Test Files|Tests?)\s+\d+\s+failed\b/i.test(attackCommandOutput)
+      || /\b\d+\s+tests?\s+failed\b/i.test(attackCommandOutput)
+      || /\bAssertionError\b/i.test(attackCommandOutput);
+    if (!assertionFailed) {
+      throw new Error(
+        "The nested Dream's regression command failed before a test assertion was reached; configuration or environment failures cannot become evidence."
+      );
+    }
+    const attackOutput = attackCommandOutput
       .split("\n")
       .slice(-10)
       .join("\n");
-    experienced.advanceTime(8, "Executing the rotating-source regression", investigation.report.summary);
+    experienced.advanceTime(8, `Executing the ${nested.name} regression`, investigation.report.summary);
     const experiencedReality = experienced.snapshot();
     await this.repository.saveReality(experiencedReality);
     await this.emit(experiencedReality, "inspection.completed", "Nested Codex investigation produced a decisive regression artefact.", {
@@ -725,7 +870,7 @@ export class RealityOrchestrator {
       changedFiles: investigation.report.changedFiles,
       artefactPath: attackPath
     });
-    await this.emit(experiencedReality, "evidence.discovered", "Failing attack artefact proves source rotation bypasses the current limit.", {
+    await this.emit(experiencedReality, "evidence.discovered", `Failing test artefact decides ${nested.name}.`, {
       verdict: "failed-as-expected",
       artefactPath: attackPath,
       output: attackOutput
@@ -733,7 +878,7 @@ export class RealityOrchestrator {
 
     const waking = RealityEntity.hydrate(experiencedReality).setStatus("waking", "Kick received").advanceTime(2, "Preparing structured memory");
     await this.repository.saveReality(waking.snapshot());
-    await this.emit(waking.snapshot(), "kick.triggered", "Kick triggered: stop the rotating-IP Dream and return evidence.", {});
+    await this.emit(waking.snapshot(), "kick.triggered", `Kick triggered: stop ${nested.name} and return evidence.`, {});
     await this.emit(waking.snapshot(), "wake.collecting", "Collecting the failing test, changed belief, and remaining uncertainty.", {
       wakeStage: "collecting",
       wakeStageIndex: 1
@@ -759,7 +904,7 @@ export class RealityOrchestrator {
     const waking = RealityEntity.hydrate(dream).setStatus("waking", "Kick received").advanceTime(3, "Consolidating subject and nested memories");
     await this.repository.saveReality(waking.snapshot());
     await this.emit(waking.snapshot(), "kick.triggered", "Kick triggered: coordinated-attack Dream must return what generalises.", {});
-    await this.emit(waking.snapshot(), "wake.collecting", "Collecting Subject findings and inherited nested memory.", {
+    await this.emit(waking.snapshot(), "wake.collecting", "Collecting Subject findings and inherited nested memories.", {
       wakeStage: "collecting",
       wakeStageIndex: 1
     });
@@ -801,14 +946,20 @@ export class RealityOrchestrator {
   }
 
   private async synthesiseMemories(session: DemoSession): Promise<void> {
-    const [root, attack, persistedNested] = await Promise.all([
-      this.requireNamedReality(ROOT_NAME),
-      this.requireDreamAtDepth(1),
-      this.requireDreamAtDepth(2)
-    ]);
-    let nested = persistedNested;
-    let nestedRevalidated = false;
-    if (!await this.hasPromotableNestedMemory(nested)) {
+    const realities = await this.repository.listRealities();
+    const root = realities.find((entry) => entry.name === ROOT_NAME);
+    const attack = realities.find((entry) => entry.kind === "dream" && entry.depth === 1);
+    let nestedRealities = realities
+      .filter((entry) => entry.kind === "dream" && entry.depth === 2)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    if (!root || !attack || !nestedRealities.length) {
+      throw new Error("The waking Reality and every canonical Dream must exist before synthesis.");
+    }
+    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    let integritySession = session;
+    for (let index = 0; index < nestedRealities.length; index += 1) {
+      const nested = nestedRealities[index]!;
+      if (await this.hasPromotableNestedMemory(nested)) continue;
       await this.emit(
         nested,
         "validation.rejected",
@@ -818,20 +969,8 @@ export class RealityOrchestrator {
           issues: [{ path: "realityId|artefacts.path", code: "legacy_memory_requires_revalidation" }]
         }
       );
-      nested = await this.experienceAndWakeNestedDream(nested);
-      nestedRevalidated = true;
-      await this.emit(
-        nested,
-        "memory.returned",
-        "Nested memory revalidated with an identity-bound failing test artefact.",
-        { report: nested.wakeReport }
-      );
-    }
-    const reports = [nested.wakeReport, attack.wakeReport].filter((report): report is NonNullable<typeof report> => Boolean(report));
-    if (reports.length !== 2) throw new Error("Both Dream memories must return before synthesis.");
-    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
-    let integritySession = session;
-    if (nestedRevalidated) {
+      const revalidated = await this.experienceAndWakeNestedDream(nested);
+      nestedRealities[index] = revalidated;
       integritySession = {
         ...integritySession,
         memoryIntegrity: integritySession.memoryIntegrity.filter((seal) =>
@@ -841,8 +980,22 @@ export class RealityOrchestrator {
         updatedAt: new Date().toISOString()
       };
       await this.repository.saveSession(integritySession);
+      await this.emit(
+        revalidated,
+        "memory.returned",
+        "Nested memory revalidated with an identity-bound failing test artefact.",
+        { report: revalidated.wakeReport }
+      );
     }
-    for (const source of [nested, attack]) {
+    const sources = [...nestedRealities, attack];
+    const reports = sources
+      .map((reality) => reality.wakeReport)
+      .filter((report): report is WakeReport => Boolean(report));
+    if (reports.length !== sources.length) {
+      throw new Error("Every Dream memory must return before synthesis.");
+    }
+    const lineageRealities = [root, attack, ...nestedRealities];
+    for (const source of sources) {
       const existingSeal = integritySession.memoryIntegrity.find((seal) =>
         seal.realityId === source.id
       );
@@ -856,7 +1009,7 @@ export class RealityOrchestrator {
         && this.memoryIntegrity.matchesDescendantSeals(
           existingSeal,
           source,
-          [root, attack, nested],
+          lineageRealities,
           integritySession.memoryIntegrity
         )
       );
@@ -897,11 +1050,12 @@ export class RealityOrchestrator {
       integritySession = await this.acceptCanonicalMemorySeal(integritySession, source, seal);
     }
 
-    await this.promoteWakeArtefacts(root, [nested, attack], reports);
+    await this.promoteWakeArtefacts(root, sources, reports);
     const runtimeResult = await this.requestSynthesis(root, reports);
     if (!runtimeResult.applied) {
       await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/src/password-reset.ts", SECURE_PASSWORD_RESET_IMPLEMENTATION);
       await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/tests/rotating-ip.attack.spec.ts", ROTATING_IP_TEST);
+      await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/tests/enumeration.attack.spec.ts", ENUMERATION_RESPONSE_TEST);
     }
     const runtimeRoot = RealityEntity.hydrate(root)
       .bindRuntime(runtimeResult.threadId, root.worktreePath, root.branchName!)
@@ -926,7 +1080,7 @@ export class RealityOrchestrator {
       entry.kind === "test"
       && !path.isAbsolute(entry.path)
       && !entry.path.split(/[\\/]/).includes("..")
-      && /(?:attack|abuse).*\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(entry.path)
+      && /\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(entry.path)
     );
     if (!artefact) return false;
     try {
@@ -1164,6 +1318,7 @@ export class RealityOrchestrator {
       await this.emit(root, "reality.fractured", "Reality cannot stabilise until every immutable anchor and regression proof passes.", {});
       throw new Error("Reality cannot stabilise because its proof is incomplete or failing.");
     }
+    await this.deferOpenProposals(await this.repository.listRealities());
     const updated = RealityEntity.hydrate(root)
       .setStatus("stabilised", "Reality stabilised")
       .setImplementationState("Layered controls verified by immutable anchors")
@@ -1174,10 +1329,59 @@ export class RealityOrchestrator {
     await this.advanceSession(session, 10, updated.id);
   }
 
+  private async deferOpenProposals(realities: Reality[]): Promise<Reality[]> {
+    const updated: Reality[] = [];
+    for (const reality of realities) {
+      const statusRank: Record<Reality["proposals"][number]["status"], number> = {
+        open: 0,
+        deferred: 1,
+        dreaming: 2,
+        resolved: 3
+      };
+      const uniqueByPremise = new Map<string, Reality["proposals"][number]>();
+      for (const proposal of reality.proposals) {
+        const key = proposal.title.trim().toLocaleLowerCase();
+        const existing = uniqueByPremise.get(key);
+        if (!existing) {
+          uniqueByPremise.set(key, proposal);
+          continue;
+        }
+        if (statusRank[proposal.status] > statusRank[existing.status]) {
+          uniqueByPremise.set(key, { ...existing, status: proposal.status });
+        }
+      }
+      const unique = [...uniqueByPremise.values()];
+      const open = unique.filter((proposal) => proposal.status === "open");
+      if (!open.length && unique.length === reality.proposals.length) {
+        updated.push(reality);
+        continue;
+      }
+      const entity = RealityEntity.hydrate({ ...reality, proposals: unique });
+      for (const proposal of open) entity.updateProposal(proposal.id, "deferred");
+      const deferred = entity.snapshot();
+      await this.repository.saveReality(deferred);
+      for (const proposal of open) {
+        await this.emit(
+          deferred,
+          "uncertainty.deferred",
+          `Remaining uncertainty retained beyond this run's Dream budget: ${proposal.uncertainty}`,
+          {
+            proposalId: proposal.id,
+            title: proposal.title,
+            reason: "dream-budget-exhausted"
+          }
+        );
+      }
+      updated.push(deferred);
+    }
+    return updated;
+  }
+
   private async repairReality(session: DemoSession): Promise<void> {
     const root = await this.requireNamedReality(ROOT_NAME);
-    const dreams = await Promise.all([this.requireDreamAtDepth(2), this.requireDreamAtDepth(1)]);
-    const reports = dreams
+    const reports = (await this.repository.listRealities())
+      .filter((reality) => reality.kind === "dream")
+      .sort((left, right) => right.depth - left.depth)
       .map((reality) => reality.wakeReport)
       .filter((report): report is WakeReport => Boolean(report));
     const context = [
@@ -1330,26 +1534,37 @@ ${laws || "- No additional runtime laws."}
   }
 
   private async restorePersistedArtefacts(reality: Reality): Promise<void> {
-    const rotatingEvidence = reality.evidence.find((entry) =>
-      entry.artefactPath === "demo/password-reset/tests/rotating-ip.attack.spec.ts"
-    );
-    if (rotatingEvidence && reality.worktreePath) {
-      await this.worktrees.writeFile(
-        reality.worktreePath,
-        "demo/password-reset/tests/rotating-ip.attack.spec.ts",
-        ROTATING_IP_TEST
-      );
+    const retainedPaths = new Set([
+      ...reality.evidence
+        .map((evidence) => evidence.artefactPath)
+        .filter((artefactPath): artefactPath is string => Boolean(artefactPath)),
+      ...(reality.wakeReport?.artefacts.map((artefact) => artefact.path) ?? [])
+    ]);
+    for (const retainedPath of retainedPaths) {
+      const canonicalContent = retainedPath === "demo/password-reset/tests/rotating-ip.attack.spec.ts"
+        ? ROTATING_IP_TEST
+        : retainedPath === "demo/password-reset/tests/enumeration.attack.spec.ts"
+          ? ENUMERATION_RESPONSE_TEST
+          : undefined;
+      if (canonicalContent) {
+        await this.worktrees.writeFile(reality.worktreePath!, retainedPath, canonicalContent);
+      }
     }
-
     for (const artefact of reality.wakeReport?.artefacts ?? []) {
       if (
-        !artefact.content
-        || path.isAbsolute(artefact.path)
+        path.isAbsolute(artefact.path)
         || artefact.path.split(/[\\/]/).includes("..")
         || artefact.path.includes("not-supplied")
       ) {
         continue;
       }
+      if (retainedPaths.has(artefact.path) && (
+        artefact.path === "demo/password-reset/tests/rotating-ip.attack.spec.ts"
+        || artefact.path === "demo/password-reset/tests/enumeration.attack.spec.ts"
+      )) {
+        continue;
+      }
+      if (!artefact.content) continue;
       await this.worktrees.writeFile(reality.worktreePath!, artefact.path, artefact.content);
     }
   }
@@ -1398,12 +1613,14 @@ ${laws || "- No additional runtime laws."}
   }
 
   private describeAction(session: DemoSession, reality: Reality | null): DemoNextAction | null {
+    const openProposal = reality?.proposals.find((proposal) => proposal.status === "open");
     const definition = session.phase === 9 && !this.proofPassed(session, reality)
       ? { id: "repair", kind: "advance", executor: "codex", verb: "repair failed proof" } satisfies ActionDefinition
+      : session.phase === 5 && reality?.depth === 1 && openProposal
+        ? ACTION_PLAN[4]
       : ACTION_PLAN[session.phase];
     if (!definition || !reality) return null;
     const scope = reality.constitution.scope ?? reality.name;
-    const openProposal = reality.proposals.find((proposal) => proposal.status === "open");
     const target = (() => {
       switch (definition.id) {
         case "inspect": return scope;
@@ -1435,11 +1652,6 @@ ${laws || "- No additional runtime laws."}
       }
     })();
     return { ...definition, target, label };
-  }
-
-  private expectedAction(session: DemoSession): DemoAction | undefined {
-    if (session.phase === 9 && !this.proofPassed(session)) return "repair";
-    return ACTION_PLAN[session.phase]?.id;
   }
 
   private proofPassed(session: DemoSession, reality?: Reality | null): boolean {
@@ -1540,7 +1752,8 @@ ${laws || "- No additional runtime laws."}
   private applyInvestigationReport(
     entity: RealityEntity,
     report: InvestigationReport,
-    returnSubjects: boolean
+    returnSubjects: boolean,
+    acceptDreamProposals = true
   ): { evidenceIds: string[] } {
     const evidenceByTitle = new Map<string, string>();
     for (const reported of report.evidence) {
@@ -1576,10 +1789,21 @@ ${laws || "- No additional runtime laws."}
       });
     }
 
-    if (report.dreamProposal) {
+    const proposedDreams = acceptDreamProposals ? [
+      report.dreamProposal,
+      ...(entity.snapshot().constitution.dreamStrategy === "competing-siblings"
+        ? [report.alternativeDreamProposal]
+        : [])
+    ].filter((proposal): proposal is NonNullable<typeof proposal> => Boolean(proposal)) : [];
+    for (const proposal of proposedDreams) {
+      const duplicate = entity.snapshot().proposals.some((existing) =>
+        existing.title.trim().toLocaleLowerCase() === proposal.title.trim().toLocaleLowerCase()
+        || existing.premise.trim().toLocaleLowerCase() === proposal.premise.trim().toLocaleLowerCase()
+      );
+      if (duplicate) continue;
       entity.addProposal({
         id: randomUUID(),
-        ...report.dreamProposal,
+        ...proposal,
         status: "open"
       });
     }
@@ -1836,26 +2060,58 @@ ${laws || "- No additional runtime laws."}
         this.demoAutopilotControl = completed;
         await this.repository.saveSession({ ...session, autopilot: completed });
         if (active) {
-          await this.emit(active, "autopilot.completed", "Demo auto mode reached the stabilised waking Reality.", {
+          await this.emit(active, "autopilot.completed", "Guided auto mode reached the stabilised waking Reality.", {
             actionsCompleted: completed.actionsCompleted
           });
         }
         return;
       }
       if (control.actionsCompleted >= control.maxActions) {
-        await this.pauseDemoAutopilot("The configured Demo action limit was reached.");
+        await this.pauseDemoAutopilot("The configured guided-auto action limit was reached.");
         return;
       }
-      const action = this.expectedAction(session);
-      if (!action) {
+      const elapsedMinutes = control.startedAt
+        ? (Date.now() - new Date(control.startedAt).getTime()) / 60_000
+        : 0;
+      if (elapsedMinutes >= control.maxMinutes) {
+        await this.pauseDemoAutopilot("The configured guided-auto wall-clock limit was reached.");
+        return;
+      }
+      const active = session.activeRealityId
+        ? await this.repository.getReality(session.activeRealityId)
+        : null;
+      const next = this.describeAction(session, active);
+      if (!next) {
         await this.pauseDemoAutopilot("The Demo Mission has no valid next action.");
         return;
       }
+      const proofFailure = next.id === "repair"
+        && session.anchorResults.some((result) => result.status === "failed");
+      const gated = control.kind === "guided-real"
+        && (
+          (next.kind === "dream" && control.pauseOnDream)
+          || proofFailure
+        );
+      if (gated && control.approvedAction !== next.id) {
+        await this.pauseDemoAutopilot(
+          proofFailure
+            ? "An immutable anchor failed; inspect the evidence before authorizing repair."
+            : "A new counterfactual premise requires explicit approval."
+        );
+        return;
+      }
+      const executing: DemoAutopilotState = {
+        ...control,
+        approvedAction: undefined,
+        lastAction: next.id,
+        updatedAt: new Date().toISOString()
+      };
+      this.demoAutopilotControl = executing;
       try {
-        await this.act(action);
+        await this.act(next.id);
       } catch (error) {
         await this.pauseDemoAutopilot(
-          `Action ${action} stopped: ${error instanceof Error ? error.message : "unknown failure"}`
+          `Action ${next.id} stopped: ${error instanceof Error ? error.message : "unknown failure"}`
         );
         return;
       }
@@ -1865,7 +2121,7 @@ ${laws || "- No additional runtime laws."}
       const advanced: DemoAutopilotState = {
         ...latest,
         actionsCompleted: latest.actionsCompleted + 1,
-        lastAction: action,
+        lastAction: next.id,
         updatedAt: new Date().toISOString()
       };
       this.demoAutopilotControl = advanced;
@@ -1889,7 +2145,10 @@ ${laws || "- No additional runtime laws."}
       ? await this.repository.getReality(session.activeRealityId)
       : null;
     if (active) {
-      await this.emit(active, "autopilot.paused", `Demo auto mode paused: ${reason}`, {
+      const controllerName = paused.kind === "guided-real"
+        ? "Guided real auto mode"
+        : "Recording auto mode";
+      await this.emit(active, "autopilot.paused", `${controllerName} paused: ${reason}`, {
         actionsCompleted: paused.actionsCompleted,
         reason
       });

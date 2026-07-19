@@ -10,6 +10,7 @@ import {
   BrainCircuit,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   CircleDot,
   Clock3,
@@ -175,6 +176,15 @@ interface RealityGraphLayout {
   maximumDepth: number;
 }
 
+function isDescendantReality(realities: Reality[], candidateId: string, ancestorId: string): boolean {
+  let candidate = realities.find((reality) => reality.id === candidateId);
+  while (candidate?.parentId) {
+    if (candidate.parentId === ancestorId) return true;
+    candidate = realities.find((reality) => reality.id === candidate?.parentId);
+  }
+  return false;
+}
+
 function layoutRealityTree(realities: Reality[]): RealityGraphLayout {
   const byId = new Map(realities.map((reality) => [reality.id, reality]));
   const children = new Map<string, Reality[]>();
@@ -199,12 +209,13 @@ function layoutRealityTree(realities: Reality[]): RealityGraphLayout {
     );
   const positions = new Map<string, { x: number; y: number }>();
   const visiting = new Set<string>();
+  const rowGap = realities.some((reality) => reality.subjects.length > 0) ? 220 : 164;
   let leafIndex = 0;
   const place = (reality: Reality): number => {
     const existing = positions.get(reality.id);
     if (existing) return existing.y;
     if (visiting.has(reality.id)) {
-      const y = 116 + leafIndex++ * 164;
+      const y = 116 + leafIndex++ * rowGap;
       positions.set(reality.id, { x: 138 + reality.depth * 304, y });
       return y;
     }
@@ -213,7 +224,7 @@ function layoutRealityTree(realities: Reality[]): RealityGraphLayout {
     const childRows = descendants.map(place);
     const y = childRows.length
       ? childRows.reduce((total, row) => total + row, 0) / childRows.length
-      : 116 + leafIndex++ * 164;
+      : 116 + leafIndex++ * rowGap;
     positions.set(reality.id, { x: 138 + reality.depth * 304, y });
     visiting.delete(reality.id);
     return y;
@@ -228,7 +239,10 @@ function layoutRealityTree(realities: Reality[]): RealityGraphLayout {
   return {
     positions,
     width: Math.max(920, 276 + maximumDepth * 304),
-    height: Math.max(356, maximumY + 116),
+    height: Math.max(
+      356,
+      maximumY + (realities.some((reality) => reality.subjects.length > 0) ? 210 : 116)
+    ),
     maximumDepth
   };
 }
@@ -285,6 +299,23 @@ function formatElapsed(milliseconds: number): string {
   return hours
     ? `${hours}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`
     : `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatWorldTime(totalMinutes: number): string {
+  const minutes = Math.max(0, Math.floor(totalMinutes));
+  const days = Math.floor(minutes / 1_440);
+  const hours = Math.floor((minutes % 1_440) / 60);
+  const remainder = minutes % 60;
+  return [
+    days ? `${days}d` : null,
+    hours ? `${hours}h` : null,
+    remainder || (!days && !hours) ? `${remainder}m` : null
+  ].filter(Boolean).join(" ");
+}
+
+function experiencedMilestoneMinutes(reality: Reality): number {
+  const dilation = Math.max(1, reality.constitution.timeDilation ?? 1);
+  return Math.floor(reality.worldState.simulatedMinutes / dilation);
 }
 
 function relativeAge(now: number, timestamp: string): string {
@@ -610,8 +641,28 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
   operation?: PresentedRealityOperation | null;
   onSelect: (id: string) => void;
 }) {
-  const collapsed = realities.length === 1 && realities[0]?.status === "stabilised";
-  const layout = useMemo(() => layoutRealityTree(realities), [realities]);
+  const [collapsedBranchIds, setCollapsedBranchIds] = useState<Set<string>>(() => new Set());
+  const realityIds = useMemo(() => new Set(realities.map((reality) => reality.id)), [realities]);
+  useEffect(() => {
+    setCollapsedBranchIds((current) => {
+      const retained = new Set([...current].filter((id) => realityIds.has(id)));
+      return retained.size === current.size ? current : retained;
+    });
+  }, [realityIds]);
+  const visibleRealities = useMemo(() => realities.filter((reality) => {
+    let parentId = reality.parentId;
+    while (parentId) {
+      if (collapsedBranchIds.has(parentId)) return false;
+      parentId = realities.find((candidate) => candidate.id === parentId)?.parentId ?? null;
+    }
+    return true;
+  }), [collapsedBranchIds, realities]);
+  const descendantsByReality = useMemo(() => new Map(realities.map((reality) => [
+    reality.id,
+    realities.filter((candidate) => isDescendantReality(realities, candidate.id, reality.id)).length
+  ])), [realities]);
+  const collapsed = visibleRealities.length === 1 && visibleRealities[0]?.status === "stabilised";
+  const layout = useMemo(() => layoutRealityTree(visibleRealities), [visibleRealities]);
   const viewportHeight = Math.min(560, layout.height);
   return (
     <div
@@ -639,8 +690,8 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           aria-hidden="true"
         >
-          {realities.map((reality) => {
-            const parent = realities.find((candidate) => candidate.id === reality.parentId);
+          {visibleRealities.map((reality) => {
+            const parent = visibleRealities.find((candidate) => candidate.id === reality.parentId);
             const from = parent ? layout.positions.get(parent.id) : undefined;
             const to = layout.positions.get(reality.id);
             if (!parent || !from || !to) return null;
@@ -665,36 +716,84 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
           })}
         </svg>
 
-        {realities.map((reality) => {
+        {visibleRealities.map((reality) => {
           const position = layout.positions.get(reality.id);
           if (!position) return null;
           const selected = reality.id === selectedId;
           const locus = reality.id === locusId;
+          const descendantCount = descendantsByReality.get(reality.id) ?? 0;
+          const branchCollapsed = collapsedBranchIds.has(reality.id);
           return (
-            <button
-              type="button"
+            <div
               className={`reality-node depth-node-${reality.depth} ${selected ? "is-selected" : ""} ${locus ? "is-locus" : ""} ${pulseId === reality.id ? "is-waking" : ""} ${operation?.realityId === reality.id ? "is-operating" : ""}`}
               style={{ left: position.x, top: position.y }}
               key={reality.id}
-              onClick={() => onSelect(reality.id)}
-              aria-pressed={selected}
             >
-              <span className="node-kicker">
-                <span>L{reality.depth}</span>
-                {operation?.realityId === reality.id
-                  ? <b><Radio size={10} /> CODEX ACTIVE</b>
-                  : locus
-                    ? <b><Radio size={10} /> LOCUS</b>
-                    : <b>{statusLabel(reality.status)}</b>}
-              </span>
-              <strong>{reality.name}</strong>
-              <small>{reality.worldState.currentFocus}</small>
-              <span className="node-stats">
-                <span><Clock3 size={12} />{reality.worldState.simulatedMinutes}m</span>
-                <span><FlaskConical size={12} />{reality.evidence.length}</span>
-                <span><UsersRound size={12} />{reality.subjects.length}</span>
-              </span>
-            </button>
+              <button
+                type="button"
+                className="reality-node-main"
+                onClick={() => onSelect(reality.id)}
+                aria-pressed={selected}
+              >
+                <span className="node-kicker">
+                  <span>L{reality.depth}</span>
+                  {operation?.realityId === reality.id
+                    ? <b><Radio size={10} /> CODEX ACTIVE</b>
+                    : locus
+                      ? <b><Radio size={10} /> LOCUS</b>
+                      : <b>{statusLabel(reality.status)}</b>}
+                </span>
+                <strong>{reality.name}</strong>
+                <small>{reality.worldState.currentFocus}</small>
+                <span className="node-stats">
+                  <span
+                    title={`${experiencedMilestoneMinutes(reality)} completed milestone minutes at ${reality.constitution.timeDilation ?? 1}x dilation`}
+                  >
+                    <Clock3 size={12} />{formatWorldTime(reality.worldState.simulatedMinutes)}
+                  </span>
+                  <span><FlaskConical size={12} />{reality.evidence.length}</span>
+                  <span><UsersRound size={12} />{reality.subjects.length}</span>
+                </span>
+              </button>
+              {descendantCount > 0 && (
+                <button
+                  type="button"
+                  className="branch-toggle"
+                  onClick={() => {
+                    setCollapsedBranchIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(reality.id)) next.delete(reality.id);
+                      else next.add(reality.id);
+                      return next;
+                    });
+                    onSelect(reality.id);
+                  }}
+                  aria-expanded={!branchCollapsed}
+                  aria-label={`${branchCollapsed ? "Expand" : "Collapse"} ${reality.name} branch`}
+                  title={`${branchCollapsed ? "Expand" : "Collapse"} ${descendantCount} descendant ${descendantCount === 1 ? "Reality" : "Realities"}`}
+                >
+                  {branchCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                  <span>{branchCollapsed ? descendantCount : null}</span>
+                </button>
+              )}
+              {reality.subjects.length > 0 && (
+                <div className="graph-subjects" aria-label={`Subjects in ${reality.name}`}>
+                  {reality.subjects.slice(0, 4).map((subject) => (
+                    <button
+                      type="button"
+                      className={`graph-subject subject-${subject.status}`}
+                      onClick={() => onSelect(reality.id)}
+                      title={`${subject.name}, ${subject.role}: ${subject.mission}`}
+                      key={subject.id}
+                      data-testid="graph-subject"
+                    >
+                      <UsersRound size={10} />
+                      <span><b>{subject.name}</b><small>{subject.role}</small></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           );
         })}
 
@@ -752,8 +851,15 @@ export function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
         <div className="inspector-body">
           <div className="dream-clock" data-testid="simulated-world-time">
             <Clock3 size={18} />
-            <span><small>SIMULATED WORLD-TIME</small><strong>{reality.worldState.simulatedMinutes}</strong></span>
-            <em>{reality.constitution.timeDilation ?? 1}x / minutes</em>
+            <span>
+              <small>SUBJECTIVE DREAM-TIME</small>
+              <strong>{formatWorldTime(reality.worldState.simulatedMinutes)}</strong>
+            </span>
+            <em>
+              {experiencedMilestoneMinutes(reality)}m completed experience
+              {" × "}
+              {reality.constitution.timeDilation ?? 1}
+            </em>
           </div>
           {realityOperation && (
             <div className="live-world-clock">
@@ -930,6 +1036,14 @@ export function OperationMonitor({ operation, realities, events, now }: {
     || event.type === "subject.failed"
   ).length;
   const sdkToolCount = externalToolCount + collaborationToolCount;
+  const quietMilliseconds = latest
+    ? Math.max(0, now - new Date(latest.occurredAt).getTime())
+    : 0;
+  const awaitingCodexMilestone = operation.executor === "codex"
+    && Boolean(latest)
+    && terminal(latest!)
+    && latestMetadata.stage !== "turn"
+    && quietMilliseconds >= 10_000;
 
   return (
     <section className="operation-monitor" aria-live="polite" aria-label="Active Reality operation" data-testid="operation-monitor">
@@ -961,6 +1075,11 @@ export function OperationMonitor({ operation, realities, events, now }: {
           {latest
             ? metadataDetail(latestMetadata) && <small>{metadataDetail(latestMetadata)}</small>
             : <small>The isolated worktree is being checked. Codex usage begins when a thread milestone appears.</small>}
+          {awaitingCodexMilestone && (
+            <small className="operation-quiet">
+              Awaiting the next Codex milestone for {formatElapsed(quietMilliseconds)}; no local command is active.
+            </small>
+          )}
         </span>
         <em>{latestMetadata.stage ?? "orchestrator"} / {latestMetadata.status ?? (observedCodex ? "active" : "preparing")}</em>
       </div>
@@ -1204,7 +1323,13 @@ function EventDetailDialog({
             <div><dt>REALITY</dt><dd>{reality?.name ?? "Unknown Reality"}</dd></div>
             <div><dt>EXACT TIME</dt><dd>{new Date(event.occurredAt).toLocaleString()}</dd></div>
             <div><dt>AGE</dt><dd>{relativeAge(now, event.occurredAt)}</dd></div>
-            <div><dt>DREAM TIME</dt><dd>{event.dreamTime} minutes</dd></div>
+            <div>
+              <dt>SUBJECTIVE DREAM-TIME</dt>
+              <dd>
+                {formatWorldTime(event.dreamTime)}
+                {reality && ` (${Math.floor(event.dreamTime / Math.max(1, reality.constitution.timeDilation ?? 1))}m completed experience × ${reality.constitution.timeDilation ?? 1})`}
+              </dd>
+            </div>
             <div><dt>EVENT ID</dt><dd><code>{event.id}</code></dd></div>
             <div><dt>REALITY ID</dt><dd><code>{event.realityId}</code></dd></div>
           </dl>
@@ -1883,8 +2008,8 @@ function DemoAutoModeBar({
   busy: boolean;
   onControl(command: "start" | "resume" | "pause" | "stop"): void;
 }) {
-  if (snapshot.runtime.codexMode !== "mock") return null;
   const state = snapshot.session.autopilot;
+  const guidedReal = snapshot.runtime.codexMode === "real";
   const running = state.mode === "running";
   const paused = state.mode === "paused";
   return (
@@ -1892,18 +2017,37 @@ function DemoAutoModeBar({
       <div>
         <span><Play size={15} /></span>
         <p>
-          <small>RECORDING AUTO MODE / DETERMINISTIC / NO CODEX USAGE</small>
-          <strong>{running ? "Advancing the Demo Mission for a consistent recording" : paused ? state.pauseReason ?? "Recording path paused" : state.mode === "completed" ? "Demo Mission reached a stable Reality" : "Manual control"}</strong>
+          <small>
+            {guidedReal
+              ? "GUIDED REAL AUTO / EXPLICIT START / PARENT GATES ARMED"
+              : "RECORDING AUTO MODE / DETERMINISTIC / NO CODEX USAGE"}
+          </small>
+          <strong>
+            {running
+              ? guidedReal
+                ? "Advancing one bounded, validated Reality action at a time"
+                : "Advancing the Demo Mission for a consistent recording"
+              : paused
+                ? state.pauseReason ?? "Guided Reality path paused"
+                : state.mode === "completed"
+                  ? "Demo Mission reached a stable Reality"
+                  : guidedReal
+                    ? "Manual control; Codex will not start until guided auto is explicitly started"
+                    : "Manual control"}
+          </strong>
         </p>
       </div>
       <dl>
         <div><dt>ACTIONS</dt><dd>{state.actionsCompleted} / {state.maxActions}</dd></div>
-        <div><dt>PACE</dt><dd>{(state.paceMilliseconds / 1_000).toFixed(1)}s</dd></div>
+        <div>
+          <dt>{guidedReal ? "GATES" : "PACE"}</dt>
+          <dd>{guidedReal ? "ARMED" : `${(state.paceMilliseconds / 1_000).toFixed(1)}s`}</dd>
+        </div>
       </dl>
-      <nav aria-label="Demo recording auto mode controls">
+      <nav aria-label={guidedReal ? "Demo guided real auto controls" : "Demo recording auto mode controls"}>
         {["off", "stopped", "completed"].includes(state.mode) && snapshot.session.phase < 10 && (
           <button type="button" onClick={() => onControl("start")} disabled={busy}>
-            <Play size={14} /> Start recording auto
+            <Play size={14} /> {guidedReal ? "Start guided auto" : "Start recording auto"}
           </button>
         )}
         {running && (
@@ -1994,6 +2138,19 @@ export function RealityWorkspace({
   const finalBelief = root?.beliefs.at(-1);
   const dreamCount = realities.filter((reality) => reality.depth > 0).length;
   const hiddenRealityCount = realities.length - graphRealities.length;
+  const childCounts = new Map<string, number>();
+  for (const reality of realities) {
+    if (!reality.parentId) continue;
+    childCounts.set(reality.parentId, (childCounts.get(reality.parentId) ?? 0) + 1);
+  }
+  const observedSiblingLimit = Math.max(1, ...childCounts.values());
+  const competingSiblings = observedSiblingLimit > 1 || realities.some((reality) =>
+    reality.constitution.dreamStrategy === "competing-siblings"
+  );
+  const siblingLimit = Math.max(
+    observedSiblingLimit,
+    ...realities.map((reality) => reality.constitution.maxSiblingDreams ?? 1)
+  );
   const activeProposal = proposals.find((proposal) =>
     proposal.status === "open"
     && !realities.some((reality) =>
@@ -2064,7 +2221,11 @@ export function RealityWorkspace({
             <span><i className="key-waking" /> Waking Reality</span>
             <span><i className="key-dream" /> Dream</span>
             <span><i className="key-memory" /> Memory path</span>
-            <small>Select a world to inspect its own thread, worktree, evidence, and contract.</small>
+            <small>
+              {competingSiblings
+                ? `BRANCHING STRATEGY / UP TO ${siblingLimit} SIBLING DREAMS PER REALITY`
+                : "DEMO STRATEGY / ONE DECISIVE NESTED CHAIN"}
+            </small>
           </div>
         </div>
         <WorldInspector
@@ -2083,12 +2244,21 @@ export function RealityWorkspace({
             icon={<Search size={18} />}
             eyebrow="UNCERTAINTY LEDGER"
             title="Dream proposals"
-            meta={<span className="count-label">{proposals.filter((proposal) => proposal.status !== "resolved").length} unresolved</span>}
+            meta={(
+              <span className="count-label">
+                {proposals.filter((proposal) => proposal.status === "open" || proposal.status === "dreaming").length} active
+                {" / "}
+                {proposals.filter((proposal) => proposal.status === "deferred").length} retained
+              </span>
+            )}
           />
           <div className="proposal-list">
             {proposals.length ? proposals.map((proposal) => (
               <article className={`proposal-row proposal-${proposal.status}`} key={proposal.id}>
-                <span className="proposal-status"><CircleDot size={14} />{proposal.status}</span>
+                <span className="proposal-status">
+                  <CircleDot size={14} />
+                  {proposal.status === "deferred" ? "retained" : proposal.status}
+                </span>
                 <div>
                   <small>{proposal.owner} / {proposal.title}</small>
                   <h3>{proposal.uncertainty}</h3>
@@ -2485,11 +2655,18 @@ export function RealityEngine() {
     ?? null;
   const root = replayedRealities.find((reality) => reality.depth === 0) ?? null;
   const memories = useMemo(
-    () => replayedRealities.flatMap((reality) => reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []),
-    [replayedRealities]
+    () => snapshot?.realities.flatMap((reality) => reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []) ?? [],
+    [snapshot?.realities]
   );
   const activeOperation = snapshot?.operation ?? localOperation;
   const passedAnchorCount = snapshot?.session.anchorResults.filter((anchor) => anchor.status === "passed").length ?? 0;
+  const verifiedMemoryCount = snapshot?.session.memoryIntegrity.filter((seal) => seal.verdict === "verified").length ?? 0;
+  const outcomeSubjectCount = snapshot?.realities.reduce((total, reality) => total + reality.subjects.length, 0) ?? 0;
+  const changedFileCount = new Set(
+    snapshot?.session.finalDiff.match(/^diff --git a\/(.+?) b\//gm)
+      ?.map((line) => line.replace(/^diff --git a\//, "").replace(/ b\/$/, ""))
+    ?? []
+  ).size;
   const graphRealities = collapsedDreams && root ? [root] : replayedRealities;
   const pendingProposal = snapshot?.activeReality?.proposals.find((proposal) => proposal.status === "open") ?? null;
   const requestAction = (action: DemoAction) => {
@@ -2587,12 +2764,23 @@ export function RealityEngine() {
 
       {error && <div className="error-banner"><XCircle size={17} /><span><b>Reality fracture</b>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error"><X size={15} /></button></div>}
 
-      {snapshot.session.phase === 10 && (
+      {displayedPhase === 10 && (
         <section className="outcome-summary" data-testid="outcome-summary">
           <div className="outcome-intro">
             <span className="eyebrow">WAKING OUTCOME</span>
-            <h2>Password reset now survives rotating-source abuse</h2>
-            <p>Two returned memories changed one IP-only control into generic responses plus IP, identifier, and global request budgets while preserving token expiry.</p>
+            <h2>Password reset survives coordinated abuse without exposing account state</h2>
+            <p>{memories.length} returned memories changed one IP-only control into generic responses plus IP, identifier, and global request budgets while preserving token expiry.</p>
+          </div>
+          <div className="outcome-causal-chain" aria-label="Validated causal path">
+            <span><b>{snapshot.realities.length}</b><small>isolated Realities</small></span>
+            <ArrowRight size={14} aria-hidden="true" />
+            <span><b>{outcomeSubjectCount}</b><small>bounded Subjects</small></span>
+            <ArrowRight size={14} aria-hidden="true" />
+            <span><b>{verifiedMemoryCount}</b><small>verified memories</small></span>
+            <ArrowRight size={14} aria-hidden="true" />
+            <span><b>{passedAnchorCount}</b><small>parent proofs</small></span>
+            <ArrowRight size={14} aria-hidden="true" />
+            <span><b>{changedFileCount}</b><small>waking files</small></span>
           </div>
           <div className="outcome-results" aria-label="Security outcome">
             <div>

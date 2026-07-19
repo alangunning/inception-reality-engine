@@ -48,7 +48,8 @@ class FakeWorktreeManager implements WorktreeManager {
   async listChangedFiles(): Promise<string[]> {
     return [
       "demo/password-reset/src/password-reset.ts",
-      "demo/password-reset/tests/rotating-ip.attack.spec.ts"
+      "demo/password-reset/tests/rotating-ip.attack.spec.ts",
+      "demo/password-reset/tests/enumeration.attack.spec.ts"
     ];
   }
   async diff(): Promise<string> { return "diff --git a/password-reset.ts b/password-reset.ts\n+layered controls"; }
@@ -60,16 +61,67 @@ class FakeWorktreeManager implements WorktreeManager {
     this.restoreCalls += 1;
   }
   async run(_worktreePath: string, _command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-    if (args.some((arg) => arg.includes("rotating-ip.attack.spec.ts"))) {
+    if (args.some((arg) =>
+      arg.includes("rotating-ip.attack.spec.ts")
+      || arg.includes("enumeration.attack.spec.ts")
+    )) {
       return { stdout: "1 test failed", stderr: "", exitCode: 1 };
     }
     return { stdout: "3 tests passed", stderr: "", exitCode: 0 };
   }
 }
 
+class FailFirstAnchorWorktreeManager extends FakeWorktreeManager {
+  private failedAnchor = false;
+
+  override async run(
+    worktreePath: string,
+    command: string,
+    args: string[]
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    if (!this.failedAnchor && args.some((arg) => arg.includes("anchors.spec.ts"))) {
+      this.failedAnchor = true;
+      return { stdout: "1 test failed", stderr: "", exitCode: 1 };
+    }
+    return super.run(worktreePath, command, args);
+  }
+}
+
 class InvalidWakeRuntime extends MockCodexRuntime implements CodexRuntime {
   override async wake(_reality: Reality): Promise<CodexWakeResult> {
     throw new WakeReportValidationError();
+  }
+}
+
+class EvidenceAliasFirstWakeRuntime extends MockCodexRuntime {
+  inspectCalls = 0;
+  wakeCalls = 0;
+
+  override async inspect(
+    reality: Reality,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexExecutionResult> {
+    this.inspectCalls += 1;
+    return super.inspect(reality, onEvent);
+  }
+
+  override async wake(
+    reality: Reality,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexWakeResult> {
+    this.wakeCalls += 1;
+    const result = await super.wake(reality, onEvent);
+    if (this.wakeCalls !== 1) return result;
+    return {
+      ...result,
+      report: {
+        ...result.report,
+        changedBeliefs: result.report.changedBeliefs.map((change) => ({
+          ...change,
+          evidenceIds: ["E1"]
+        }))
+      }
+    };
   }
 }
 
@@ -146,6 +198,19 @@ class FailingRegressionWorktreeManager extends FakeWorktreeManager {
   override async run(worktreePath: string, command: string, args: string[]) {
     if (args.includes("demo/password-reset/tests")) {
       return { stdout: "1 inherited test failed", stderr: "", exitCode: 1 };
+    }
+    return super.run(worktreePath, command, args);
+  }
+}
+
+class ConfigurationFailureWorktreeManager extends FakeWorktreeManager {
+  override async run(worktreePath: string, command: string, args: string[]) {
+    if (args.some((arg) => /\.(?:test|spec)\.[cm]?[jt]sx?$/i.test(arg))) {
+      return {
+        stdout: "",
+        stderr: "failed to load config: module resolution error",
+        exitCode: 1
+      };
     }
     return super.run(worktreePath, command, args);
   }
@@ -325,32 +390,60 @@ describe("RealityOrchestrator", () => {
         "discover_abuse",
         "create_nested_dream",
         "wake_nested",
+        "create_nested_dream",
+        "wake_nested",
         "wake_parent",
         "synthesise",
-        "run_anchors",
-        "stabilise"
+        "run_anchors"
       ];
       for (const action of actions) await orchestrator.act(action);
+      const beforeStabilisation = await orchestrator.snapshot();
+      const retainedSource = beforeStabilisation.realities.find((reality) => reality.depth === 2)!;
+      const proposalTemplate = beforeStabilisation.realities
+        .find((reality) => reality.depth === 1)!.proposals[0]!;
+      const retainedProposal = {
+        ...proposalTemplate,
+        id: "retained-budget-proposal",
+        realityId: retainedSource.id,
+        status: "open" as const
+      };
+      await repository.saveReality({
+        ...retainedSource,
+        proposals: [
+          retainedProposal,
+          { ...retainedProposal, id: "duplicate-retry-proposal" }
+        ]
+      });
+      await orchestrator.act("stabilise");
 
       const snapshot = await orchestrator.snapshot();
       expect(snapshot.session.phase).toBe(10);
-      expect(snapshot.realities).toHaveLength(3);
-      expect(snapshot.realities.map((reality) => reality.depth)).toEqual([0, 1, 2]);
-      expect(snapshot.realities.filter((reality) => reality.wakeReport)).toHaveLength(2);
+      expect(snapshot.realities).toHaveLength(4);
+      expect(snapshot.realities.map((reality) => reality.depth)).toEqual([0, 1, 2, 2]);
+      expect(snapshot.realities.filter((reality) => reality.wakeReport)).toHaveLength(3);
       expect(snapshot.activeReality?.status).toBe("stabilised");
       expect(snapshot.session.anchorResults.every((anchor) => anchor.status === "passed")).toBe(true);
       expect(snapshot.session.finalDiff).toContain("layered controls");
       expect(snapshot.events.some((event) => event.type === "memory.returned")).toBe(true);
-      expect(snapshot.events.filter((event) => event.type === "memory.verified")).toHaveLength(2);
-      expect(snapshot.session.memoryIntegrity).toHaveLength(2);
-      const deepestSeal = snapshot.session.memoryIntegrity.find((seal) =>
+      expect(snapshot.events.filter((event) => event.type === "memory.verified")).toHaveLength(3);
+      expect(snapshot.session.memoryIntegrity).toHaveLength(3);
+      const deepestSeals = snapshot.session.memoryIntegrity.filter((seal) =>
         snapshot.realities.find((reality) => reality.id === seal.realityId)?.depth === 2
-      )!;
+      );
       const parentSeal = snapshot.session.memoryIntegrity.find((seal) =>
         snapshot.realities.find((reality) => reality.id === seal.realityId)?.depth === 1
       )!;
-      expect(deepestSeal.verdict).toBe("verified");
-      expect(parentSeal.descendantSealIds).toContain(deepestSeal.id);
+      expect(deepestSeals).toHaveLength(2);
+      expect(deepestSeals.every((seal) => seal.verdict === "verified")).toBe(true);
+      expect(parentSeal.descendantSealIds).toEqual(expect.arrayContaining(deepestSeals.map((seal) => seal.id)));
+      expect(snapshot.realities.flatMap((reality) => reality.proposals)).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ status: "open" })])
+      );
+      for (const reality of snapshot.realities) {
+        const retainedProposals = reality.proposals.filter((proposal) => proposal.status === "deferred");
+        expect(new Set(retainedProposals.map((proposal) => `${proposal.title}\u0000${proposal.premise}`)).size)
+          .toBe(retainedProposals.length);
+      }
       expect(snapshot.realities[0]?.evidence.some((evidence) => evidence.title.startsWith("Memory inherited from "))).toBe(false);
       expect(snapshot.realities[0]?.evidence.some((evidence) => evidence.title.startsWith("Memory returned with "))).toBe(true);
 
@@ -360,6 +453,54 @@ describe("RealityOrchestrator", () => {
       expect(archives[0]?.session.phase).toBe(10);
       expect(archives[0]?.events.some((event) => event.type === "reality.stabilised")).toBe(true);
       expect((await orchestrator.snapshot()).session.phase).toBe(0);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("corrects an evidence-lineage quarantine without repeating the nested investigation", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-evidence-correction-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const runtime = new EvidenceAliasFirstWakeRuntime();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        runtime,
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const setup: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream"
+      ];
+      for (const action of setup) await orchestrator.act(action);
+
+      await expect(orchestrator.act("wake_nested")).rejects.toThrow(
+        "Memory integrity gate quarantined"
+      );
+      const inspectionsAfterQuarantine = runtime.inspectCalls;
+      expect((await orchestrator.snapshot()).session.memoryIntegrity[0]).toMatchObject({
+        verdict: "quarantined"
+      });
+
+      await orchestrator.act("wake_nested");
+      const corrected = await orchestrator.snapshot();
+      expect(corrected.session.phase).toBe(5);
+      expect(corrected.nextAction?.id).toBe("create_nested_dream");
+      expect(runtime.inspectCalls).toBe(inspectionsAfterQuarantine);
+      expect(runtime.wakeCalls).toBe(2);
+      expect(corrected.session.memoryIntegrity[0]).toMatchObject({
+        verdict: "verified"
+      });
+      expect(corrected.events.some((event) =>
+        event.type === "wake.collecting"
+        && event.summary.includes("exact evidence ledger")
+      )).toBe(true);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -394,7 +535,7 @@ describe("RealityOrchestrator", () => {
 
       expect(completed.session.autopilot).toMatchObject({
         mode: "completed",
-        actionsCompleted: 10
+        actionsCompleted: 12
       });
       expect(completed.session.phase).toBe(10);
       expect(completed.events.some((event) => event.type === "autopilot.started")).toBe(true);
@@ -403,6 +544,115 @@ describe("RealityOrchestrator", () => {
       await rm(temp, { recursive: true, force: true });
     }
   }, 10_000);
+
+  it("runs the real Demo Mission in bounded guided auto mode and pauses at Dream gates", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-demo-guided-real-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const runtime = new MockCodexRuntime();
+      const inspect = runtime.inspect.bind(runtime);
+      runtime.inspect = async (reality, onEvent) => {
+        const result = await inspect(reality, onEvent);
+        if (reality.depth >= 2 && reality.worktreePath) {
+          const enumeration = /enumeration|response oracle/i.test(reality.name);
+          const artefactPath = enumeration
+            ? "demo/password-reset/tests/enumeration.attack.spec.ts"
+            : "demo/password-reset/tests/rotating-ip.attack.spec.ts";
+          result.report.evidence.push({
+            kind: "test",
+            title: enumeration ? "Response-equivalence regression" : "Rotating-source regression",
+            summary: enumeration
+              ? "A deterministic response-equivalence regression reproduces the account-state oracle."
+              : "A deterministic rotating-source regression reproduces the missing identifier budget.",
+            source: "guided-real-test-runtime",
+            artefactPath,
+            synthetic: false
+          });
+          result.report.changedFiles.push(artefactPath);
+          const attackPath = path.join(
+            reality.worktreePath,
+            artefactPath
+          );
+          await mkdir(path.dirname(attackPath), { recursive: true });
+          await writeFile(attackPath, "it('retains a decisive rotating-source regression', () => {});");
+        }
+        return result;
+      };
+      Object.defineProperty(runtime, "mode", { value: "real" });
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        runtime,
+        new FailFirstAnchorWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+
+      const idle = await orchestrator.snapshot();
+      expect(idle.session.autopilot.mode).toBe("off");
+      expect(idle.events.some((event) => event.type === "autopilot.started")).toBe(false);
+
+      await orchestrator.controlAutopilot({
+        command: "start",
+        paceMilliseconds: 250,
+        maxActions: 20,
+        maxMinutes: 30,
+        pauseOnDream: true
+      });
+      let firstGate = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 80 && firstGate.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        firstGate = await orchestrator.snapshot();
+      }
+      expect(firstGate.session.autopilot).toMatchObject({
+        mode: "paused",
+        kind: "guided-real",
+        actionsCompleted: 1
+      });
+      expect(firstGate.nextAction?.id).toBe("create_attack_dream");
+      expect(firstGate.session.autopilot.pauseReason).toContain("explicit approval");
+
+      await orchestrator.controlAutopilot({ command: "resume" });
+      let nestedGate = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 120 && nestedGate.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        nestedGate = await orchestrator.snapshot();
+      }
+      expect(nestedGate.session.autopilot.mode).toBe("paused");
+      expect(nestedGate.nextAction?.id).toBe("create_nested_dream");
+
+      await orchestrator.controlAutopilot({ command: "resume" });
+      let siblingGate = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 160 && siblingGate.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        siblingGate = await orchestrator.snapshot();
+      }
+      expect(siblingGate.session.autopilot.mode).toBe("paused");
+      expect(siblingGate.nextAction?.id).toBe("create_nested_dream");
+
+      await orchestrator.controlAutopilot({ command: "resume" });
+      let proofGate = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 200 && proofGate.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        proofGate = await orchestrator.snapshot();
+      }
+      expect(proofGate.session.autopilot.mode).toBe("paused");
+      expect(proofGate.nextAction?.id).toBe("repair");
+      expect(proofGate.session.autopilot.pauseReason).toContain("immutable anchor failed");
+
+      await orchestrator.controlAutopilot({ command: "resume" });
+      let completed = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 80 && completed.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        completed = await orchestrator.snapshot();
+      }
+      expect(completed.session.autopilot.mode).toBe("completed");
+      expect(completed.session.phase).toBe(10);
+      expect(completed.events.some((event) => event.type === "autopilot.completed")).toBe(true);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  }, 15_000);
 
   it("revalidates a legacy nested memory before synthesis", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-memory-revalidation-"));
@@ -421,6 +671,8 @@ describe("RealityOrchestrator", () => {
         "create_attack_dream",
         "enter_subjects",
         "discover_abuse",
+        "create_nested_dream",
+        "wake_nested",
         "create_nested_dream",
         "wake_nested",
         "wake_parent"
@@ -492,6 +744,42 @@ describe("RealityOrchestrator", () => {
       expect(validationEvent?.type).toBe("validation.rejected");
       expect(validationEvent?.payload).toEqual({ contract: "WakeReportSchema" });
       expect(JSON.stringify(validationEvent)).not.toContain("raw");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("does not admit a configuration failure as decisive counterfactual evidence", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-test-evidence-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MockCodexRuntime(),
+        new ConfigurationFailureWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      const actions: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream"
+      ];
+      for (const action of actions) await orchestrator.act(action);
+
+      await expect(orchestrator.act("wake_nested")).rejects.toThrow(
+        "configuration or environment failures cannot become evidence"
+      );
+      const snapshot = await orchestrator.snapshot();
+      expect(snapshot.session.phase).toBe(5);
+      expect(snapshot.realities.find((reality) => reality.depth === 2)?.wakeReport).toBeUndefined();
+      expect(snapshot.events.some((event) =>
+        event.type === "evidence.discovered"
+        && event.payload.verdict === "failed-as-expected"
+      )).toBe(false);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -590,6 +878,8 @@ describe("RealityOrchestrator", () => {
         "create_attack_dream",
         "enter_subjects",
         "discover_abuse",
+        "create_nested_dream",
+        "wake_nested",
         "create_nested_dream",
         "wake_nested",
         "wake_parent",

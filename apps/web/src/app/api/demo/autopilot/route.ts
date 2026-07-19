@@ -7,7 +7,10 @@ export const dynamic = "force-dynamic";
 const DemoAutopilotCommandSchema = z.discriminatedUnion("command", [
   z.object({
     command: z.literal("start"),
-    paceMilliseconds: z.number().int().min(250).max(10_000).optional()
+    paceMilliseconds: z.number().int().min(250).max(10_000).optional(),
+    maxActions: z.number().int().min(1).max(20).optional(),
+    maxMinutes: z.number().int().min(1).max(180).optional(),
+    pauseOnDream: z.boolean().optional()
   }),
   z.object({ command: z.literal("resume") }),
   z.object({ command: z.literal("pause") }),

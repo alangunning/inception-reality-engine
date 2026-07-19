@@ -15,6 +15,19 @@ describe("rotating-IP attack", () => {
 });
 `;
 
+export const ENUMERATION_RESPONSE_TEST = `import { describe, expect, it } from "vitest";
+import { PasswordResetService } from "../src/password-reset";
+
+describe("account-enumeration attack", () => {
+  it("returns one public response for known and unknown accounts", () => {
+    const service = new PasswordResetService(new Set(["alan@example.com"]));
+
+    expect(service.request("alan@example.com", "198.51.100.1"))
+      .toEqual(service.request("nobody@example.com", "198.51.100.2"));
+  });
+});
+`;
+
 export const SECURE_PASSWORD_RESET_IMPLEMENTATION = `export interface PasswordResetResponse {
   message: string;
 }

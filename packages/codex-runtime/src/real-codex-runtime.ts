@@ -653,7 +653,7 @@ Inspect the local source for the defined repository-maintenance task covering ${
 ${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
 ${diagnosisRequired ? "This Reality contains a sealed controlled intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
 Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, Dream proposals when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.
-${reality.depth === 0 && reality.constitution.dreamStrategy === "competing-siblings"
+${reality.constitution.dreamStrategy === "competing-siblings"
     ? "Return dreamProposal and alternativeDreamProposal as two materially different, bounded, defensive counterfactuals that can test competing explanations. Neither may request external interaction."
     : "Return the single highest-value uncertainty in dreamProposal and set alternativeDreamProposal to null."}`;
     const outputSchema = zodToJsonSchema(InvestigationReportSchema, {
@@ -821,6 +821,21 @@ Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contr
     if (report.realityId !== reality.id) {
       throw new WakeReportValidationError([{ path: "realityId", code: "identity_mismatch" }]);
     }
+    const retainedEvidenceIds = new Set(reality.evidence.map((entry) => entry.id));
+    const unknownEvidence = report.changedBeliefs
+      .flatMap((change, changeIndex) =>
+        change.evidenceIds.map((evidenceId, evidenceIndex) => ({
+          evidenceId,
+          path: `changedBeliefs.${changeIndex}.evidenceIds.${evidenceIndex}`
+        }))
+      )
+      .find(({ evidenceId }) => !retainedEvidenceIds.has(evidenceId));
+    if (unknownEvidence) {
+      throw new WakeReportValidationError([{
+        path: unknownEvidence.path,
+        code: "unknown_evidence_id"
+      }]);
+    }
     const returnedEvent = CodexRuntimeEventSchema.parse({
       type: "file",
       summary: "Validated Wake Report returned to the parent Reality.",
@@ -925,10 +940,39 @@ Return only the structured synthesis report after the implementation and tests a
     const events: CodexRuntimeEvent[] = [];
     let finalResponse = "";
     let lastRuntimeFailure: string | undefined;
+    let emissionQueue = Promise.resolve();
     const emit = async (event: CodexRuntimeEvent) => {
-      events.push(event);
-      await onEvent?.(event);
+      const emission = emissionQueue.then(async () => {
+        events.push(event);
+        await onEvent?.(event);
+      });
+      emissionQueue = emission.catch(() => undefined);
+      await emission;
     };
+    let registryPoll: Promise<void> | null = null;
+    const pollRegistry = (): Promise<void> => {
+      if (
+        registryPoll
+        || !registryTrace
+        || subjectTrace?.hasSpawnEvidence()
+        || !thread.id
+      ) {
+        return registryPoll ?? Promise.resolve();
+      }
+      registryPoll = (async () => {
+        for (const subjectEvent of registryTrace.observe(thread.id!)) {
+          await emit(subjectEvent);
+        }
+      })().finally(() => {
+        registryPoll = null;
+      });
+      return registryPoll;
+    };
+    const registryTimer = registryTrace
+      ? setInterval(() => {
+          void pollRegistry().catch(() => undefined);
+        }, 1_000)
+      : undefined;
 
     try {
       await emit(CodexRuntimeEventSchema.parse({
@@ -964,9 +1008,7 @@ Return only the structured synthesis report after the implementation and tests a
           }
         }
         if (!subjectTrace?.hasSpawnEvidence() && thread.id) {
-          for (const subjectEvent of registryTrace?.observe(thread.id) ?? []) {
-            await emit(subjectEvent);
-          }
+          await pollRegistry();
         }
         const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, scope);
         if (event) {
@@ -981,15 +1023,17 @@ Return only the structured synthesis report after the implementation and tests a
         }
       }
       if (!subjectTrace?.hasSpawnEvidence() && thread.id) {
-        for (const subjectEvent of registryTrace?.observe(thread.id) ?? []) {
-          await emit(subjectEvent);
-        }
+        await pollRegistry();
       }
+      await emissionQueue;
       return { thread, events, finalResponse };
     } catch (error) {
       throw normaliseCodexExecutionError(error, lastRuntimeFailure, this.authSource);
     } finally {
       if (timeout) clearTimeout(timeout);
+      if (registryTimer) clearInterval(registryTimer);
+      await pollRegistry().catch(() => undefined);
+      await emissionQueue;
       this.operations.delete(operationId);
     }
   }

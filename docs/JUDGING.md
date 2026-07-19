@@ -34,13 +34,13 @@ Recording mode is deterministic and credential-free. It exercises the same domai
 | 0:20 | Ask Codex to audit password-reset security | Explicit usage boundary; event stream begins |
 | 0:40 | Create **Under coordinated attack** | Uncertainty becomes an isolated world |
 | 0:55 | Enter and run attacker, investigator, test-engineer Subjects | Bounded parallel investigation |
-| 1:15 | Create **Rotating IP swarm** | Nested counterfactual depth |
-| 1:30 | Kick nested Dream | Failing test returns with a source-bound Reality Totem seal |
-| 1:45 | Kick parent Dream | Its seal proves the verified depth-two lineage before invariants generalise |
-| 2:00 | Synthesise returned memories | Knowledge changes the waking implementation |
+| 1:10 | Create and Kick **Rotating IP swarm** | First nested counterfactual returns a failing test and source-bound seal |
+| 1:30 | Create and Kick **Account enumeration oracle** | A sibling Reality tests a different explanation from the same parent state |
+| 1:50 | Kick parent Dream | Its seal proves both depth-two lineages before invariants generalise |
+| 2:05 | Synthesise returned memories | Three verified memories change the waking implementation |
 | 2:20 | Run anchors and regression suite | Parent truth gates the agent |
 | 2:35 | Stabilise, reveal memories and diff, move timeline | Complete product outcome and replayability |
-| 2:50 | Show the branching graph, Reality Mirror, and VAmPI preset | Multiple futures and generalized use, not hardcoding |
+| 2:50 | Collapse a graph branch and show Subject nodes | Multiple futures and auditable delegation, not hardcoding |
 
 ## Real Codex Evaluation
 

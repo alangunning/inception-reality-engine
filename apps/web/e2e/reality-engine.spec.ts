@@ -471,7 +471,9 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   await expect(page.getByTestId("operation-monitor")).toHaveCount(0);
   await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 1 REALITY / 0 DREAMS");
   await expect(page.getByTestId("topology-state")).toContainText("No Dream launched");
-  await expect(page.getByTestId("simulated-world-time")).toContainText("0");
+  await expect(page.getByTestId("reality-graph").locator("..").locator(".map-footer"))
+    .toContainText("DEMO STRATEGY / ONE DECISIVE NESTED CHAIN");
+  await expect(page.getByTestId("simulated-world-time")).toContainText("0m completed experience × 1");
   await expect(page.getByTestId("reality-timeline")).toContainText("LIVE REALITY TIMELINE");
   await expect(page.getByTestId("reality-journey")).toContainText("Waking requirements");
   await expect(page.getByTestId("demo-autopilot")).toContainText("NO CODEX USAGE");
@@ -514,6 +516,48 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   await expect(page).toHaveScreenshot("initial-idle.png", {
     fullPage: true
   });
+});
+
+test("real Demo Mission exposes explicit bounded guided auto controls", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The guided-auto interaction needs one browser target.");
+  const response = await page.request.get("/api/demo");
+  expect(response.ok()).toBe(true);
+  const snapshot = await response.json();
+  snapshot.runtime = {
+    ...snapshot.runtime,
+    codexMode: "real",
+    model: "gpt-5.6-sol",
+    authSource: "cli"
+  };
+  snapshot.session.autopilot = {
+    mode: "off",
+    kind: "guided-real",
+    maxActions: 20,
+    maxMinutes: 180,
+    paceMilliseconds: 1_000,
+    pauseOnDream: true,
+    actionsCompleted: 0
+  };
+  let command: Record<string, unknown> | undefined;
+  await page.route("**/api/demo", (route) => route.fulfill({ json: snapshot }));
+  await page.route("**/api/demo/autopilot", async (route) => {
+    command = route.request().postDataJSON() as Record<string, unknown>;
+    snapshot.session.autopilot = {
+      ...snapshot.session.autopilot,
+      mode: "running",
+      startedAt: new Date().toISOString()
+    };
+    await route.fulfill({ json: snapshot });
+  });
+
+  await page.goto("/");
+  const auto = page.getByTestId("demo-autopilot");
+  await expect(auto).toContainText("GUIDED REAL AUTO");
+  await expect(auto).toContainText("PARENT GATES ARMED");
+  await expect(auto).toContainText("Codex will not start until guided auto is explicitly started");
+  await auto.getByRole("button", { name: "Start guided auto" }).click();
+  expect(command).toEqual({ command: "start" });
+  await expect(auto).toContainText("Advancing one bounded, validated Reality action at a time");
 });
 
 test("saved password-reset runs open as read-only timelines and return to live state", async ({ page }, testInfo) => {
@@ -594,7 +638,7 @@ test("live operation survives refresh and returns timestamped, filterable events
   await expect(page.getByTestId("operation-monitor")).toHaveCount(0);
   await expect(page.getByTestId("dream-action")).toBeEnabled();
   await expect(page.getByTestId("dream-action")).toHaveText(/Create Dream: Under coordinated attack/);
-  await expect(page.getByTestId("simulated-world-time")).toContainText("12");
+  await expect(page.getByTestId("simulated-world-time")).toContainText("12m completed experience × 1");
 
   const timeline = page.getByTestId("reality-timeline");
   await timeline.locator('input[type="range"]').fill("0");
@@ -637,9 +681,15 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expectNext(page, "Ask Codex to investigate coordinated password-reset abuse");
   await expect(page.getByTestId("primary-action")).toHaveText(/Run Codex investigation/);
   await page.getByTestId("primary-action").click();
+  await expect(page.getByTestId("graph-subject")).toHaveCount(3);
   await expectNext(page, "Create nested Dream: Rotating IP swarm");
   await confirmDream(page);
   await expectNext(page, "Kick Rotating IP swarm: return validated memory");
+  await page.getByTestId("kick-action").click();
+  await expect(page.getByTestId("wake-transition")).toContainText("Collecting lived evidence");
+  await expectNext(page, "Create nested Dream: Account enumeration oracle");
+  await confirmDream(page);
+  await expectNext(page, "Kick Account enumeration oracle: return validated memory");
   await page.getByTestId("kick-action").click();
   await expect(page.getByTestId("wake-transition")).toContainText("Collecting lived evidence");
   await expectNext(page, "Kick Under coordinated attack: return validated memory");
@@ -656,25 +706,40 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Reality stabilised");
 
-  await expect(page.locator(".reality-node")).toHaveCount(3);
+  await expect(page.locator(".reality-node")).toHaveCount(4);
   await expect(page.locator('.anchor-list .anchor-passed:not([data-testid="regression-proof"])')).toHaveCount(3);
   await expect(page.getByTestId("regression-proof")).toContainText("Inherited regression suite");
-  await expect(page.locator(".memory-report")).toHaveCount(2);
-  await expect(page.getByTestId("canonical-memory-seal")).toHaveCount(2);
+  await expect(page.locator(".memory-report")).toHaveCount(3);
+  await expect(page.getByTestId("canonical-memory-seal")).toHaveCount(3);
   await expect(page.getByTestId("canonical-memory-seal").first()).toContainText("REALITY TOTEM");
   await expect(page.locator(".diff-workspace")).toBeVisible();
   await expect(page.locator(".diff-workspace pre")).toHaveCount(0);
   await page.getByTestId("reveal-code").click();
   await expect(page.locator(".diff-workspace pre")).toBeVisible();
-  await expect(page.getByTestId("outcome-summary")).toContainText("Password reset now survives rotating-source abuse");
+  await expect(page.getByTestId("outcome-summary")).toContainText("Password reset survives coordinated abuse without exposing account state");
   await expect(page.getByTestId("outcome-summary")).toContainText("3 of 3 immutable requirements passed");
+  await expect(page.getByTestId("outcome-summary")).toContainText(/4\s*isolated Realities/);
+  await expect(page.getByTestId("outcome-summary")).toContainText(/3\s*verified memories/);
   await expect(page.getByTestId("outcome-summary")).toContainText("Move counters to an atomic shared store");
   await expect(page.getByTestId("event-feed").getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
+  const finalTimeline = page.getByTestId("reality-timeline");
+  await finalTimeline.locator('input[type="range"]').fill("0");
+  await expect(page.getByTestId("outcome-summary")).toHaveCount(0);
+  await finalTimeline.getByRole("button", { name: "Live" }).click();
+  await expect(page.getByTestId("outcome-summary")).toBeVisible();
+  const attackNode = page.locator(".reality-node").filter({ hasText: "Under coordinated attack" });
+  await attackNode.locator(".branch-toggle").click();
+  await expect(page.locator(".reality-node")).toHaveCount(2);
+  await expect(attackNode.locator(".branch-toggle")).toHaveAttribute("aria-expanded", "false");
+  await attackNode.locator(".branch-toggle").click();
+  await expect(page.locator(".reality-node")).toHaveCount(4);
   await page.getByTestId("collapse-dreams").click();
   await expect(page.locator(".reality-node")).toHaveCount(1);
-  await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 3 REALITIES / 2 DREAMS / 2 HIDDEN");
+  await expect(page.getByTestId("topology-state")).toContainText("TOPOLOGY / 4 REALITIES / 3 DREAMS / 3 HIDDEN");
   await expect(page.getByTestId("topology-state")).not.toContainText("NOT LAUNCHED");
   await expect(page.getByTestId("outcome-summary")).toContainText("inherited truths");
+  await page.getByTestId("collapse-dreams").click();
+  await expect(page.locator(".reality-node")).toHaveCount(4);
   const dockObscuresInspector = await page.evaluate(() => {
     const dock = document.querySelector('[data-testid="action-dock"]')?.getBoundingClientRect();
     const inspector = document.querySelector(".world-inspector")?.getBoundingClientRect();
@@ -686,6 +751,7 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   });
   expect(dockObscuresInspector).toBe(false);
 
+  await page.evaluate(() => window.scrollTo(0, 0));
   await expect(page).toHaveScreenshot("reality-stabilised.png", {
     fullPage: true
   });
@@ -881,6 +947,8 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByTestId("reality-workspace")).toBeVisible();
   await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(3);
+  await expect(page.getByTestId("reality-graph").locator("..").locator(".map-footer"))
+    .toContainText("BRANCHING STRATEGY / UP TO 2 SIBLING DREAMS PER REALITY");
   await expect(page.getByTestId("reality-journey")).toBeVisible();
   await expect(page.getByTestId("mission-autopilot")).toContainText("GUIDED AUTO MODE");
   await expect(page.getByTestId("reality-mirror")).toContainText("SIBLING COMPARISON");
@@ -949,6 +1017,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
     document.documentElement.scrollWidth <= window.innerWidth
   );
   expect(viewportFits).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await expect(page).toHaveScreenshot("mission-workspace-unified.png", {
     fullPage: true,
     maxDiffPixelRatio: 0

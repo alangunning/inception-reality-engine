@@ -40,9 +40,11 @@ For a Mission that deliberately depends on personal Codex integrations, set `INC
 ## Usage Boundaries
 
 - GET routes, page load, refresh, timeline replay, Admin inspection, and Mission creation do not call Codex.
+- The canonical Demo Mission exposes **Start guided auto** in real mode. It is bounded by 20 actions and 180 minutes by default, persists its controller state, and pauses before new Dream premises, failed proof repair, fracture, validation rejection, safety refusal, or quota failure. Resume is explicit approval for the currently displayed gate.
 - Training-target status is local-only; VAmPI is cloned only after **Prepare VAmPI locally** and is never installed or started automatically.
 - Buttons identify Codex-backed actions before usage begins.
 - The operation band reports runtime, elapsed wall time, safe milestones, commands, tools, files, and token evidence.
+- Subjective Dream time advances only when the orchestrator records a completed experience milestone. Operator idle time never advances it; the UI shows base milestone minutes, the Reality's dilation factor, resulting world-time, and live wall-clock operation time separately.
 - The Mission setting defaults to an 8,000,000 observed SDK token ceiling. Codex reports authoritative input/output usage at turn completion; an over-ceiling report is rejected, its worktree transaction is rolled back, and new actions remain stopped.
 - The observed ceiling is not a provider spend cap because the SDK does not expose incremental per-turn token cancellation. Use ChatGPT workspace or OpenAI API project spend controls for billing enforcement.
 - Waking inspection keeps full Codex write/test capability inside the isolated worktree, then restores its checkpoint so knowledge returns before implementation.

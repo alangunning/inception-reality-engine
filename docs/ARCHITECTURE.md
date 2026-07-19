@@ -141,7 +141,9 @@ flowchart LR
   M -->|disagreements retained| U[Remaining uncertainty]
 ```
 
-The topology is a real parent-child graph layout, not a depth meter. Every sibling and nested Reality remains selectable and replayable. Under `competing-siblings`, Codex proposes two materially different worlds; the orchestrator creates siblings, compares their evidence and invariants in a `DreamReflection`, and limits synthesis to conclusions shared across those worlds. Disagreements remain visible rather than being averaged away.
+The topology is a real parent-child graph layout, not a depth meter. Every sibling and nested Reality remains selectable and replayable, branches collapse independently, and bounded Subjects appear beneath the Reality where their native child thread ran. Under `competing-siblings`, Codex proposes two materially different worlds at every explorable Reality; the orchestrator recursively creates siblings within the configured depth and sibling budgets, compares their evidence and invariants in a `DreamReflection`, and limits synthesis to conclusions shared across those worlds. Disagreements remain visible rather than being averaged away. The password-reset Demo Mission uses one parent Dream with two depth-two siblings so the canonical recording proves breadth while keeping real-mode cost bounded.
+
+Dream proposals are idempotent within their owning Reality. A proposal moves from `open` to `dreaming` to `resolved` when its child returns. If the configured depth, sibling, or run budget ends first, stabilisation changes it to `deferred`, presented as **retained uncertainty**. A stabilised Reality therefore never presents an unexplored proposal as an active next action, and a retried investigation cannot duplicate the same logical proposal in that Reality.
 
 ## Runtime Modes
 

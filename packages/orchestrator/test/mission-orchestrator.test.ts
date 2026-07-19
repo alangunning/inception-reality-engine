@@ -172,6 +172,50 @@ describe("MissionOrchestrator", () => {
       });
   });
 
+  it("forms a recursive sibling graph at every configured Dream level", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      ...basicMission(),
+      dreamStrategy: "competing-siblings",
+      maxSiblingDreams: 2,
+      maxDreamDepth: 2
+    });
+
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    for (let rootSibling = 0; rootSibling < 2; rootSibling += 1) {
+      snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+      const depthOneId = snapshot.activeReality.id;
+      snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+      for (let nestedSibling = 0; nestedSibling < 2; nestedSibling += 1) {
+        snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+        snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+        snapshot = await orchestrator.act(snapshot.run.id, "kick");
+        expect(snapshot.activeReality.id).toBe(depthOneId);
+      }
+      snapshot = await orchestrator.act(snapshot.run.id, "kick");
+      expect(snapshot.activeReality.depth).toBe(0);
+    }
+
+    const waking = snapshot.run.realities.find((reality) => reality.depth === 0)!;
+    const depthOne = snapshot.run.realities.filter((reality) => reality.parentId === waking.id);
+    const depthTwo = snapshot.run.realities.filter((reality) => reality.depth === 2);
+    expect(snapshot.run.realities).toHaveLength(7);
+    expect(depthOne).toHaveLength(2);
+    expect(depthTwo).toHaveLength(4);
+    for (const parent of depthOne) {
+      expect(depthTwo.filter((reality) => reality.parentId === parent.id)).toHaveLength(2);
+    }
+    expect(snapshot.run.reflections).toHaveLength(3);
+    expect(snapshot.nextAction?.id).toBe("synthesise");
+  });
+
   it("runs guided real auto mode only after explicit start and pauses at a Dream gate", async () => {
     const repository = new InMemoryRealityRepository();
     const worktrees = new FakeMissionWorktrees();

@@ -67,8 +67,13 @@ The immutable password-reset **Demo Mission** is the fastest complete story:
 1. inspect an incomplete password-reset boundary;
 2. create **Under coordinated attack**;
 3. observe attacker, investigator, and test-engineer Subjects;
-4. enter **Rotating IP swarm**, then Kick through both Dream levels;
-5. synthesise verified memory, run immutable proofs, and inspect the final diff.
+4. compare **Rotating IP swarm** with the sibling **Account enumeration oracle**;
+5. Kick both nested Dreams and their parent, then synthesise three verified memories;
+6. run immutable proofs and inspect the final waking diff.
+
+The Demo Mission deliberately uses one parent Dream with two depth-two siblings, so the recording shows genuine counterfactual breadth without multiplying every expensive real-mode investigation. General Missions default to `competing-siblings`: Codex proposes two bounded counterfactuals at every explorable Reality, so a depth-two run may form one waking node, two sibling Dreams, and four nested Dreams before Reality Mirror synthesis.
+
+Use **Start recording auto** for the deterministic video path or **Start guided auto** in real mode. Real guided auto runs bounded Codex actions but pauses before every new Dream premise and after failed immutable proof; **Resume** is the explicit approval to cross that gate. Neither mode starts on page load.
 
 **Mission Control** applies the same engine to a trusted local Git repository. Its default is a pinned VAmPI educational fixture, competing sibling Dreams, editable Subject charters, structured proofs, bounded guided auto mode, and an optional controlled resilience Subject. Forming a Mission creates isolated Git state but makes no Codex call.
 

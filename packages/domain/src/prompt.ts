@@ -2,7 +2,9 @@ import type { Reality } from "./schemas";
 
 export function buildDreamPrompt(reality: Reality): string {
   const history = reality.evidence.length
-    ? reality.evidence.map((entry) => `- [${entry.kind}] ${entry.title}: ${entry.summary}`).join("\n")
+    ? reality.evidence.map((entry) =>
+        `- EVIDENCE_ID "${entry.id}" [${entry.kind}] ${entry.title}: ${entry.summary}`
+      ).join("\n")
     : "- No evidence has been recorded yet.";
   const beliefs = reality.beliefs.length
     ? reality.beliefs.map((entry) => `- ${entry.statement} (confidence ${entry.confidence})`).join("\n")
@@ -63,6 +65,7 @@ OPERATING CONTRACT
 - Request Subjects only for bounded, independent investigations.
 - You may propose a child Dream, but you must never create one yourself.
 - Label simulated or hypothetical observations as synthetic evidence.
+- When returning a Wake Report, changedBeliefs[].evidenceIds may contain only exact EVIDENCE_ID values listed above. Never invent aliases such as E1.
 - Never return hidden reasoning. Return concise observations, evidence, artefacts, decisions, and belief changes.
 
 WAKE CONTRACT

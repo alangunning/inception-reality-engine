@@ -88,6 +88,27 @@ describe("Reality domain", () => {
     expect(prompt).not.toContain("chain-of-thought");
   });
 
+  it("binds Wake Report belief changes to exact retained evidence identifiers", () => {
+    const entity = RealityEntity.create({
+      depth: 1,
+      kind: "dream",
+      name: "Evidence-bound Dream",
+      premise: constitution.premise,
+      constitution
+    });
+    entity.addEvidence({
+      id: "evidence-uuid-1",
+      kind: "test",
+      title: "Decisive regression",
+      summary: "The inherited invariant fails under the counterfactual.",
+      source: "focused-test"
+    });
+
+    const prompt = buildDreamPrompt(entity.snapshot());
+    expect(prompt).toContain('EVIDENCE_ID "evidence-uuid-1"');
+    expect(prompt).toContain("Never invent aliases such as E1");
+  });
+
   it("applies each Reality's time-dilation law to experienced world time", () => {
     const entity = RealityEntity.create({
       depth: 2,

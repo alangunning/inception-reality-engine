@@ -34,7 +34,7 @@ Page load, refresh, Admin, Mission creation, and timeline replay do not call Cod
 4. Confirm the Reality graph contains only **Waking Reality**.
 5. Keep the timeline on **Live**.
 
-For a consistent recording, click **Start recording auto**. The controller advances the deterministic path, can be paused/resumed/stopped, and never starts merely because the page opened. For a narrated manual recording, use the steps below.
+For a consistent mock recording, click **Start recording auto**. In live mode, click **Start guided auto** to advance bounded real Codex actions. Guided auto pauses before each new Dream premise and after failed immutable proof so the operator can inspect the evidence, then explicitly **Resume**. Both controllers can be paused or stopped and neither starts merely because the page opened. For a narrated manual recording, use the steps below.
 
 ## Three-Minute Sequence
 
@@ -52,6 +52,7 @@ Say: “Reality Engine lets Codex experience risky assumptions in isolated softw
 The **Next move** band reads **Ask Codex to audit and improve password-reset security**. Click **Run Codex audit**.
 
 In live mode, point to the bound Reality thread, worktree, elapsed time, SDK token evidence, and timestamped milestones. Do not wait on a generic spinner; follow the operation band and Reality Events.
+The wall clock measures the active Codex operation. Subjective Dream time advances only at completed experience milestones and multiplies those minutes by the current Reality's dilation; waiting for narration or the next click does not change it.
 
 ### 0:25 - Turn Uncertainty Into A Dream
 
@@ -73,7 +74,7 @@ Show the resulting evidence:
 - per-IP counters do not impose an identifier-level budget;
 - the initial belief loses confidence.
 
-### 1:10 - Descend And Return Memory
+### 1:10 - Compare Nested Realities
 
 Click **Create nested Dream: Rotating IP swarm**, review the narrower counterfactual, and click **Confirm and create Dream**.
 
@@ -85,9 +86,13 @@ Click **Kick and return memory**. During the staged Wake, call out:
 2. Reality Totem checking identity, source, anchors, evidence, artefacts, and lineage;
 3. validated memory returning upward.
 
-Show the failing `rotating-ip.attack.spec.ts` artefact and the memory path on the graph. Then click **Kick and return memory** again to wake **Under coordinated attack**.
+Show the failing `rotating-ip.attack.spec.ts` artefact and the memory path on the graph. The parent retains the competing proposal rather than waking early.
 
-### 1:45 - Change Reality Only Through Proof
+Create **Account enumeration oracle**, then Kick it with its response-equivalence regression. Collapse and re-expand the **Under coordinated attack** branch once to show that both child Realities and their memory paths remain independently inspectable. Subject nodes under the parent show which bounded investigators produced the evidence.
+
+Kick **Under coordinated attack** only after both nested memories return.
+
+### 1:55 - Change Reality Only Through Proof
 
 Click **Synthesise memories**.
 
@@ -100,11 +105,12 @@ Show that returned knowledge changes the waking implementation while the Dream w
 
 If proof fails in live mode, the engine offers **Repair proof** and cannot stabilise. On the successful path, click **Stabilise Reality**.
 
-### 2:20 - Close On The Differentiator
+### 2:25 - Close On The Differentiator
 
 Show:
 
 - the complete nested Reality graph and exact return paths;
+- two sibling depth-two counterfactuals and graph-attached Subject nodes;
 - Memories before/after;
 - Reality Totem seals and inherited lineage;
 - final proof results;

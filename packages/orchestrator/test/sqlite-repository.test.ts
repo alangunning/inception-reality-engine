@@ -77,8 +77,11 @@ describe("SqliteRealityRepository", () => {
       memoryIntegrity,
       autopilot: {
         mode: "off",
+        kind: "demo",
         maxActions: 10,
+        maxMinutes: 60,
         paceMilliseconds: 1_000,
+        pauseOnDream: true,
         actionsCompleted: 0
       },
       regressionResult: {

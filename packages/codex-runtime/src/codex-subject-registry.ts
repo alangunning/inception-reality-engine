@@ -35,6 +35,10 @@ interface NativeSubjectRecord {
   state: TerminalState;
 }
 
+function normaliseIdentity(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
 export interface CodexSubjectRegistryOptions {
   codexHome: string;
   sqliteHome: string;
@@ -207,8 +211,24 @@ export class CodexSubjectRegistryTrace {
   }
 
   private toRecord(row: RegistryRow): NativeSubjectRecord {
-    const charterId = row.first_user_message.match(/\bSUBJECT_ID:([A-Za-z0-9_-]+)\b/)?.[1];
-    const charter = charterId ? this.subjects.get(charterId) : undefined;
+    const charterIds = [...row.first_user_message.matchAll(/\bSUBJECT_ID:([A-Za-z0-9_-]+)\b/g)]
+      .map((match) => match[1])
+      .filter((id): id is string => Boolean(id));
+    const candidates = charterIds
+      .map((id) => this.subjects.get(id))
+      .filter((subject): subject is Subject => Boolean(subject));
+    const taskIdentity = normaliseIdentity(row.agent_path ?? "");
+    const taskMatches = candidates.filter((subject) => {
+      const name = normaliseIdentity(subject.name);
+      const role = normaliseIdentity(subject.role);
+      return (name.length > 0 && taskIdentity.includes(name))
+        || (role.length > 0 && taskIdentity.includes(role));
+    });
+    const charter = taskMatches.length === 1
+      ? taskMatches[0]
+      : candidates.length === 1
+        ? candidates[0]
+        : undefined;
     const identity = charter?.id
       ?? row.agent_path?.trim()
       ?? row.child_thread_id;

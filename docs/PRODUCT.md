@@ -62,7 +62,7 @@ An exact diagnosis admits the knowledge that generalises, never the planted code
 
 ## Product Experience
 
-- branching parent-child graph with every nested and sibling Reality;
+- collapsible parent-child graph with every nested and sibling Reality plus its bounded Subject nodes;
 - current premise, constitution, runtime, worktree, and Codex thread;
 - uncertainty, Subject, evidence, belief, memory, proof, and diff ledgers;
 - live timestamped event stream with search, filtering, sorting, and event detail;
@@ -86,6 +86,7 @@ A completed run records:
 - waking files changed;
 - remaining unresolved disagreements;
 - exact evidence and source lineage supporting each admitted conclusion.
+- retained post-budget uncertainty that remains visible without masquerading as an active Dream.
 
 The product claim is therefore inspectable: it should show which unsafe change was prevented, which requirement survived every world, and which tested improvement reached the waking repository.
 

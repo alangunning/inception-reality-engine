@@ -520,7 +520,7 @@ describe("Codex runtime", () => {
     expect(JSON.stringify([...enteredLaplace, ...enteredHume, ...returned])).not.toContain("raw Subject response");
   });
 
-  it("replays Sol task-path Subjects from the native thread registry", () => {
+  it("binds chartered Sol Subjects by task path when every child inherits the full parent prompt", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-sol-subjects-"));
     const sessions = path.join(root, "sessions");
     const worktree = path.join(root, "worktree");
@@ -586,7 +586,11 @@ describe("Codex runtime", () => {
           child.agentPath,
           child.agentNickname,
           null,
-          "Bounded independent investigation.",
+          fixture.children
+            .map((entry, index) => (
+              `SUBJECT_ID:subject-${index + 1} | ${entry.reportName} (${entry.reportRole}): bounded investigation`
+            ))
+            .join("\n"),
           rolloutPath,
           worktree,
           createdAtMs
@@ -605,12 +609,20 @@ describe("Codex runtime", () => {
         codexHome: root,
         sqliteHome: root,
         reality,
-        subjects: [],
+        subjects: fixture.children.map((child, index) => ({
+          id: `subject-${index + 1}`,
+          realityId: reality.id,
+          name: child.reportName,
+          role: child.reportRole,
+          mission: "Bounded investigation.",
+          status: "entered" as const,
+          findings: []
+        })),
         startedAtMs: createdAtMs
       });
       const events = trace.observe(fixture.parentThreadId);
-      const reports = fixture.children.map((child) => ({
-        subjectId: child.agentPath,
+      const reports = fixture.children.map((child, index) => ({
+        subjectId: `subject-${index + 1}`,
         name: child.reportName,
         role: child.reportRole,
         findings: ["One bounded finding."],
@@ -643,8 +655,8 @@ describe("Codex runtime", () => {
       )).toHaveLength(2);
       expect(JSON.stringify(completedEvents)).not.toContain("hidden output");
       expect(trace.bindReports(fixture.parentThreadId, reports)).toEqual(
-        fixture.children.map((child) => ({
-          id: child.agentPath,
+        fixture.children.map((child, index) => ({
+          id: `subject-${index + 1}`,
           name: child.reportName,
           role: child.reportRole,
           mission: "Bounded independent investigation selected by Codex.",

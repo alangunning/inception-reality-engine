@@ -52,6 +52,7 @@ export class MockCodexRuntime implements CodexRuntime {
 
   async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
     const nested = reality.depth > 0;
+    const enumerationDream = reality.depth >= 2 && /enumeration|response oracle/i.test(reality.name);
     const subjectEvents = reality.subjects.flatMap((subject) => [
       {
         type: "subject",
@@ -111,7 +112,9 @@ export class MockCodexRuntime implements CodexRuntime {
         {
           type: "decision",
           summary: nested
-            ? "A rotating-IP attack test is the smallest decisive experiment."
+            ? enumerationDream
+              ? "A response-equivalence test is the smallest decisive experiment."
+              : "A rotating-IP attack test is the smallest decisive experiment."
             : "Per-IP throttling is not sufficient evidence of abuse resistance.",
           metadata: { stage: "turn", status: "completed" }
         }
@@ -146,24 +149,45 @@ export class MockCodexRuntime implements CodexRuntime {
             estimatedTokens: 18_000,
             costClass: "medium"
           },
-          alternativeDreamProposal: {
-            title: "Under concurrent recovery load",
-            premise: "Assume legitimate recovery traffic and repeated identifier pressure arrive concurrently.",
-            uncertainty: "Do shared controls contain repeated requests without blocking ordinary recovery?",
-            rationale: "A competing world tests availability while the first world tests distributed-source containment.",
-            impactProbability: 0.67,
-            expectedInsight: "Separate abuse containment from legitimate recovery availability.",
-            estimatedTokens: 14_000,
-            costClass: "medium"
-          },
+          alternativeDreamProposal: reality.constitution.dreamStrategy === "competing-siblings"
+            ? {
+                title: "Under concurrent recovery load",
+                premise: "Assume legitimate recovery traffic and repeated identifier pressure arrive concurrently.",
+                uncertainty: "Do shared controls contain repeated requests without blocking ordinary recovery?",
+                rationale: "A competing world tests availability while the first world tests distributed-source containment.",
+                impactProbability: 0.67,
+                expectedInsight: "Separate abuse containment from legitimate recovery availability.",
+                estimatedTokens: 14_000,
+                costClass: "medium"
+              }
+            : null,
           remainingUncertainty: ["Whether coordinated sources can bypass the IP-only boundary."],
           changedFiles: [],
           generatedAt
         }
       : {
           realityId: reality.id,
-          summary: "Enumeration is observable and distributed source addresses have no shared identifier budget.",
-          evidence: [
+          summary: enumerationDream
+            ? "Known and unknown identifiers receive observably different public responses."
+            : "Enumeration is observable and distributed source addresses have no shared identifier budget.",
+          evidence: enumerationDream ? [
+            {
+              kind: "observation",
+              title: "Public responses expose account state",
+              summary: "Known and unknown accounts receive different messages from the same public request boundary.",
+              source: "response-oracle-subject",
+              artefactPath: null,
+              synthetic: false
+            },
+            {
+              kind: "code",
+              title: "Account lookup controls response shape",
+              summary: "The incomplete service returns before delivery with an account-specific error.",
+              source: "demo/password-reset/src/password-reset.ts",
+              artefactPath: "demo/password-reset/src/password-reset.ts",
+              synthetic: false
+            }
+          ] : [
             {
               kind: "observation",
               title: "Account enumeration remains possible",
@@ -192,7 +216,15 @@ export class MockCodexRuntime implements CodexRuntime {
                 : ["A rotating-source test will decide whether the defence generalises."],
             artefactPaths: []
           })),
-          changedBeliefs: [{
+          changedBeliefs: [enumerationDream ? {
+            from: reality.beliefs.at(-1)?.statement ?? "Public responses probably conceal account state.",
+            to: "Response equivalence is an independent security boundary that rate limiting cannot provide.",
+            confidence: 0.97,
+            evidenceTitles: [
+              "Public responses expose account state",
+              "Account lookup controls response shape"
+            ]
+          } : {
             from: reality.beliefs.at(-1)?.statement ?? "Per-IP limiting prevents practical abuse.",
             to: "Per-IP throttling alone does not generalise to coordinated or distributed abuse.",
             confidence: 0.93,
@@ -211,7 +243,18 @@ export class MockCodexRuntime implements CodexRuntime {
             estimatedTokens: 9_000,
             costClass: "low"
           },
-          alternativeDreamProposal: null,
+          alternativeDreamProposal: reality.constitution.dreamStrategy === "competing-siblings"
+            ? {
+                title: "Account enumeration oracle",
+                premise: "Assume an attacker compares public reset responses for known and unknown identifiers.",
+                uncertainty: "Does the public response reveal whether an account exists?",
+                rationale: "A sibling world tests the privacy boundary independently from distributed-source containment.",
+                impactProbability: 0.65,
+                expectedInsight: "Prove whether response equivalence is required alongside rate limiting.",
+                estimatedTokens: 8_000,
+                costClass: "low"
+              }
+            : null,
           remainingUncertainty: ["Whether rotating source addresses bypass the defence in a deterministic test."],
           changedFiles: [],
           generatedAt
@@ -301,37 +344,63 @@ export class MockCodexRuntime implements CodexRuntime {
 
   async wake(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexWakeResult> {
     const generatedAt = new Date().toISOString();
+    const enumerationDream = reality.depth >= 2 && /enumeration|response oracle/i.test(reality.name);
     const report: WakeReport = reality.depth >= 2
       ? {
           realityId: reality.id,
           initialBeliefs: [{
-            statement: "Per-IP throttling will stop repeated password-reset abuse.",
+            statement: enumerationDream
+              ? "Rate limiting probably makes the public reset response safe enough."
+              : "Per-IP throttling will stop repeated password-reset abuse.",
             confidence: 0.64
           }],
-          experiences: [
+          experiences: enumerationDream ? [
+            "Compared reset responses for one known and one unknown identifier.",
+            "Observed account-specific messages before any shared abuse threshold was reached.",
+            "Captured a deterministic failing test for response equivalence."
+          ] : [
             "Sent reset requests for one account from twelve rotating source IPs.",
             "Observed every request pass because each IP remained below its local threshold.",
             "Captured a deterministic failing test that reproduces the distributed attack."
           ],
           changedBeliefs: [{
-            from: "Per-IP throttling will stop repeated password-reset abuse.",
-            to: "Per-IP throttling must be combined with identifier-level and global safeguards.",
+            from: enumerationDream
+              ? "Rate limiting probably makes the public reset response safe enough."
+              : "Per-IP throttling will stop repeated password-reset abuse.",
+            to: enumerationDream
+              ? "Public response equivalence must be enforced independently from abuse budgets."
+              : "Per-IP throttling must be combined with identifier-level and global safeguards.",
             confidence: 0.98,
             evidenceIds: reality.evidence.map((entry) => entry.id)
           }],
-          invariants: [
+          invariants: enumerationDream ? [
+            "Known and unknown accounts must receive the same public response.",
+            "Delivery behavior must remain behind the public response boundary."
+          ] : [
             "The public response must not reveal whether an account exists.",
             "A defensive limit must survive source-address rotation."
           ],
           artefacts: [{
-            name: "rotating-ip.attack.spec.ts",
-            path: "demo/password-reset/tests/rotating-ip.attack.spec.ts",
+            name: enumerationDream
+              ? "enumeration.attack.spec.ts"
+              : "rotating-ip.attack.spec.ts",
+            path: enumerationDream
+              ? "demo/password-reset/tests/enumeration.attack.spec.ts"
+              : "demo/password-reset/tests/rotating-ip.attack.spec.ts",
             kind: "test",
-            summary: "Fails against the incomplete implementation after six distributed requests.",
-            content: "expect(results.filter(r => r.accepted)).toHaveLength(5);"
+            summary: enumerationDream
+              ? "Fails because known and unknown identifiers receive different public responses."
+              : "Fails against the incomplete implementation after six distributed requests.",
+            content: enumerationDream
+              ? "expect(knownResponse).toEqual(unknownResponse);"
+              : "expect(results.filter(r => r.accepted)).toHaveLength(5);"
           }],
-          remainingUncertainty: ["How aggressively should global circuit breaking respond during a real incident?"],
-          recommendation: "Add per-identifier cooldown and a global safety budget while retaining per-IP limits.",
+          remainingUncertainty: enumerationDream
+            ? ["Delivery-channel observability still requires production telemetry."]
+            : ["How aggressively should global circuit breaking respond during a real incident?"],
+          recommendation: enumerationDream
+            ? "Return one generic public response while keeping delivery outcomes private."
+            : "Add per-identifier cooldown and a global safety budget while retaining per-IP limits.",
           generatedAt
         }
       : {

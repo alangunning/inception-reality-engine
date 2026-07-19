@@ -86,7 +86,7 @@ export const DreamProposalSchema = z.object({
   expectedInsight: z.string().optional(),
   estimatedTokens: z.number().int().nonnegative().optional(),
   costClass: z.enum(["low", "medium", "high"]).optional(),
-  status: z.enum(["open", "dreaming", "resolved"])
+  status: z.enum(["open", "dreaming", "resolved", "deferred"])
 });
 
 export const InvestigationEvidenceSchema = z.object({
@@ -215,6 +215,7 @@ export const RealityEventTypeSchema = z.enum([
   "codex.progress",
   "inspection.completed",
   "uncertainty.discovered",
+  "uncertainty.deferred",
   "dream.created",
   "subject.entered",
   "subject.started",
@@ -363,12 +364,16 @@ export const MemoryIntegritySealSchema = z.object({
 
 export const DemoAutopilotStateSchema = z.object({
   mode: z.enum(["off", "running", "paused", "stopped", "completed"]),
+  kind: z.enum(["demo", "guided-real"]).default("demo"),
   maxActions: z.number().int().min(1).max(20),
+  maxMinutes: z.number().int().min(1).max(180).default(60),
   paceMilliseconds: z.number().int().min(250).max(10_000),
+  pauseOnDream: z.boolean().default(true),
   actionsCompleted: z.number().int().nonnegative(),
   startedAt: z.string().optional(),
   updatedAt: z.string().optional(),
   lastAction: z.string().optional(),
+  approvedAction: z.string().optional(),
   pauseReason: z.string().max(500).optional()
 });
 
@@ -382,8 +387,11 @@ export const DemoSessionSchema = z.object({
   memoryIntegrity: z.array(MemoryIntegritySealSchema).default([]),
   autopilot: DemoAutopilotStateSchema.default({
     mode: "off",
-    maxActions: 10,
+    kind: "demo",
+    maxActions: 20,
+    maxMinutes: 60,
     paceMilliseconds: 1_000,
+    pauseOnDream: true,
     actionsCompleted: 0
   }),
   createdAt: z.string(),
