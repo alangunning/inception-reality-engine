@@ -32,8 +32,8 @@ flowchart LR
 ```mermaid
 flowchart TB
   subgraph Browser
-    Canonical[Canonical scenario]
-    Composer[Mission Composer]
+    Canonical[Immutable rehearsed Mission]
+    Composer[Mission Control and library]
     Admin[Runtime admin]
   end
   subgraph apps/web
@@ -187,13 +187,13 @@ Canonical, Playwright, and Mission worktrees have distinct roots and branch pref
 
 Pinned training targets live in `.inception/training-targets`. They are reusable source caches, not Reality worktrees, and are cloned only by an explicit preparation action. Each Mission still receives separate worktrees and owned branches.
 
-This prevents test resets from deleting live worktrees. If a persisted Reality loses its worktree, the canonical orchestrator restores it from parent state and persisted artefacts without consuming Codex.
+This prevents test resets from deleting live worktrees. If a persisted Reality loses its worktree, the rehearsal orchestrator restores it from parent state and persisted artefacts without consuming Codex.
 
 ## Persistence
 
 Prisma is the production adapter and SQLite is the portable fallback. Both persist validated Reality state, event history, demo sessions, run archives, and Mission runs. The in-memory event bus carries the same validated `RealityEvent` objects over SSE.
 
-Canonical and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, memory reports, integrity seals, immutable proofs, inspectable event feed, and final diff. Saved Missions reopen as actionable Mission snapshots. Mission deletion is scoped to that Mission's worktrees and branches; the canonical Admin reset remains separately scoped. Canonical run archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
+The password-reset rehearsal and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, memory reports, integrity seals, immutable proofs, inspectable event feed, and final diff. Mission Control exposes them through one capability-aware library contract. The rehearsed Mission has a stable route and supports open, export, and reset, but not deletion. User-created Mission deletion is scoped to that Mission's worktrees and branches. Password-reset archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
 
 ## Architecture Decisions
 

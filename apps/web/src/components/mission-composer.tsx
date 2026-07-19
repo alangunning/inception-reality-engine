@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   ArrowUpFromLine,
@@ -48,9 +49,12 @@ interface MissionSummary {
   id: string;
   name: string;
   scope: string;
-  status: MissionRun["status"];
+  status: string;
   realityCount: number;
   updatedAt: string;
+  href: string;
+  kind: "rehearsed" | "saved";
+  canDelete: boolean;
 }
 
 interface RuntimeInfo {
@@ -313,14 +317,12 @@ function MissionRunView({
   snapshot,
   runtime,
   onReload,
-  onDeleted,
-  onNewMission
+  onDeleted
 }: {
   snapshot: MissionSnapshot;
   runtime: RuntimeInfo;
   onReload(snapshot: MissionSnapshot): void;
   onDeleted(): void;
-  onNewMission(): void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -459,14 +461,10 @@ function MissionRunView({
         realityCount={run.realities.length}
         actions={(
           <>
-            <a className="mission-link" href="/" title="Canonical scenario">
+            <a className="mission-link" href="/missions" title="Mission Control">
               <ArrowLeft size={13} />
-              <span>CANONICAL SCENARIO</span>
+              <span>MISSION CONTROL</span>
             </a>
-            <button type="button" className="mission-link" onClick={onNewMission} title="Form a new Mission">
-              <GitBranch size={13} />
-              <span>NEW MISSION</span>
-            </button>
             <button
               type="button"
               className="admin-trigger"
@@ -602,10 +600,11 @@ function MissionRunView({
   );
 }
 
-export function MissionComposer() {
+export function MissionComposer({ initialMissionId }: { initialMissionId?: string }) {
+  const router = useRouter();
   const [composer, setComposer] = useState(initialState);
   const [runtime, setRuntime] = useState<RuntimeInfo | null>(null);
-  const [runs, setRuns] = useState<MissionSummary[]>([]);
+  const [missions, setMissions] = useState<MissionSummary[]>([]);
   const [snapshot, setSnapshot] = useState<MissionSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -617,13 +616,14 @@ export function MissionComposer() {
     const response = await fetch("/api/missions", { cache: "no-store" });
     const body = await readJson<{
       runs?: MissionSummary[];
+      library?: MissionSummary[];
       runtime?: RuntimeInfo;
       enabled?: boolean;
       error?: string;
     }>(response, "Could not load Mission Composer.");
     if (!response.ok || !body.runtime) throw new Error(body.error ?? "Could not load Mission Composer.");
     setRuntime(body.runtime);
-    setRuns(body.runs ?? []);
+    setMissions(body.library ?? body.runs ?? []);
   }, []);
 
   const loadTargets = useCallback(async () => {
@@ -700,9 +700,20 @@ export function MissionComposer() {
   }, []);
 
   useEffect(() => {
-    const requestedMission = new URLSearchParams(window.location.search).get("mission");
-    if (requestedMission) void openRun(requestedMission);
-  }, [openRun]);
+    if (initialMissionId) {
+      void openRun(initialMissionId);
+      return;
+    }
+    const legacyMissionId = new URLSearchParams(window.location.search).get("mission");
+    if (legacyMissionId) {
+      router.replace(`/missions/${encodeURIComponent(legacyMissionId)}`, { scroll: true });
+    }
+  }, [initialMissionId, openRun, router]);
+
+  useEffect(() => {
+    if (!snapshot) return;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [snapshot?.run.id]);
 
   const formMission = async () => {
     const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -782,6 +793,7 @@ export function MissionComposer() {
       );
       if (!response.ok) throw new Error(body.error ?? "Could not form the waking Reality.");
       setSnapshot(body);
+      router.push(`/missions/${encodeURIComponent(body.run.id)}`, { scroll: true });
       await loadIndex();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
@@ -797,12 +809,9 @@ export function MissionComposer() {
           snapshot={snapshot}
           runtime={runtime}
           onReload={setSnapshot}
-          onNewMission={() => {
-            window.history.replaceState(null, "", "/missions/new");
-            setSnapshot(null);
-          }}
           onDeleted={() => {
             setSnapshot(null);
+            router.replace("/missions", { scroll: true });
             void loadIndex();
           }}
         />
@@ -817,12 +826,12 @@ export function MissionComposer() {
           codexMode={runtime?.mode ?? "real"}
           model={runtime?.model ?? "checking runtime"}
           environment={runtime ? `CODEX SDK ${runtime.sdkVersion}` : "Runtime checking"}
-          realityCount={runs.reduce((total, run) => total + run.realityCount, 0)}
+          realityCount={missions.reduce((total, mission) => total + mission.realityCount, 0)}
           actions={(
             <>
-              <a className="mission-link" href="/" title="Canonical scenario">
-                <ArrowLeft size={13} />
-                <span>CANONICAL SCENARIO</span>
+              <a className="mission-link" href="/missions/password-reset" title="Open the rehearsed Password Reset Mission">
+                <Play size={13} />
+                <span>REHEARSED MISSION</span>
               </a>
               <button
                 type="button"
@@ -840,7 +849,7 @@ export function MissionComposer() {
         <main className="mission-composer">
         <header className="mission-composer-header">
           <div>
-            <span className="eyebrow">MISSION COMPOSER / TRUSTED LOCAL MODE</span>
+            <span className="eyebrow">MISSION CONTROL / TRUSTED LOCAL MODE</span>
             <h1>Form a waking Reality</h1>
             <p>Define the world Codex may change and the parent-owned proofs it cannot negotiate.</p>
           </div>
@@ -1047,20 +1056,24 @@ export function MissionComposer() {
               </article>
             ))}
             <div className="mission-section-title mission-history-title">
-              <span><Clock3 size={16} /> SAVED MISSIONS</span>
-              <b>{runs.length}</b>
+              <span><Clock3 size={16} /> MISSION LIBRARY</span>
+              <b>{missions.length}</b>
             </div>
             <div className="mission-history">
-              {runs.map((run) => (
-                <button type="button" onClick={() => void openRun(run.id)} disabled={busy} key={run.id}>
+              {missions.map((mission) => (
+                <a href={mission.href} key={`${mission.kind}:${mission.id}`}>
                   <span>
-                    <strong>{run.name}</strong>
-                    <small>{run.scope} / {statusLabel(run.status)}</small>
+                    <strong>{mission.name}</strong>
+                    <small>
+                      {mission.kind === "rehearsed" ? "REHEARSED / IMMUTABLE" : "SAVED"}
+                      {" / "}
+                      {mission.status.toUpperCase()}
+                    </small>
                   </span>
-                  <ChevronRight size={15} />
-                </button>
+                  {mission.kind === "rehearsed" ? <LockKeyhole size={15} /> : <ChevronRight size={15} />}
+                </a>
               ))}
-              {!runs.length && <p className="mission-empty">No saved missions.</p>}
+              {!missions.length && <p className="mission-empty">No Missions available.</p>}
             </div>
           </aside>
         </div>

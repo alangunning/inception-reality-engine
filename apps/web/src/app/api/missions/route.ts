@@ -30,16 +30,41 @@ function validationError(issues: ZodIssue[]): string {
 export async function GET(): Promise<Response> {
   try {
     const container = getRuntime();
-    const runs = await container.missionOrchestrator.list();
+    const [runs, passwordReset] = await Promise.all([
+      container.missionOrchestrator.list(),
+      container.orchestrator.snapshot()
+    ]);
+    const rootReality = passwordReset.realities.find((reality) => reality.depth === 0);
+    const savedRuns = runs.map((run) => ({
+      id: run.id,
+      kind: "saved" as const,
+      name: run.definition.name,
+      scope: run.definition.scope,
+      status: run.status,
+      realityCount: run.realities.length,
+      updatedAt: run.updatedAt,
+      href: `/missions/${encodeURIComponent(run.id)}`,
+      resetHref: `/api/missions/${encodeURIComponent(run.id)}/reset`,
+      exportHref: `/api/missions/${encodeURIComponent(run.id)}?download=1`,
+      canReset: true,
+      canDelete: true
+    }));
     return Response.json({
-      runs: runs.map((run) => ({
-        id: run.id,
-        name: run.definition.name,
-        scope: run.definition.scope,
-        status: run.status,
-        realityCount: run.realities.length,
-        updatedAt: run.updatedAt
-      })),
+      runs: savedRuns,
+      library: [{
+        id: "password-reset",
+        kind: "rehearsed" as const,
+        name: "Password Reset Under Coordinated Attack",
+        scope: "Password-reset abuse resistance and privacy",
+        status: rootReality?.status ?? "forming",
+        realityCount: passwordReset.realities.length,
+        updatedAt: passwordReset.session.updatedAt,
+        href: "/missions/password-reset",
+        resetHref: "/api/missions/password-reset/reset",
+        exportHref: "/api/missions/password-reset?download=1",
+        canReset: true,
+        canDelete: false
+      }, ...savedRuns],
       runtime: container.codexRuntime.info(),
       enabled: container.codexMode === "real",
       defaultRepositoryPath: process.env.INCEPTION_REPO_ROOT ?? process.cwd()

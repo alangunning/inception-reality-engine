@@ -265,6 +265,42 @@ test.beforeEach(async ({ page }) => {
   await resetRun(page);
 });
 
+test("Mission Library keeps the rehearsed password-reset Mission immutable", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "The library API contract needs one browser target.");
+  const initialResponse = await page.request.get("/api/missions");
+  expect(initialResponse.ok()).toBe(true);
+  const initial = await initialResponse.json() as {
+    library: Array<{
+      id: string;
+      href: string;
+      resetHref: string;
+      exportHref: string;
+      canReset: boolean;
+      canDelete: boolean;
+    }>;
+  };
+  expect(initial.library.find((mission) => mission.id === "password-reset")).toMatchObject({
+    href: "/missions/password-reset",
+    resetHref: "/api/missions/password-reset/reset",
+    exportHref: "/api/missions/password-reset?download=1",
+    canReset: true,
+    canDelete: false
+  });
+
+  const exportResponse = await page.request.get("/api/missions/password-reset?download=1");
+  expect(exportResponse.ok()).toBe(true);
+  expect(exportResponse.headers()["content-disposition"]).toContain("inception-mission-password-reset.json");
+  const resetResponse = await page.request.post("/api/missions/password-reset/reset");
+  expect(resetResponse.ok()).toBe(true);
+  expect((await resetResponse.json() as { session?: unknown }).session).toBeTruthy();
+
+  const deleteResponse = await page.request.delete("/api/missions");
+  expect(deleteResponse.ok()).toBe(true);
+  const afterDelete = await page.request.get("/api/missions");
+  const current = await afterDelete.json() as typeof initial;
+  expect(current.library.some((mission) => mission.id === "password-reset")).toBe(true);
+});
+
 test("an empty API failure is reported without a browser JSON exception", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Response decoding behavior needs one browser target.");
   await page.route("**/api/demo", (route) => route.fulfill({
@@ -456,7 +492,8 @@ test("saved password-reset runs open as read-only timelines and return to live s
 
   await page.getByRole("button", { name: "Return to live Reality" }).click();
   await expect(page.getByTestId("archive-view-banner")).toHaveCount(0);
-  await expect(page.getByTestId("phase-header")).toContainText("DETERMINISTIC SCENARIO / PASSWORD RESET");
+  await expect(page).toHaveURL(/\/missions\/password-reset$/);
+  await expect(page.getByTestId("phase-header")).toContainText("REHEARSED MISSION / PASSWORD RESET");
   await expect(page.getByTestId("action-dock")).toBeVisible();
 });
 
@@ -587,11 +624,12 @@ test("Mission Composer does not show a false real-mode warning while runtime dat
   });
 
   await page.goto("/missions/new");
+  await expect(page).toHaveURL(/\/missions$/);
   await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
   await expect(page.getByTestId("topbar-status")).toContainText("CHECKING RUNTIME");
   await expect(page.getByText("Real mode required")).toHaveCount(0);
   await expect(page.getByTestId("topbar-status")).toContainText("GPT-5.6");
-  await expect(page.getByTestId("topbar-actions")).toContainText("CANONICAL SCENARIO");
+  await expect(page.getByTestId("topbar-actions")).toContainText("REHEARSED MISSION");
   await expect(page.getByTestId("topbar-actions").getByRole("button", { name: "Open admin controls" })).toBeVisible();
   await expect(page.getByText("Real mode required")).toHaveCount(0);
 });
@@ -605,6 +643,34 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   let missionPosts = 0;
   let targetPosts = 0;
   let missionResets = 0;
+  const passwordResetMission = {
+    id: "password-reset",
+    kind: "rehearsed",
+    name: "Password Reset Under Coordinated Attack",
+    scope: "Password-reset abuse resistance and privacy",
+    status: "forming",
+    realityCount: 1,
+    updatedAt: "2026-07-18T14:30:00.000Z",
+    href: "/missions/password-reset",
+    resetHref: "/api/missions/password-reset/reset",
+    exportHref: "/api/missions/password-reset?download=1",
+    canReset: true,
+    canDelete: false
+  };
+  const savedMission = {
+    id: fixture.run.id,
+    kind: "saved",
+    name: fixture.run.definition.name,
+    scope: fixture.run.definition.scope,
+    status: fixture.run.status,
+    realityCount: fixture.run.realities.length,
+    updatedAt: fixture.run.updatedAt,
+    href: "/missions/mission-1",
+    resetHref: "/api/missions/mission-1/reset",
+    exportHref: "/api/missions/mission-1?download=1",
+    canReset: true,
+    canDelete: true
+  };
   await page.route("**/api/admin/codex", (route) => route.fulfill({
     json: {
       processes: [],
@@ -651,14 +717,8 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
     }
     await route.fulfill({
       json: {
-        runs: [{
-          id: fixture.run.id,
-          name: fixture.run.definition.name,
-          scope: fixture.run.definition.scope,
-          status: fixture.run.status,
-          realityCount: fixture.run.realities.length,
-          updatedAt: fixture.run.updatedAt
-        }],
+        runs: [savedMission],
+        library: [passwordResetMission, savedMission],
         runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
         enabled: true
       }
@@ -685,6 +745,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   });
 
   await page.goto("/missions/new");
+  await expect(page).toHaveURL(/\/missions$/);
   await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
   await expect(page.locator(".mission-form")).toContainText("NO CODEX USAGE ON CREATE");
   await expect(page.getByTestId("training-target")).toContainText("VAmPI");
@@ -698,17 +759,30 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.getByLabel(/Arm one bounded chaos-engineer intervention/)).not.toBeChecked();
   await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
   await expect(page.getByTestId("topbar-status")).toContainText("REAL CODEX / GPT-5.6");
-  await expect(page.getByTestId("topbar-actions")).toContainText("CANONICAL SCENARIO");
+  await expect(page.getByTestId("topbar-actions")).toContainText("REHEARSED MISSION");
+  await expect(page.locator(".mission-history")).toContainText("Password Reset Under Coordinated Attack");
+  await expect(page.locator(".mission-history").getByRole("link", { name: /Password Reset Under Coordinated Attack/ }))
+    .toHaveAttribute("href", "/missions/password-reset");
   expect(targetPosts).toBe(0);
 
   await page.getByTestId("admin-trigger").click();
   const savedMissionAdmin = page.getByTestId("saved-mission-admin");
+  await expect(savedMissionAdmin).toContainText("MISSION LIBRARY");
+  const passwordResetRow = savedMissionAdmin.getByTestId("saved-mission-row")
+    .filter({ hasText: "Password Reset Under Coordinated Attack" });
+  await expect(passwordResetRow.locator(".saved-mission-open"))
+    .toHaveAttribute("href", "/missions/password-reset");
+  await expect(passwordResetRow.getByRole("button", { name: "Reset saved Mission Password Reset Under Coordinated Attack" })).toBeVisible();
+  await expect(passwordResetRow.getByRole("link", { name: "Export saved Mission Password Reset Under Coordinated Attack" }))
+    .toHaveAttribute("href", "/api/missions/password-reset?download=1");
+  await expect(passwordResetRow.getByRole("button", { name: /Delete saved Mission/ })).toHaveCount(0);
+  await expect(passwordResetRow.getByLabel("Password Reset Under Coordinated Attack cannot be deleted")).toBeVisible();
   await expect(savedMissionAdmin).toContainText("VAmPI Authorization Breach");
   await expect(savedMissionAdmin.getByRole("link", { name: /^VAmPI Authorization Breach/ }))
-    .toHaveAttribute("href", "/missions/new?mission=mission-1");
+    .toHaveAttribute("href", "/missions/mission-1");
   await expect(savedMissionAdmin.getByRole("button", { name: "Reset saved Mission VAmPI Authorization Breach" })).toBeVisible();
   await expect(savedMissionAdmin.getByRole("button", { name: "Delete saved Mission VAmPI Authorization Breach" })).toBeVisible();
-  await expect(savedMissionAdmin.getByRole("button", { name: "Delete all saved Missions" })).toBeEnabled();
+  await expect(savedMissionAdmin.getByRole("button", { name: "Delete all user-created Missions" })).toBeEnabled();
   await expect(page).toHaveScreenshot("mission-admin-saved.png");
   page.once("dialog", (dialog) => dialog.accept());
   await savedMissionAdmin.getByRole("button", { name: "Reset saved Mission VAmPI Authorization Breach" }).click();
@@ -716,7 +790,9 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.getByRole("button", { name: "Close admin controls" }).click();
   await expect(page).toHaveScreenshot("mission-composer.png", { fullPage: true });
 
-  await page.locator(".mission-history").getByRole("button", { name: /VAmPI Authorization Breach/ }).click();
+  await page.locator(".mission-history").getByRole("link", { name: /VAmPI Authorization Breach/ }).click();
+  await expect(page).toHaveURL(/\/missions\/mission-1$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByTestId("reality-workspace")).toBeVisible();
   await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(2);
   await expect(page.getByTestId("topbar-status")).toContainText("LIVE MEMORY STREAM");
@@ -726,11 +802,12 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.getByTestId("admin-trigger").click();
   await expect(page.getByTestId("admin-drawer")).toContainText("DELETE MISSION");
   await expect(page.getByTestId("admin-drawer")).toContainText("Stop all Codex CLI");
-  await expect(page.getByTestId("admin-drawer")).toContainText("SAVED MISSIONS");
+  await expect(page.getByTestId("admin-drawer")).toContainText("MISSION LIBRARY");
   await expect(page.getByTestId("admin-drawer").locator(".admin-export"))
     .toHaveAttribute("href", "/api/missions/mission-1?download=1");
   await page.getByRole("button", { name: "Close admin controls" }).click();
-  await page.getByRole("button", { name: "New Mission" }).click();
+  await page.getByRole("link", { name: "MISSION CONTROL" }).click();
+  await expect(page).toHaveURL(/\/missions$/);
   await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
 
   await page.getByRole("button", { name: "Prepare VAmPI locally" }).click();
@@ -743,9 +820,13 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.locator(".mission-error")).toContainText("Complete the required Mission fields: Mission.");
   expect(missionPosts).toBe(0);
   await page.getByLabel("Mission").fill(defaultMission);
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Form waking Reality" }).click();
   expect(missionPosts).toBe(1);
 
+  await expect(page).toHaveURL(/\/missions\/mission-1$/);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.getByTestId("reality-workspace")).toBeVisible();
   await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(2);
   await expect(page.locator(".locus-key")).toContainText("Cross-user book secret");

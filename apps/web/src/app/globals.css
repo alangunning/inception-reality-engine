@@ -1352,7 +1352,8 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
   border-bottom: 1px solid var(--line);
 }
 .saved-mission-list a,
-.saved-mission-list button {
+.saved-mission-list button,
+.saved-mission-locked {
   min-width: 0;
   min-height: 44px;
   display: flex;
@@ -1379,6 +1380,7 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 .saved-mission-list button:hover:not(:disabled) { color: var(--cyan); }
 .saved-mission-list button:last-child:hover:not(:disabled) { color: var(--red); }
 .saved-mission-list button:disabled { opacity: 0.35; cursor: wait; }
+.saved-mission-locked { cursor: not-allowed; color: var(--cyan); }
 .admin-clear-missions { color: #ffd1cd; border-color: #713833 !important; background: var(--red-deep) !important; }
 .run-log-summary {
   margin: 11px 0;

@@ -21,7 +21,7 @@ Reality Engine separates those responsibilities:
 5. synthesise what generalises in the waking worktree;
 6. require immutable parent-owned proof before stabilisation.
 
-The canonical scenario exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. Real-mode **Mission Composer** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, observed SDK token ceiling, and Dream depth.
+The immutable rehearsed Mission exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. **Mission Control** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, observed SDK token ceiling, and Dream depth.
 
 ## Run in Two Commands
 
@@ -95,9 +95,9 @@ The real adapter:
 
 Real mode is intentionally not read-only. See [Security](./SECURITY.md) before exposing it beyond a trusted local machine.
 
-## Mission Composer
+## Mission Control
 
-In real mode, open **Mission Composer** from the top bar or visit `/missions/new`.
+Open **Mission Control** from any active Reality or visit `/missions`. The rehearsed password-reset run has the stable route `/missions/password-reset`; user-created runs use `/missions/{missionId}`. The legacy `/missions/new` route redirects to Mission Control.
 
 Define:
 
@@ -119,7 +119,7 @@ Codex remains fully capable of editing and testing inside every worktree. Waking
 
 The Mission token setting defaults to an **8,000,000 observed SDK token ceiling**, not a provider spend cap. The SDK reports authoritative input/output usage when a turn completes. A turn that crosses the ceiling is rejected, its filesystem transaction is rolled back, and later actions are stopped. Use OpenAI workspace or API project controls when a hard billing limit is required.
 
-Saved Missions reopen from the composer with the same branded header, phase tracker, Admin controls, action dock, topology, Reality inspector, uncertainty, Subject, evidence, memory, proof, event, timeline, and diff surfaces as the canonical scenario.
+Password reset appears in the same Mission Library as user-created runs. It can be opened, exported, and reset, but not deleted. User-created Missions can additionally be deleted individually or in bulk with ownership-scoped worktree cleanup. Every run uses the same branded header, phase tracker, Admin controls, action dock, topology, Reality inspector, uncertainty, Subject, evidence, memory, proof, event, timeline, and diff surfaces.
 
 ## Product Experience
 
@@ -161,7 +161,7 @@ npm run db:push
 
 The app selects Prisma when generated models are available and otherwise uses the portable SQLite adapter. Both persist validated state and retrospective logs.
 
-Canonical, Playwright, and Mission worktrees have separate roots and branch prefixes. Full reset cleans only canonical-owned Git state. Missing persisted worktrees are reconstructed from parent state and returned artefacts without consuming Codex.
+Rehearsed, Playwright, and user-created Mission worktrees have separate roots and branch prefixes. Full reset cleans only rehearsal-owned Git state. Missing persisted worktrees are reconstructed from parent state and returned artefacts without consuming Codex.
 
 ## Verification
 
@@ -177,7 +177,7 @@ Playwright uses production rendering, a dedicated SQLite database, mock mode, an
 
 ## Codex Collaboration
 
-Codex and GPT-5.6 were used throughout architecture audit, implementation, SDK integration, root-cause analysis, testing, and visual QA. The human owner made the core product decisions around full-power real mode, explicit usage, parent-owned anchors, native Subject proof, canonical-versus-general flows, and safe event semantics.
+Codex and GPT-5.6 were used throughout architecture audit, implementation, SDK integration, root-cause analysis, testing, and visual QA. The human owner made the core product decisions around full-power real mode, explicit usage, parent-owned anchors, native Subject proof, rehearsed and user-created Mission flows, and safe event semantics.
 
 The full collaboration account and submission evidence are in [Codex and GPT-5.6 Collaboration](./docs/CODEX_COLLABORATION.md). The Devpost `/feedback` Session ID must be taken manually from the primary Codex build session; application Reality thread IDs are not substitutes.
 

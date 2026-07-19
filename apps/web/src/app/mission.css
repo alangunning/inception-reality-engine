@@ -247,7 +247,8 @@
 .mission-roster p { margin: 7px 0 0; color: var(--muted); font-size: 0.64rem; line-height: 1.5; }
 .mission-history-title { margin-top: 24px; }
 .mission-history { display: flex; flex-direction: column; }
-.mission-history button {
+.mission-history button,
+.mission-history a {
   min-height: 55px;
   display: flex;
   align-items: center;
@@ -259,10 +260,14 @@
   border-bottom: 1px solid var(--line);
   text-align: left;
   cursor: pointer;
+  text-decoration: none;
 }
-.mission-history button span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.mission-history button strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; }
-.mission-history button small { color: var(--muted); font-size: 0.56rem; }
+.mission-history button span,
+.mission-history a span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mission-history button strong,
+.mission-history a strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.68rem; }
+.mission-history button small,
+.mission-history a small { color: var(--muted); font-size: 0.56rem; }
 .mission-empty { color: var(--muted); font-size: 0.65rem; }
 
 .mission-context-band {

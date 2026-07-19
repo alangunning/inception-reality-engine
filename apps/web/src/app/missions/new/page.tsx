@@ -1,5 +1,5 @@
-import { MissionComposer } from "@/components/mission-composer";
+import { redirect } from "next/navigation";
 
 export default function NewMissionPage() {
-  return <MissionComposer />;
+  redirect("/missions");
 }

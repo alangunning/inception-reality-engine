@@ -44,7 +44,7 @@ For a Mission that deliberately depends on personal Codex integrations, set `INC
 - The observed ceiling is not a provider spend cap because the SDK does not expose incremental per-turn token cancellation. Use ChatGPT workspace or OpenAI API project spend controls for billing enforcement.
 - Waking inspection keeps full Codex write/test capability inside the isolated worktree, then restores its checkpoint so knowledge returns before implementation.
 - Rejected inspection turns retain their resumable SDK thread ID, safe validation path/code, and rollback event without persisting raw model output.
-- The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the deterministic canonical judge path remains fully runnable without a model call.
+- The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the deterministic rehearsed judge Mission remains fully runnable without a model call.
 
 ## Stop and Cleanup
 
@@ -55,17 +55,17 @@ Admin **Stop all Codex CLI**:
 3. terminates those processes;
 4. leaves persisted Reality state and worktrees available for diagnosis.
 
-Admin **Full reset and cleanup** archives the current safe log, stops Codex, deletes canonical active state, removes canonical-owned worktrees/branches, prunes Git metadata, and forms a clean waking Reality.
+Admin **Full reset and cleanup** archives the current safe log, stops Codex, deletes the rehearsed password-reset state, removes rehearsal-owned worktrees/branches, prunes Git metadata, and forms a clean waking Reality.
 
-The Admin **Saved Missions** section is available from both Mission Composer and an active Mission. It can reopen or export a run, reset one run from the same validated definition, delete one run, or delete all saved Missions. Reset forms the replacement before removing the previous history. Mission reset and deletion remove only Mission-owned worktrees and branches; they never alter the canonical scenario.
+The Admin **Mission Library** is available from Mission Control and every active Mission. The built-in password-reset Mission can be opened, exported, and reset, but never deleted. User-created Missions can also be deleted individually or in bulk. Reset forms a replacement before removing previous user-created Mission history. User-created Mission reset and deletion remove only Mission-owned worktrees and branches; they never alter the rehearsed password-reset Mission.
 
 Playwright cleanup uses its own root and prefix. No cleanup path should delete a worktree it does not own.
 
-Pinned training targets remain in `.inception/training-targets` as an ignored reusable cache. Removing that directory is safe when no Mission operation is active; it is not part of canonical reset because it contains no running process or admitted Reality state.
+Pinned training targets remain in `.inception/training-targets` as an ignored reusable cache. Removing that directory is safe when no Mission operation is active; it is not part of password-reset Mission cleanup because it contains no running process or admitted Reality state.
 
 ## Retrospective Logs
 
-The Admin drawer exports the active canonical run, active Mission, or archived run as JSON. An archived password-reset run can also be opened in the full Reality Engine as a read-only timeline. While that snapshot is open, live SSE updates and mutation controls are suspended; **Return to live Reality** reloads current persisted state. Exports and reopened runs include:
+The Admin drawer exports the active rehearsed run, user-created Mission, or archived run as JSON. An archived password-reset run can also be opened in the full Reality Engine as a read-only timeline. While that snapshot is open, live SSE updates and mutation controls are suspended; **Return to live Reality** reloads current persisted state. Exports and reopened runs include:
 
 - Reality state and hierarchy;
 - safe timestamped events;

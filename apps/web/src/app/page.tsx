@@ -1,5 +1,5 @@
-import { RealityEngine } from "@/components/reality-engine";
+import { redirect } from "next/navigation";
 
 export default function Home() {
-  return <RealityEngine />;
+  redirect("/missions/password-reset");
 }
