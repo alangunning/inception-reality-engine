@@ -69,6 +69,7 @@ type PresentedDemoSnapshot = DemoSnapshot & {
     persistence: "prisma" | "sqlite-fallback";
     model: string;
     sdkVersion: string;
+    authSource?: "cli" | "api-key" | "none";
   };
 };
 
@@ -93,6 +94,7 @@ interface SafeEventMetadata {
   diagnostic?: string;
   model?: string;
   sdkVersion?: string;
+  authSource?: "cli" | "api-key" | "none";
   subjectId?: string;
   subjectName?: string;
   subjectRole?: string;
@@ -453,12 +455,14 @@ export function EmptyState({ icon, children }: { icon: ReactNode; children: Reac
 export function RealityTopbar({
   codexMode,
   model,
+  authSource,
   environment,
   realityCount,
   actions
 }: {
   codexMode: "mock" | "real";
   model: string;
+  authSource?: "cli" | "api-key" | "none";
   environment: string;
   realityCount: number;
   actions: ReactNode;
@@ -472,7 +476,16 @@ export function RealityTopbar({
       <div className="topbar-controls">
         <div className="topbar-status" data-testid="topbar-status" role="status" aria-label="Reality Engine status">
           <span className="stream-status"><Radio size={13} /> LIVE MEMORY STREAM</span>
-          <span><BrainCircuit size={13} /> {codexMode.toUpperCase()} CODEX / {model.toUpperCase()}</span>
+          <span>
+            <BrainCircuit size={13} /> {codexMode.toUpperCase()} CODEX / {model.toUpperCase()}
+            {codexMode === "real"
+              ? ` / ${authSource === "cli"
+                ? "CLI AUTH"
+                : authSource === "api-key"
+                  ? "API KEY AUTH"
+                  : "AUTH UNAVAILABLE"}`
+              : ""}
+          </span>
           <span><Layers3 size={13} /> {environment.toUpperCase()}</span>
           <span><Network size={13} /> {realityCount} REALITIES</span>
         </div>
@@ -2339,7 +2352,8 @@ export function RealityEngine() {
         codexMode: "mock",
         persistence: "sqlite-fallback",
         model: "gpt-5.6-sol",
-        sdkVersion: "unknown"
+        sdkVersion: "unknown",
+        authSource: "none"
       }
     }));
     setLoadedArchive({ id: archive.id, archivedAt: archive.archivedAt });
@@ -2510,6 +2524,7 @@ export function RealityEngine() {
       <RealityTopbar
         codexMode={snapshot.runtime.codexMode}
         model={snapshot.runtime.model}
+        authSource={snapshot.runtime.authSource}
         environment={snapshot.runtime.persistence === "prisma" ? "PRISMA" : "PORTABLE SQLITE"}
         realityCount={snapshot.realities.length}
         actions={(

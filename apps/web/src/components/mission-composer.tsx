@@ -75,6 +75,7 @@ interface RuntimeInfo {
   mode: "mock" | "real";
   model: string;
   sdkVersion: string;
+  authSource?: "cli" | "api-key" | "none";
 }
 
 interface ComposerState {
@@ -782,6 +783,7 @@ function MissionRunView({
       <RealityTopbar
         codexMode={runtime.mode}
         model={runtime.model}
+        authSource={runtime.authSource}
         environment={`CODEX SDK ${runtime.sdkVersion}`}
         realityCount={run.realities.length}
         actions={(
@@ -1241,6 +1243,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
         <RealityTopbar
           codexMode={runtime?.mode ?? "real"}
           model={runtime?.model ?? "checking runtime"}
+          authSource={runtime?.authSource}
           environment={runtime ? `CODEX SDK ${runtime.sdkVersion}` : "Runtime checking"}
           realityCount={missions.reduce((total, mission) => total + mission.realityCount, 0)}
           actions={(

@@ -1383,6 +1383,13 @@ ${laws || "- No additional runtime laws."}
         responseMessage: detail
       };
     }
+    if (/quota rejected this turn|no quota was available/i.test(detail)) {
+      return {
+        kind: "codex_quota_unavailable",
+        summary: detail,
+        responseMessage: detail
+      };
+    }
     return {
       kind: operation.executor === "codex" ? "codex_operation_failed" : "reality_operation_failed",
       summary: `${operation.label} did not complete${detail ? `: ${detail}` : "."}`,

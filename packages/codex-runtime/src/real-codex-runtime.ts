@@ -580,6 +580,7 @@ export class RealCodexRuntime implements CodexRuntime {
   private readonly parser = new WakeReportParser();
   private readonly codexHome: string;
   private readonly sqliteHome: string;
+  private readonly authSource: "cli" | "api-key" | "none";
   private readonly operations = new Map<string, {
     controller: AbortController;
     realityId: string;
@@ -592,6 +593,7 @@ export class RealCodexRuntime implements CodexRuntime {
     this.codexHome = executionEnvironment.codexHome;
     this.sqliteHome = executionEnvironment.env.CODEX_SQLITE_HOME
       ?? executionEnvironment.codexHome;
+    this.authSource = executionEnvironment.authSource;
     const apiKey = executionEnvironment.env.CODEX_API_KEY?.trim()
       || executionEnvironment.env.OPENAI_API_KEY?.trim();
     this.codex = new Codex({
@@ -615,7 +617,8 @@ export class RealCodexRuntime implements CodexRuntime {
     return {
       mode: this.mode,
       model: configuredCodexModel(),
-      sdkVersion: CODEX_SDK_VERSION
+      sdkVersion: CODEX_SDK_VERSION,
+      authSource: this.authSource
     } as const;
   }
 
@@ -935,7 +938,8 @@ Return only the structured synthesis report after the implementation and tests a
           stage: "model",
           status: "completed",
           model: configuredCodexModel(),
-          sdkVersion: CODEX_SDK_VERSION
+          sdkVersion: CODEX_SDK_VERSION,
+          authSource: this.authSource
         }
       }));
       const streamed = await thread.runStreamed(prompt, {
@@ -970,6 +974,7 @@ Return only the structured synthesis report after the implementation and tests a
             event.metadata?.status === "failed"
             && typeof event.metadata.detail === "string"
           ) {
+            if (event.metadata.detail === lastRuntimeFailure) continue;
             lastRuntimeFailure = event.metadata.detail;
           }
           await emit(event);
@@ -982,7 +987,7 @@ Return only the structured synthesis report after the implementation and tests a
       }
       return { thread, events, finalResponse };
     } catch (error) {
-      throw normaliseCodexExecutionError(error, lastRuntimeFailure);
+      throw normaliseCodexExecutionError(error, lastRuntimeFailure, this.authSource);
     } finally {
       if (timeout) clearTimeout(timeout);
       this.operations.delete(operationId);

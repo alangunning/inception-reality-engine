@@ -35,7 +35,10 @@ describe("Codex runtime", () => {
     const runtimeHome = path.join(root, "runtime-codex");
     fs.mkdirSync(sourceHome);
     fs.mkdirSync(path.join(sourceHome, "sessions"));
-    fs.writeFileSync(path.join(sourceHome, "auth.json"), '{"auth_mode":"test"}');
+    fs.writeFileSync(
+      path.join(sourceHome, "auth.json"),
+      '{"auth_mode":"chatgpt","tokens":{"access_token":"test-access-token"}}'
+    );
     fs.writeFileSync(path.join(sourceHome, "config.toml"), '[plugins."linear"]\nenabled=true\n');
     fs.writeFileSync(path.join(sourceHome, "models_cache.json"), '{"models":["gpt-5.6-sol"]}\n');
     fs.writeFileSync(path.join(sourceHome, "sessions", "existing-thread.jsonl"), "{}\n");
@@ -44,6 +47,7 @@ describe("Codex runtime", () => {
       const prepared = prepareCodexExecutionEnvironment({
         env: {
           CODEX_HOME: sourceHome,
+          OPENAI_API_KEY: "ambient-parent-key",
           NODE_ENV: "development"
         },
         runtimeCodexHome: runtimeHome
@@ -52,14 +56,17 @@ describe("Codex runtime", () => {
       expect(prepared).toMatchObject({
         codexHome: runtimeHome,
         configuration: "isolated",
+        authMode: "auto",
+        authSource: "cli",
         cliAuthLinked: true,
         sessionStateLinked: true,
         modelMetadataLinked: true
       });
       expect(prepared.env.CODEX_HOME).toBe(runtimeHome);
       expect(prepared.env.CODEX_SQLITE_HOME).toBe(sourceHome);
+      expect(prepared.env.OPENAI_API_KEY).toBeUndefined();
       expect(prepared.env.NODE_ENV).toBeUndefined();
-      expect(fs.readFileSync(path.join(runtimeHome, "auth.json"), "utf8")).toContain('"auth_mode":"test"');
+      expect(fs.readFileSync(path.join(runtimeHome, "auth.json"), "utf8")).toContain('"auth_mode":"chatgpt"');
       expect(fs.readFileSync(
         path.join(runtimeHome, "sessions", "existing-thread.jsonl"),
         "utf8"
@@ -83,11 +90,43 @@ describe("Codex runtime", () => {
     expect(prepared).toMatchObject({
       codexHome: sourceHome,
       configuration: "inherited",
+      authMode: "auto",
+      authSource: "none",
       cliAuthLinked: false,
       sessionStateLinked: false,
       modelMetadataLinked: false
     });
     expect(prepared.env.CODEX_HOME).toBe(sourceHome);
+  });
+
+  it("allows an explicit API-key override when CLI authentication also exists", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-api-override-"));
+    const sourceHome = path.join(root, "user-codex");
+    const runtimeHome = path.join(root, "runtime-codex");
+    fs.mkdirSync(sourceHome);
+    fs.writeFileSync(
+      path.join(sourceHome, "auth.json"),
+      '{"auth_mode":"chatgpt","tokens":{"access_token":"test-access-token"}}'
+    );
+
+    try {
+      const prepared = prepareCodexExecutionEnvironment({
+        env: {
+          CODEX_HOME: sourceHome,
+          OPENAI_API_KEY: "explicit-api-key",
+          INCEPTION_CODEX_AUTH_MODE: "api"
+        },
+        runtimeCodexHome: runtimeHome
+      });
+
+      expect(prepared.authMode).toBe("api");
+      expect(prepared.authSource).toBe("api-key");
+      expect(prepared.cliAuthLinked).toBe(false);
+      expect(prepared.env.OPENAI_API_KEY).toBe("explicit-api-key");
+      expect(fs.existsSync(path.join(runtimeHome, "auth.json"))).toBe(false);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("repairs isolated-home links when the source Codex home changes", () => {
@@ -97,7 +136,11 @@ describe("Codex runtime", () => {
     const runtimeHome = path.join(root, "runtime");
     for (const [source, marker] of [[firstSource, "first"], [secondSource, "second"]] as const) {
       fs.mkdirSync(path.join(source, "sessions"), { recursive: true });
-      fs.writeFileSync(path.join(source, "auth.json"), JSON.stringify({ marker }));
+      fs.writeFileSync(path.join(source, "auth.json"), JSON.stringify({
+        marker,
+        auth_mode: "chatgpt",
+        tokens: { access_token: `${marker}-access-token` }
+      }));
       fs.writeFileSync(path.join(source, "models_cache.json"), JSON.stringify({ marker }));
       fs.writeFileSync(path.join(source, "sessions", `${marker}.jsonl`), "{}\n");
     }
@@ -139,6 +182,7 @@ describe("Codex runtime", () => {
 
       expect(prepared.env.CODEX_HOME).toBe(runtimeHome);
       expect(prepared.env.CODEX_SQLITE_HOME).toBe(runtimeHome);
+      expect(prepared.authSource).toBe("api-key");
       expect(prepared.cliAuthLinked).toBe(false);
       expect(prepared.sessionStateLinked).toBe(false);
       expect(prepared.modelMetadataLinked).toBe(false);
@@ -164,6 +208,41 @@ describe("Codex runtime", () => {
     expect(error.message).toContain("cybersecurity safety gate");
     expect(error.message).toContain("authorized defensive source-review");
     expect(error.message).not.toContain("exited with code 1");
+  });
+
+  it("identifies API-key quota failure without exposing Codex stdin noise", () => {
+    const error = normaliseCodexExecutionError(
+      new Error("Codex Exec exited with code 1: Reading prompt from stdin..."),
+      "Quota exceeded. Check your plan and billing details.",
+      "api-key"
+    );
+    expect(error.message).toContain("OpenAI API-key quota rejected this turn");
+    expect(error.message).toContain("INCEPTION_CODEX_AUTH_MODE=cli");
+    expect(error.message).not.toContain("Reading prompt from stdin");
+  });
+
+  it("uses the safe runtime detail when the SDK wrapper only reports its exit", () => {
+    const error = normaliseCodexExecutionError(
+      new Error("Codex Exec exited with code 1: Reading prompt from stdin..."),
+      "The selected model is unavailable for this account.",
+      "cli"
+    );
+    expect(error.message).toBe(
+      "Codex could not complete this turn: The selected model is unavailable for this account."
+    );
+  });
+
+  it("replaces a wrapper-only Codex Exec failure with an actionable boundary message", () => {
+    const error = normaliseCodexExecutionError(
+      new Error("Codex Exec exited with code 1: Reading prompt from stdin..."),
+      undefined,
+      "cli"
+    );
+
+    expect(error.message).toContain("Codex CLI exited before returning a model diagnostic");
+    expect(error.message).toContain("No validated memory or code entered this Reality");
+    expect(error.message).not.toContain("Codex Exec exited");
+    expect(error.message).not.toContain("Reading prompt from stdin");
   });
 
   it("keeps one deterministic thread per mocked Reality", async () => {

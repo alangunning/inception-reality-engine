@@ -112,6 +112,15 @@ class InvalidInspectionRuntime extends MockCodexRuntime {
   }
 }
 
+class QuotaFailureRuntime extends MockCodexRuntime {
+  override async inspect(): Promise<CodexExecutionResult> {
+    throw new Error(
+      "OpenAI API-key quota rejected this turn. Reality Engine used API-key authentication; "
+      + "check that key's project budget, or set INCEPTION_CODEX_AUTH_MODE=cli to use the Codex CLI login."
+    );
+  }
+}
+
 class ThreadThenInvalidInspectionRuntime extends MockCodexRuntime {
   override async inspect(
     _reality: Reality,
@@ -188,6 +197,34 @@ describe("RealityOrchestrator", () => {
       expect(recovered.events.some((event) => event.type === "reality.fractured")).toBe(true);
       expect(recovered.events.some((event) => event.type === "reality.recovered")).toBe(true);
       expect(recovered.events.some((event) => event.type === "codex.progress")).toBe(false);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("returns an actionable quota failure without Codex process noise", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-quota-error-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new QuotaFailureRuntime(),
+        new FakeWorktreeManager(temp),
+        new SynthesisService(),
+        temp
+      );
+      await orchestrator.snapshot();
+
+      await expect(orchestrator.act("inspect")).rejects.toThrow(
+        "OpenAI API-key quota rejected this turn."
+      );
+      const failed = await orchestrator.snapshot();
+      const event = failed.events.find((entry) => entry.type === "reality.fractured");
+      expect(event?.summary).toContain("OpenAI API-key quota rejected this turn.");
+      expect(event?.summary).not.toContain("did not complete");
+      expect(event?.summary).not.toContain("Reading prompt from stdin");
+      expect(event?.payload.failureKind).toBe("codex_quota_unavailable");
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

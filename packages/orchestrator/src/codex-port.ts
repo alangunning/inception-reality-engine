@@ -30,6 +30,7 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   diagnostic: z.string().min(1).max(180).optional(),
   model: z.string().min(1).max(80).optional(),
   sdkVersion: z.string().min(1).max(40).optional(),
+  authSource: z.enum(["cli", "api-key", "none"]).optional(),
   threadId: z.string().min(1).max(100).optional(),
   subjectId: z.string().min(1).max(100).optional(),
   subjectName: z.string().min(1).max(100).optional(),
@@ -51,6 +52,7 @@ export interface CodexRuntimeInfo {
   mode: "mock" | "real";
   model: string;
   sdkVersion: string;
+  authSource?: "cli" | "api-key" | "none";
 }
 
 export interface CodexActiveOperation {

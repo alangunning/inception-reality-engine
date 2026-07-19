@@ -12,27 +12,45 @@ if (fs.existsSync(envFile)) {
 }
 
 function codexAuthStatus() {
+  const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
+  const authFile = path.join(codexHome, "auth.json");
+  const requestedMode = process.env.INCEPTION_CODEX_AUTH_MODE?.trim().toLowerCase() || "auto";
+  if (!["auto", "cli", "api"].includes(requestedMode)) {
+    return {
+      ready: false,
+      source: "INCEPTION_CODEX_AUTH_MODE must be auto, cli, or api"
+    };
+  }
   const apiKeySource = process.env.CODEX_API_KEY?.trim()
     ? "CODEX_API_KEY"
     : process.env.OPENAI_API_KEY?.trim()
       ? "OPENAI_API_KEY"
       : null;
-  if (apiKeySource) return { ready: true, source: apiKeySource };
-
-  const codexHome = process.env.CODEX_HOME?.trim() || path.join(os.homedir(), ".codex");
-  const authFile = path.join(codexHome, "auth.json");
+  let cliSource = null;
   try {
     const auth = JSON.parse(fs.readFileSync(authFile, "utf8"));
     const loggedIn = typeof auth.auth_mode === "string"
-      && typeof auth.tokens?.access_token === "string"
-      && auth.tokens.access_token.length > 0;
-    return {
-      ready: loggedIn,
-      source: loggedIn ? `${auth.auth_mode} login at ${authFile}` : authFile
-    };
+      && (
+        typeof auth.tokens?.access_token === "string" && auth.tokens.access_token.length > 0
+        || typeof auth.OPENAI_API_KEY === "string" && auth.OPENAI_API_KEY.length > 0
+      );
+    if (loggedIn) cliSource = `${auth.auth_mode} login at ${authFile}`;
   } catch {
-    return { ready: false, source: authFile };
+    cliSource = null;
   }
+
+  if (requestedMode === "cli") {
+    return { ready: Boolean(cliSource), source: cliSource ?? authFile };
+  }
+  if (requestedMode === "api") {
+    return { ready: Boolean(apiKeySource), source: apiKeySource ?? "CODEX_API_KEY or OPENAI_API_KEY" };
+  }
+  if (process.env.CODEX_API_KEY?.trim()) {
+    return { ready: true, source: "CODEX_API_KEY" };
+  }
+  if (cliSource) return { ready: true, source: cliSource };
+  if (apiKeySource) return { ready: true, source: apiKeySource };
+  return { ready: false, source: authFile };
 }
 
 if (!["mock", "real", "check"].includes(mode)) {
@@ -44,7 +62,7 @@ const auth = codexAuthStatus();
 if (mode === "check" || mode === "real") {
   if (!auth.ready) {
     console.error("Codex authentication was not found.");
-    console.error(`Run \`codex login\`, or set OPENAI_API_KEY (or CODEX_API_KEY) in ${envFile}.`);
+    console.error(`Run \`codex login\`, or set INCEPTION_CODEX_AUTH_MODE=api with CODEX_API_KEY or OPENAI_API_KEY in ${envFile}.`);
     console.error(`Checked ${auth.source}.`);
     process.exit(1);
   }

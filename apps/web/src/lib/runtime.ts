@@ -46,7 +46,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.4";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.6";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,
@@ -62,7 +62,8 @@ function upgradeRuntimeCapabilities(
     model: mode === "real"
       ? process.env.INCEPTION_CODEX_MODEL?.trim() || DEFAULT_CODEX_MODEL
       : "deterministic-mock",
-    sdkVersion: "0.144.6"
+    sdkVersion: "0.144.6",
+    authSource: "none"
   });
   legacy.activeOperations ??= () => [];
   legacy.abortAll ??= () => 0;
@@ -296,6 +297,7 @@ export type PresentedDemoSnapshot = DemoSnapshot & {
     persistence: RuntimeContainer["persistence"];
     model: string;
     sdkVersion: string;
+    authSource?: "cli" | "api-key" | "none";
   };
 };
 
@@ -307,7 +309,8 @@ export function presentSnapshot(snapshot: DemoSnapshot): PresentedDemoSnapshot {
       codexMode: runtime.codexMode,
       persistence: runtime.persistence,
       model: runtime.codexRuntime.info().model,
-      sdkVersion: runtime.codexRuntime.info().sdkVersion
+      sdkVersion: runtime.codexRuntime.info().sdkVersion,
+      authSource: runtime.codexRuntime.info().authSource
     }
   };
 }

@@ -33,7 +33,7 @@ This reuses the judge's Codex CLI login at `${CODEX_HOME:-~/.codex}/auth.json`. 
 npm run record:demo
 ```
 
-The runtime links that auth file and existing CLI session state into `.inception/codex-home`, but does not inherit the user's `config.toml`, plugins, or MCP servers. This prevents an unrelated or expired MCP login from stopping `codex exec` before a Reality begins while allowing persisted Reality thread IDs to resume. Alternatively set `CODEX_API_KEY` or `OPENAI_API_KEY` in `.env`. Credential contents are never committed, persisted in application data, emitted as events, included in Wake Reports, or exported in run logs.
+The runtime links that auth file and existing CLI session state into `.inception/codex-home`, but does not inherit the user's `config.toml`, plugins, or MCP servers. This prevents an unrelated or expired MCP login from stopping `codex exec` before a Reality begins while allowing persisted Reality thread IDs to resume. Authentication defaults to `auto`: an explicit `CODEX_API_KEY`, otherwise valid CLI auth, otherwise `OPENAI_API_KEY`. Set `INCEPTION_CODEX_AUTH_MODE=cli` or `api` to override that choice. Credential contents are never committed, persisted in application data, emitted as events, included in Wake Reports, or exported in run logs.
 
 For a Mission that deliberately depends on personal Codex integrations, set `INCEPTION_CODEX_INHERIT_USER_CONFIG=true`. Authenticate every enabled MCP first; its startup policy then applies to Reality executions.
 
@@ -75,7 +75,7 @@ The Admin drawer exports the active Demo Mission run, user-created Mission, or a
 - safe timestamped events;
 - command name, exit code, and classified diagnostic;
 - bounded credential-redacted plan steps and their status at each retained plan milestone;
-- file paths, tool names, token counts, and model binding;
+- file paths, tool names, token counts, model binding, and selected authentication source;
 - Subject name, role, child thread ID, collaboration tool, and terminal state;
 - validation failures and recovery events;
 - beliefs, evidence, Wake Reports, Reality Totem seals, source/report digests, descendant lineage, anchors, and final proof results.
@@ -88,6 +88,7 @@ They exclude raw reasoning, unrestricted SDK event payloads, raw Subject message
 | --- | --- |
 | `INCEPTION_CODEX_MODE` | `mock` or `real` |
 | `INCEPTION_CODEX_MODEL` | Real-mode model override; default `gpt-5.6-sol` |
+| `INCEPTION_CODEX_AUTH_MODE` | `auto`, `cli`, or `api`; default `auto` prefers explicit `CODEX_API_KEY`, then CLI auth, then `OPENAI_API_KEY` |
 | `INCEPTION_CODEX_RUNTIME_HOME` | Optional isolated runtime-home path; default `.inception/codex-home` |
 | `INCEPTION_CODEX_INHERIT_USER_CONFIG` | Opt in to personal Codex config, plugins, and MCPs; default `false` |
 | `CODEX_HOME` | Source home for non-standard Codex CLI authentication |

@@ -34,7 +34,12 @@ export class MockCodexRuntime implements CodexRuntime {
   readonly mode = "mock" as const;
 
   info() {
-    return { mode: this.mode, model: "deterministic-mock", sdkVersion: "0.144.6" } as const;
+    return {
+      mode: this.mode,
+      model: "deterministic-mock",
+      sdkVersion: "0.144.6",
+      authSource: "none"
+    } as const;
   }
 
   activeOperations() {

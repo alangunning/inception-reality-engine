@@ -701,7 +701,7 @@ test("Mission Composer does not show a false real-mode warning while runtime dat
     await route.fulfill({
       json: {
         runs: [],
-        runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
+        runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" },
         enabled: true
       }
     });
@@ -786,7 +786,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.route("**/api/missions/mission-1", (route) => route.fulfill({
     json: {
       snapshot: fixture,
-      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" }
     }
   }));
   await page.route("**/api/missions/mission-1/reset", (route) => {
@@ -803,7 +803,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
       json: {
         runs: [savedMission],
         library: [passwordResetMission, savedMission],
-        runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
+        runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" },
         enabled: true
       }
     });
@@ -890,6 +890,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   expect(Math.abs(siblingRows[0]! - siblingRows[1]!)).toBeGreaterThan(80);
   await expect(page.getByTestId("topbar-status")).toContainText("LIVE MEMORY STREAM");
   await expect(page.getByTestId("topbar-status")).toContainText("GPT-5.6");
+  await expect(page.getByTestId("topbar-status")).toContainText("CLI AUTH");
   await expect(page.getByTestId("phase-header")).toContainText("VAmPI Authorization Breach");
   await expect(page.getByTestId("mission-action-dock")).toBeVisible();
   await page.getByTestId("admin-trigger").click();
@@ -976,7 +977,7 @@ test("General Missions use the same explicit Dream proposal gate as the Demo Mis
   await page.route("**/api/missions/mission-1", (route) => route.fulfill({
     json: {
       snapshot: fixture,
-      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" }
     }
   }));
   await page.route("**/api/missions/targets", (route) => route.fulfill({
@@ -986,7 +987,7 @@ test("General Missions use the same explicit Dream proposal gate as the Demo Mis
     json: {
       runs: [],
       library: [],
-      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" },
       enabled: true
     }
   }));
@@ -1144,7 +1145,7 @@ test("a controlled Subject is visibly contained before its memory ascends", asyn
   await page.route("**/api/missions/mission-1", (route) => route.fulfill({
     json: {
       snapshot: fixture,
-      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" }
     }
   }));
   await page.route("**/api/missions/targets", (route) => route.fulfill({
@@ -1154,7 +1155,7 @@ test("a controlled Subject is visibly contained before its memory ascends", asyn
     json: {
       runs: [],
       library: [],
-      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" },
+      runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6", authSource: "cli" },
       enabled: true
     }
   }));

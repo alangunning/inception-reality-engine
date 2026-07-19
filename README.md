@@ -48,7 +48,7 @@ codex login              # skip if already authenticated or using an API key
 npm run judge:demo
 ```
 
-Open [http://localhost:3000](http://localhost:3000). `judge:demo` starts full-power real Codex mode with GPT-5.6 and the judge's own authentication. An ignored `.env` may instead contain `CODEX_API_KEY` or `OPENAI_API_KEY`.
+Open [http://localhost:3000](http://localhost:3000). `judge:demo` starts full-power real Codex mode with GPT-5.6 and the judge's own authentication. Authentication defaults to `auto`: an explicit `CODEX_API_KEY`, otherwise the judge's Codex CLI login, otherwise `OPENAI_API_KEY`. To deliberately use an API key when CLI auth also exists, set `INCEPTION_CODEX_AUTH_MODE=api` in the ignored `.env`.
 
 Page load, refresh, timeline replay, Admin, and Mission creation never start Codex. Usage begins only after an explicit Codex-backed action.
 
