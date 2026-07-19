@@ -185,7 +185,9 @@ Zod validation establishes structure, not truth. Every Kick therefore runs `Memo
 8. require verified seals and unchanged Git sources for all returned descendant memories;
 9. compare any sealed intervention with the investigator diagnosis.
 
-For a sealed intervention, comparison happens while the controlled mutation is still observable. The orchestrator then captures only non-injected investigator artefacts, restores the pre-intervention Git checkpoint, removes every injected path from the Wake Report, and seals that sanitized source. A partial diagnosis quarantines the report; an exact diagnosis admits knowledge, never the planted mutation.
+For a sealed intervention, comparison happens while the controlled mutation is still observable. The orchestrator compares the model report with Git's actual changed-file list in every runtime mode, then captures only non-injected investigator artefacts, restores the pre-intervention Git checkpoint, removes every injected path from the Wake Report, and seals that sanitized source. A partial diagnosis quarantines the report; an exact diagnosis admits knowledge, never the planted mutation. The canonical Account enumeration Dream exercises this path with one bounded request-boundary fault and an independently created response-equivalence test.
+
+The final password-reset proof uses an injectable `RateLimitStore`. Two service instances consume one shared in-memory store in the fourth immutable anchor, proving that identifier budgets survive process boundaries. A production adapter must implement the same atomic `consume` contract with Redis or a database.
 
 New seals use `memory-integrity/v2`; persisted `v1` seals remain readable for retrospective logs. A failed check produces a durable `quarantined` seal and `memory.quarantined` event. The parent reopens the uncertainty; the Wake Report never enters the admitted memory list. Synthesis rechecks report digests, descendant seal IDs, source `HEAD`, and worktree cleanliness, rejecting stale or altered memory without asking for a human approval click.
 

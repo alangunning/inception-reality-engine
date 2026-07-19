@@ -385,6 +385,7 @@ export const DemoSessionSchema = z.object({
   anchorResults: z.array(AnchorResultSchema),
   regressionResult: RegressionResultSchema.optional(),
   memoryIntegrity: z.array(MemoryIntegritySealSchema).default([]),
+  interventions: z.array(z.lazy(() => AdversarialInterventionLedgerSchema)).default([]),
   autopilot: DemoAutopilotStateSchema.default({
     mode: "off",
     kind: "demo",

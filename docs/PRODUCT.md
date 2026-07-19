@@ -77,16 +77,14 @@ The password-reset Demo Mission provides a reliable first-run proof. Mission Con
 
 ## Measurable Outcome
 
-A completed run records:
+The canonical completed run presents:
 
-- memories verified and quarantined;
-- controlled faults detected or missed;
-- injected artefacts excluded;
-- immutable proofs passed or failed;
-- waking files changed;
-- remaining unresolved disagreements;
-- exact evidence and source lineage supporting each admitted conclusion.
-- retained post-budget uncertainty that remains visible without masquerading as an active Dream.
+- **Before:** `12/12` rotating-source requests deliver a reset and public responses expose account existence.
+- **After:** `3/12` requests deliver across two service instances sharing one identifier budget, and known/unknown responses match.
+- **Integrity:** one planted boundary mutation is rolled back and zero injected files ascend.
+- **Proof:** four parent requirements plus returned regression artefacts pass.
+
+Every run also records memories verified or quarantined, controlled faults detected or missed, injected artefacts excluded, waking files changed, unresolved disagreements, retained post-budget uncertainty, and exact evidence/source lineage for each admitted conclusion.
 
 The product claim is therefore inspectable: it should show which unsafe change was prevented, which requirement survived every world, and which tested improvement reached the waking repository.
 

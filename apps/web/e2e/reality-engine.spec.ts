@@ -213,6 +213,44 @@ function missionSnapshotFixture() {
     }
   ]));
   events.push({
+    id: "model-evidence-1",
+    realityId: dream.id,
+    type: "codex.progress",
+    summary: "gpt-5.6-sol entered the persisted Dream thread.",
+    dreamTime: 18,
+    payload: {
+      missionId: "mission-1",
+      operationId: "operation-1",
+      action: "inspect",
+      metadata: {
+        stage: "model",
+        status: "completed",
+        model: "gpt-5.6-sol",
+        sdkVersion: "0.144.6",
+        authSource: "cli"
+      }
+    },
+    occurredAt
+  });
+  events.push({
+    id: "thread-evidence-1",
+    realityId: dream.id,
+    type: "codex.progress",
+    summary: "Codex thread entered the persisted Dream worktree.",
+    dreamTime: 18,
+    payload: {
+      missionId: "mission-1",
+      operationId: "operation-1",
+      action: "inspect",
+      metadata: {
+        stage: "thread",
+        status: "started",
+        threadId: "thread-dream-123456"
+      }
+    },
+    occurredAt
+  });
+  events.push({
     id: "plan-update-1",
     realityId: dream.id,
     type: "codex.progress",
@@ -664,8 +702,7 @@ test("live operation survives refresh and returns timestamped, filterable events
   await expectNext(page, "Create Dream: Under coordinated attack");
 });
 
-test("the complete mocked narrative remains visually coherent", async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== "desktop", "The full narrative is captured once at desktop density.");
+test("the complete mocked narrative remains visually coherent", async ({ page }) => {
   await page.goto("/");
 
   await page.getByTestId("primary-action").click();
@@ -689,16 +726,25 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expect(page.getByTestId("wake-transition")).toContainText("Collecting lived evidence");
   await expectNext(page, "Create nested Dream: Account enumeration oracle");
   await confirmDream(page);
+  await expectNext(page, "Inject Mal under a sealed reversible contract in Account enumeration oracle");
+  await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("CONTROLLED SUBJECT / ARMED");
+  await expect(page.getByTestId("primary-action")).toHaveText("Run sealed intervention");
+  await page.getByTestId("primary-action").click();
+  await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("INJECTED SUBJECT / SEALED");
   await expectNext(page, "Kick Account enumeration oracle: return validated memory");
+  await expect(page.getByTestId("graph-subject")).toHaveCount(5);
   await page.getByTestId("kick-action").click();
   await expect(page.getByTestId("wake-transition")).toContainText("Collecting lived evidence");
+  await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("INJECTED SUBJECT / REVEALED");
+  await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("1 planted change contained");
+  await expect(page.getByTestId("canonical-intervention-ledger")).toContainText("0 injected files entered Reality");
   await expectNext(page, "Kick Under coordinated attack: return validated memory");
   await page.getByTestId("kick-action").click();
   await expect(page.getByTestId("wake-transition")).toBeVisible();
   await expectNext(page, "Synthesise returned memories into the Waking Reality implementation");
   await expect(page.getByTestId("primary-action")).toHaveText(/Synthesise memories/);
   await page.getByTestId("primary-action").click();
-  await expectNext(page, "Run 3 parent-owned requirements");
+  await expectNext(page, "Run 4 parent-owned requirements");
   await expect(page.getByTestId("primary-action")).toHaveText(/Run anchor tests/);
   await page.getByTestId("primary-action").click();
   await expectNext(page, "Stabilise Waking Reality");
@@ -707,7 +753,7 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await expectNext(page, "Reality stabilised");
 
   await expect(page.locator(".reality-node")).toHaveCount(4);
-  await expect(page.locator('.anchor-list .anchor-passed:not([data-testid="regression-proof"])')).toHaveCount(3);
+  await expect(page.locator('.anchor-list .anchor-passed:not([data-testid="regression-proof"])')).toHaveCount(4);
   await expect(page.getByTestId("regression-proof")).toContainText("Inherited regression suite");
   await expect(page.locator(".memory-report")).toHaveCount(3);
   await expect(page.getByTestId("canonical-memory-seal")).toHaveCount(3);
@@ -717,16 +763,26 @@ test("the complete mocked narrative remains visually coherent", async ({ page },
   await page.getByTestId("reveal-code").click();
   await expect(page.locator(".diff-workspace pre")).toBeVisible();
   await expect(page.getByTestId("outcome-summary")).toContainText("Password reset survives coordinated abuse without exposing account state");
-  await expect(page.getByTestId("outcome-summary")).toContainText("3 of 3 immutable requirements passed");
+  await expect(page.getByTestId("outcome-summary")).toContainText("Proof / 4 of 4");
+  await expect(page.getByTestId("outcome-summary")).toContainText("Before / 12 of 12 delivered");
+  await expect(page.getByTestId("outcome-summary")).toContainText("After / 3 of 12 delivered");
+  await expect(page.getByTestId("outcome-summary")).toContainText("Integrity / 1 rolled back");
+  await expect(page.getByTestId("outcome-summary")).toContainText("0 injected files ascended");
   await expect(page.getByTestId("outcome-summary")).toContainText(/4\s*isolated Realities/);
   await expect(page.getByTestId("outcome-summary")).toContainText(/3\s*verified memories/);
-  await expect(page.getByTestId("outcome-summary")).toContainText("Move counters to an atomic shared store");
+  await expect(page.getByTestId("outcome-summary")).toContainText("Redis or database adapter");
   await expect(page.getByTestId("event-feed").getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
   const finalTimeline = page.getByTestId("reality-timeline");
   await finalTimeline.locator('input[type="range"]').fill("0");
   await expect(page.getByTestId("outcome-summary")).toHaveCount(0);
   await finalTimeline.getByRole("button", { name: "Live" }).click();
   await expect(page.getByTestId("outcome-summary")).toBeVisible();
+  await finalTimeline.getByRole("button", { name: "Play adaptive timeline replay" }).click();
+  await expect(finalTimeline).toContainText("ADAPTIVE REPLAY / HIGH-SIGNAL PACING");
+  await expect(page.getByTestId("outcome-summary")).toHaveCount(0);
+  await finalTimeline.getByRole("button", { name: "Pause adaptive timeline replay" }).click();
+  await expect(finalTimeline).toContainText("REPLAYING VALIDATED EXPERIENCE");
+  await finalTimeline.getByRole("button", { name: "Live" }).click();
   const attackNode = page.locator(".reality-node").filter({ hasText: "Under coordinated attack" });
   await attackNode.locator(".branch-toggle").click();
   await expect(page.locator(".reality-node")).toHaveCount(2);
@@ -1005,6 +1061,22 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.getByTestId("event-detail")).toContainText("plan-update-1");
   await expect(page.getByTestId("event-detail")).toContainText("operation-1");
   await expect(page).toHaveScreenshot("mission-event-detail.png");
+  await page.getByRole("button", { name: "Close event details" }).click();
+  await page.getByTestId("event-row").filter({ hasText: "gpt-5.6-sol entered the persisted Dream thread." }).click();
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("MODEL");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("gpt-5.6-sol");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("SDK");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("AUTH");
+  await page.getByRole("button", { name: "Close event details" }).click();
+  await page.getByTestId("event-row").filter({ hasText: "Codex thread entered the persisted Dream worktree." }).click();
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("REALITY THREAD");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("thread-dream-123456");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("WORKTREE");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("/tmp/mission/dream");
+  await page.getByRole("button", { name: "Close event details" }).click();
+  await page.getByTestId("event-row").filter({ hasText: "Subject entered Codex thread: Ariadne." }).click();
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("SUBJECT THREAD");
+  await expect(page.getByTestId("event-execution-evidence")).toContainText("thread-subject-1-123456");
   await page.getByRole("button", { name: "Close event details" }).click();
   await expect(page.getByTestId("memory-integrity")).toContainText("Parent policy armed");
   await expect(page.getByTestId("mission-action-dock")).toContainText("Kick Cross-user book secret");

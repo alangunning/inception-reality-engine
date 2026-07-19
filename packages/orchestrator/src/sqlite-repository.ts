@@ -80,6 +80,7 @@ export class SqliteRealityRepository implements RealityRepository {
         anchorResultsJson TEXT NOT NULL,
         regressionResultJson TEXT,
         memoryIntegrityJson TEXT NOT NULL DEFAULT '[]',
+        interventionsJson TEXT NOT NULL DEFAULT '[]',
         autopilotJson TEXT NOT NULL DEFAULT '{"mode":"off","maxActions":10,"paceMilliseconds":1000,"actionsCompleted":0}',
         createdAt DATETIME NOT NULL,
         updatedAt DATETIME NOT NULL
@@ -120,6 +121,9 @@ export class SqliteRealityRepository implements RealityRepository {
     }
     if (!sessionColumns.some((column) => column.name === "memoryIntegrityJson")) {
       this.db.exec("ALTER TABLE DemoSessionRecord ADD COLUMN memoryIntegrityJson TEXT NOT NULL DEFAULT '[]';");
+    }
+    if (!sessionColumns.some((column) => column.name === "interventionsJson")) {
+      this.db.exec("ALTER TABLE DemoSessionRecord ADD COLUMN interventionsJson TEXT NOT NULL DEFAULT '[]';");
     }
     if (!sessionColumns.some((column) => column.name === "autopilotJson")) {
       this.db.exec(`ALTER TABLE DemoSessionRecord ADD COLUMN autopilotJson TEXT NOT NULL DEFAULT '{"mode":"off","maxActions":10,"paceMilliseconds":1000,"actionsCompleted":0}';`);
@@ -227,8 +231,8 @@ export class SqliteRealityRepository implements RealityRepository {
   async saveSession(session: DemoSession): Promise<void> {
     this.db.prepare(`
       INSERT INTO DemoSessionRecord
-      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, memoryIntegrityJson, autopilotJson, createdAt, updatedAt)
-      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @memoryIntegrityJson, @autopilotJson, @createdAt, @updatedAt)
+      (id, phase, activeRealityId, finalDiff, anchorResultsJson, regressionResultJson, memoryIntegrityJson, interventionsJson, autopilotJson, createdAt, updatedAt)
+      VALUES (@id, @phase, @activeRealityId, @finalDiff, @anchorResultsJson, @regressionResultJson, @memoryIntegrityJson, @interventionsJson, @autopilotJson, @createdAt, @updatedAt)
       ON CONFLICT(id) DO UPDATE SET
         phase=excluded.phase,
         activeRealityId=excluded.activeRealityId,
@@ -236,6 +240,7 @@ export class SqliteRealityRepository implements RealityRepository {
         anchorResultsJson=excluded.anchorResultsJson,
         regressionResultJson=excluded.regressionResultJson,
         memoryIntegrityJson=excluded.memoryIntegrityJson,
+        interventionsJson=excluded.interventionsJson,
         autopilotJson=excluded.autopilotJson,
         createdAt=excluded.createdAt,
         updatedAt=excluded.updatedAt
@@ -247,6 +252,7 @@ export class SqliteRealityRepository implements RealityRepository {
       anchorResultsJson: JSON.stringify(session.anchorResults),
       regressionResultJson: session.regressionResult ? JSON.stringify(session.regressionResult) : null,
       memoryIntegrityJson: JSON.stringify(session.memoryIntegrity),
+      interventionsJson: JSON.stringify(session.interventions),
       autopilotJson: JSON.stringify(session.autopilot),
       createdAt: session.createdAt,
       updatedAt: session.updatedAt
@@ -263,6 +269,7 @@ export class SqliteRealityRepository implements RealityRepository {
       anchorResults: parseJson(row.anchorResultsJson),
       regressionResult: row.regressionResultJson ? parseJson(row.regressionResultJson) : undefined,
       memoryIntegrity: row.memoryIntegrityJson ? parseJson(row.memoryIntegrityJson) : [],
+      interventions: row.interventionsJson ? parseJson(row.interventionsJson) : [],
       autopilot: row.autopilotJson ? parseJson(row.autopilotJson) : undefined,
       createdAt: iso(row.createdAt),
       updatedAt: iso(row.updatedAt)

@@ -54,6 +54,7 @@ model DemoSessionRecord {
   anchorResultsJson  String
   regressionResultJson String?
   memoryIntegrityJson String   @default("[]")
+  interventionsJson   String   @default("[]")
   autopilotJson      String   @default("{\"mode\":\"off\",\"maxActions\":10,\"paceMilliseconds\":1000,\"actionsCompleted\":0}")
   createdAt          DateTime
   updatedAt          DateTime

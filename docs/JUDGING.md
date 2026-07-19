@@ -18,29 +18,29 @@ npm run judge:demo
 
 Open `http://localhost:3000`. An ignored `.env` containing `CODEX_API_KEY` or `OPENAI_API_KEY` is the alternative to CLI auth. Opening, refreshing, forming a Mission, inspecting Admin, and moving the timeline never launches Codex. Each Codex-backed action is explicit.
 
-For offline product inspection, or to reproduce the submitted three-minute video exactly:
+For offline product inspection or a credential-free deterministic fallback:
 
 ```bash
 npm run record:demo
 ```
 
-Recording mode is deterministic and credential-free. It exercises the same domain and presentation contracts, but live mode is the technical-evaluation path. Docker and a prebuilt image are not required.
+Recording mode exercises the same domain and presentation contracts, but live mode is the technical-evaluation path. The recommended submitted-video workflow is to finish one fresh real run, export its safe history, and record the completed UI using adaptive timeline playback while opening model, Reality-thread, and native Subject evidence. Docker and a prebuilt image are not required.
 
 ## Three-Minute Demo Script
 
 | Time | Action | Judge signal |
 | --- | --- | --- |
-| 0:00 | Show the waking Reality, one uncertain belief, three hidden anchors | Real problem and parent-owned requirements |
+| 0:00 | Show the waking Reality, one uncertain belief, four hidden anchors | Real problem and parent-owned requirements |
 | 0:20 | Ask Codex to audit password-reset security | Explicit usage boundary; event stream begins |
 | 0:40 | Create **Under coordinated attack** | Uncertainty becomes an isolated world |
 | 0:55 | Enter and run attacker, investigator, test-engineer Subjects | Bounded parallel investigation |
 | 1:10 | Create and Kick **Rotating IP swarm** | First nested counterfactual returns a failing test and source-bound seal |
-| 1:30 | Create and Kick **Account enumeration oracle** | A sibling Reality tests a different explanation from the same parent state |
-| 1:50 | Kick parent Dream | Its seal proves both depth-two lineages before invariants generalise |
-| 2:05 | Synthesise returned memories | Three verified memories change the waking implementation |
-| 2:20 | Run anchors and regression suite | Parent truth gates the agent |
-| 2:35 | Stabilise, reveal memories and diff, move timeline | Complete product outcome and replayability |
-| 2:50 | Collapse a graph branch and show Subject nodes | Multiple futures and auditable delegation, not hardcoding |
+| 1:30 | Create **Account enumeration oracle** and run Mal's sealed intervention | One bounded planted fault becomes a lived but reversible counterfactual |
+| 1:48 | Kick it; show Totem reveal and containment | Exact diagnosis returns a safe test; 1 mutation is rolled back and 0 injected files ascend |
+| 2:02 | Kick parent and synthesise three memories | Good tested knowledge changes the waking implementation |
+| 2:20 | Run four anchors and returned regressions | Shared cross-instance budget and parent truth gate the agent |
+| 2:35 | Stabilise; show 12/12 to 3/12 outcome and diff | Specific prevented failure and complete product result |
+| 2:50 | Play adaptive replay and open model/thread/Subject evidence | Auditable real Codex execution without recording wait time |
 
 ## Real Codex Evaluation
 
@@ -84,13 +84,15 @@ The Mission Library lists the immutable password-reset Demo Mission beside user-
 
 - The UI centres the branching Reality graph, current premise, Subjects, evidence, belief changes, dream-time, sibling reflection, memory ascent, proofs, and diff.
 - Action names state who acts, what changes, and whether Codex usage begins.
-- Refresh-stable operations, wall-clock timestamps, live filtering, timeline replay, usage visibility, and isolated Admin controls support first-time comprehension.
+- Refresh-stable operations, wall-clock timestamps, live filtering, adaptive high-signal timeline playback, usage visibility, and isolated Admin controls support first-time comprehension.
 
 ### Potential Impact
 
 Coding-agent mistakes impose review cost, branch contamination, incomplete tests, security incidents, and user harm. Reality Engine makes the most expensive uncertainty explicit, explores it outside the waking branch, and requires reproducible evidence plus parent-owned proof before adoption.
 
 Initial users are security-sensitive engineering teams, maintainers reviewing agent patches, and platform teams governing coding-agent workflows. The password-reset scenario demonstrates an account-enumeration and distributed-abuse mistake. The VAmPI preset demonstrates authorized discovery and repair of known API vulnerabilities in a small open-source training repository; Mission Composer still accepts any trusted local repository and proof suite.
+
+The canonical run quantifies what was prevented: rotating sources move from `12/12` reset deliveries to `3/12`, account responses become indistinguishable, one planted mutation is rolled back, zero injected files enter Reality, and four parent-owned requirements pass including a two-instance shared-budget proof.
 
 ### Quality of Idea
 

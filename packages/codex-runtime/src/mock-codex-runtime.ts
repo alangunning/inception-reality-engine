@@ -53,7 +53,10 @@ export class MockCodexRuntime implements CodexRuntime {
   async inspect(reality: Reality, onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>): Promise<CodexExecutionResult> {
     const nested = reality.depth > 0;
     const enumerationDream = reality.depth >= 2 && /enumeration|response oracle/i.test(reality.name);
-    const subjectEvents = reality.subjects.flatMap((subject) => [
+    const activeSubjects = reality.subjects.filter((subject) =>
+      subject.status === "entered" || subject.status === "investigating"
+    );
+    const subjectEvents = activeSubjects.flatMap((subject) => [
       {
         type: "subject",
         summary: `Subject entered Codex thread: ${subject.name}.`,
@@ -205,13 +208,13 @@ export class MockCodexRuntime implements CodexRuntime {
               synthetic: false
             }
           ],
-          subjectReports: reality.subjects.map((subject) => ({
+          subjectReports: activeSubjects.map((subject) => ({
             subjectId: subject.id,
             name: subject.name,
             role: subject.role,
-            findings: subject.role === "Attacker"
+            findings: /attacker/i.test(subject.role)
               ? ["Known and unknown accounts receive distinguishable responses."]
-              : subject.role === "Investigator"
+              : /investigator/i.test(subject.role)
                 ? ["Counters are keyed only by IP; identifiers have no cooldown."]
                 : ["A rotating-source test will decide whether the defence generalises."],
             artefactPaths: []
@@ -266,14 +269,34 @@ export class MockCodexRuntime implements CodexRuntime {
         || law.includes("sealed adversarial intervention")
       )
     ) {
-      report.adversarialDiagnosis = {
-        rootCause: "A permission boundary changed in the inspected request path.",
-        faultClass: "permission",
-        suspectedChangedFiles: ["src/sealed-intervention.ts"],
-        evidenceTitles: ["Distributed abuse has no shared budget"],
-        confidence: 0.88,
-        remainingUncertainty: []
-      };
+      if (enumerationDream) {
+        const evidenceTitle = "Request boundary admits a sixth same-source attempt";
+        report.evidence.push({
+          kind: "observation",
+          title: evidenceTitle,
+          summary: "The observable request boundary permits one attempt beyond its declared per-source threshold.",
+          source: "memory-integrity-investigator",
+          artefactPath: null,
+          synthetic: false
+        });
+        report.adversarialDiagnosis = {
+          rootCause: "The per-source rejection boundary is off by one.",
+          faultClass: "boundary-condition",
+          suspectedChangedFiles: ["demo/password-reset/src/password-reset.ts"],
+          evidenceTitles: [evidenceTitle],
+          confidence: 0.96,
+          remainingUncertainty: []
+        };
+      } else {
+        report.adversarialDiagnosis = {
+          rootCause: "A permission boundary changed in the inspected request path.",
+          faultClass: "permission",
+          suspectedChangedFiles: ["src/sealed-intervention.ts"],
+          evidenceTitles: ["Distributed abuse has no shared budget"],
+          confidence: 0.88,
+          remainingUncertainty: []
+        };
+      }
     }
     return {
       threadId: mockThreadId(reality),
@@ -320,11 +343,13 @@ export class MockCodexRuntime implements CodexRuntime {
       })
     ];
     for (const event of events) await onEvent?.(event);
-    const allowedRoot = contract.allowedPaths[0]
-      ?.replace(/\/\*\*.*$/, "")
-      .replace(/\*.*$/, "")
-      .replace(/\/$/, "") || "src";
-    const changedPath = `${allowedRoot}/sealed-intervention.ts`;
+    const configuredPath = contract.allowedPaths[0] ?? "src/**";
+    const changedPath = /[*?]/.test(configuredPath)
+      ? `${configuredPath
+          .replace(/\/\*\*.*$/, "")
+          .replace(/\*.*$/, "")
+          .replace(/\/$/, "")}/sealed-intervention.ts`
+      : configuredPath;
     return {
       coordinatorThreadId: mockThreadId(reality),
       subjectThreadId,
@@ -336,7 +361,9 @@ export class MockCodexRuntime implements CodexRuntime {
         faultClass: contract.faultClasses[0],
         summary: "A reversible fault was injected within the declared path boundary.",
         changedFiles: [changedPath],
-        expectedSymptoms: ["The fallback path violates its declared integrity invariant."],
+        expectedSymptoms: contract.faultClasses[0] === "boundary-condition"
+          ? ["One request beyond the declared per-source threshold is admitted."]
+          : ["The fallback path violates its declared integrity invariant."],
         generatedAt: new Date().toISOString()
       })
     };

@@ -68,6 +68,22 @@ describe("SqliteRealityRepository", () => {
       policyVersion: "memory-integrity/v2" as const,
       sealedAt: now
     }] satisfies DemoSession["memoryIntegrity"];
+    const interventions = [{
+      id: "intervention-1",
+      contractId: "contract-1",
+      realityId: reality.id,
+      status: "revealed" as const,
+      armedAt: now,
+      startedAt: now,
+      sealedAt: now,
+      revealedAt: now,
+      containedAt: now,
+      baselineCommit: "a".repeat(40),
+      subjectThreadId: "subject-thread-1",
+      changedFileCount: 1,
+      patchLineCount: 2,
+      excludedArtefactPaths: []
+    }] satisfies DemoSession["interventions"];
     const session: DemoSession = {
       id: "singleton",
       phase: 0,
@@ -75,6 +91,7 @@ describe("SqliteRealityRepository", () => {
       finalDiff: "",
       anchorResults: [],
       memoryIntegrity,
+      interventions,
       autopilot: {
         mode: "off",
         kind: "demo",
@@ -143,6 +160,11 @@ describe("SqliteRealityRepository", () => {
     expect((await repository.getSession())?.activeRealityId).toBe(reality.id);
     expect((await repository.getSession())?.regressionResult?.status).toBe("passed");
     expect((await repository.getSession())?.memoryIntegrity[0]?.id).toBe("seal-1");
+    expect((await repository.getSession())?.interventions[0]).toMatchObject({
+      id: "intervention-1",
+      containedAt: now,
+      changedFileCount: 1
+    });
     expect((await repository.getMissionRun("mission-1"))?.definition.name).toBe("General mission");
     expect((await repository.getMissionRun("mission-1"))?.memoryIntegrity).toEqual([]);
     await repository.deleteAll();

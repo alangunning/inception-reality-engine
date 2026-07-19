@@ -23,6 +23,7 @@ import {
 
 class FakeWorktreeManager implements WorktreeManager {
   restoreCalls = 0;
+  private interventionCheckpointActive = false;
 
   constructor(private readonly root: string) {}
   async discoverRepoRoot(): Promise<string> { return this.root; }
@@ -46,6 +47,9 @@ class FakeWorktreeManager implements WorktreeManager {
     return readFile(path.join(worktreePath, relativePath), "utf8");
   }
   async listChangedFiles(): Promise<string[]> {
+    if (this.interventionCheckpointActive) {
+      return ["demo/password-reset/src/password-reset.ts"];
+    }
     return [
       "demo/password-reset/src/password-reset.ts",
       "demo/password-reset/tests/rotating-ip.attack.spec.ts",
@@ -53,11 +57,18 @@ class FakeWorktreeManager implements WorktreeManager {
     ];
   }
   async diff(): Promise<string> { return "diff --git a/password-reset.ts b/password-reset.ts\n+layered controls"; }
-  async checkpoint(): Promise<string> { return "a".repeat(40); }
+  async checkpoint(_worktreePath: string, message?: string): Promise<string> {
+    this.interventionCheckpointActive = message?.includes("before sealed intervention") ?? false;
+    return "a".repeat(40);
+  }
   async currentCommit(): Promise<string> { return "a".repeat(40); }
   async isClean(): Promise<boolean> { return true; }
-  async sealChanges(): Promise<string> { return "b".repeat(40); }
+  async sealChanges(): Promise<string> {
+    this.interventionCheckpointActive = false;
+    return "b".repeat(40);
+  }
   async restoreCheckpoint(): Promise<void> {
+    this.interventionCheckpointActive = false;
     this.restoreCalls += 1;
   }
   async run(_worktreePath: string, _command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
@@ -161,6 +172,31 @@ class InvalidInspectionRuntime extends MockCodexRuntime {
       path: "evidence",
       code: "invalid_type"
     }]);
+  }
+}
+
+class MissedCanonicalInterventionRuntime extends MockCodexRuntime {
+  override async inspect(
+    reality: Reality,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexExecutionResult> {
+    const result = await super.inspect(reality, onEvent);
+    if (
+      reality.depth === 2
+      && (reality.constitution.runtimeLaws ?? []).some((law) =>
+        law.includes("sealed controlled intervention")
+      )
+    ) {
+      result.report.adversarialDiagnosis = {
+        rootCause: "The observable fault could not be localized.",
+        faultClass: "permission",
+        suspectedChangedFiles: [],
+        evidenceTitles: [],
+        confidence: 0.25,
+        remainingUncertainty: ["The planted boundary condition remains unidentified."]
+      };
+    }
+    return result;
   }
 }
 
@@ -391,6 +427,7 @@ describe("RealityOrchestrator", () => {
         "create_nested_dream",
         "wake_nested",
         "create_nested_dream",
+        "intervene",
         "wake_nested",
         "wake_parent",
         "synthesise",
@@ -423,6 +460,19 @@ describe("RealityOrchestrator", () => {
       expect(snapshot.realities.filter((reality) => reality.wakeReport)).toHaveLength(3);
       expect(snapshot.activeReality?.status).toBe("stabilised");
       expect(snapshot.session.anchorResults.every((anchor) => anchor.status === "passed")).toBe(true);
+      expect(snapshot.session.anchorResults).toHaveLength(4);
+      expect(snapshot.session.interventions).toHaveLength(1);
+      expect(snapshot.session.interventions[0]).toMatchObject({
+        status: "revealed",
+        changedFileCount: 1,
+        assessment: { outcome: "detected" },
+        excludedArtefactPaths: [],
+        containedAt: expect.any(String)
+      });
+      expect(snapshot.events.some((event) =>
+        event.type === "intervention.contained"
+        && event.payload.injectedFilesAscended === 0
+      )).toBe(true);
       expect(snapshot.session.finalDiff).toContain("layered controls");
       expect(snapshot.events.some((event) => event.type === "memory.returned")).toBe(true);
       expect(snapshot.events.filter((event) => event.type === "memory.verified")).toHaveLength(3);
@@ -453,6 +503,66 @@ describe("RealityOrchestrator", () => {
       expect(archives[0]?.session.phase).toBe(10);
       expect(archives[0]?.events.some((event) => event.type === "reality.stabilised")).toBe(true);
       expect((await orchestrator.snapshot()).session.phase).toBe(0);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("restores the planted change and quarantines canonical memory when the diagnosis misses", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-intervention-miss-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const worktrees = new FakeWorktreeManager(temp);
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new MissedCanonicalInterventionRuntime(),
+        worktrees,
+        new SynthesisService(),
+        temp
+      );
+      const setup: DemoAction[] = [
+        "inspect",
+        "create_attack_dream",
+        "enter_subjects",
+        "discover_abuse",
+        "create_nested_dream",
+        "wake_nested",
+        "create_nested_dream",
+        "intervene"
+      ];
+      for (const action of setup) await orchestrator.act(action);
+
+      await expect(orchestrator.act("wake_nested")).rejects.toThrow(
+        "Memory integrity gate quarantined"
+      );
+      const snapshot = await orchestrator.snapshot();
+      expect(snapshot.session.phase).toBe(5);
+      expect(snapshot.session.interventions[0]).toMatchObject({
+        status: "revealed",
+        assessment: { outcome: "missed" },
+        containedAt: expect.any(String)
+      });
+      expect(snapshot.session.memoryIntegrity).toHaveLength(2);
+      expect(snapshot.session.memoryIntegrity).toEqual(expect.arrayContaining([
+        expect.objectContaining({ verdict: "verified" }),
+        expect.objectContaining({
+          realityId: snapshot.session.interventions[0]?.realityId,
+          verdict: "quarantined",
+          checks: expect.arrayContaining([
+            expect.objectContaining({
+              name: "intervention-diagnosis",
+              status: "failed"
+            })
+          ])
+        })
+      ]));
+      expect(snapshot.events.some((event) =>
+        event.type === "intervention.contained"
+        && event.payload.injectedFilesAscended === 0
+      )).toBe(true);
+      expect(snapshot.events.some((event) => event.type === "memory.quarantined")).toBe(true);
+      expect(worktrees.restoreCalls).toBeGreaterThan(0);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -535,7 +645,7 @@ describe("RealityOrchestrator", () => {
 
       expect(completed.session.autopilot).toMatchObject({
         mode: "completed",
-        actionsCompleted: 12
+        actionsCompleted: 13
       });
       expect(completed.session.phase).toBe(10);
       expect(completed.events.some((event) => event.type === "autopilot.started")).toBe(true);
@@ -631,6 +741,16 @@ describe("RealityOrchestrator", () => {
       expect(siblingGate.nextAction?.id).toBe("create_nested_dream");
 
       await orchestrator.controlAutopilot({ command: "resume" });
+      let interventionGate = await orchestrator.snapshot();
+      for (let attempt = 0; attempt < 200 && interventionGate.session.autopilot.mode === "running"; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        interventionGate = await orchestrator.snapshot();
+      }
+      expect(interventionGate.session.autopilot.mode).toBe("paused");
+      expect(interventionGate.nextAction?.id).toBe("intervene");
+      expect(interventionGate.session.autopilot.pauseReason).toContain("controlled intervention");
+
+      await orchestrator.controlAutopilot({ command: "resume" });
       let proofGate = await orchestrator.snapshot();
       for (let attempt = 0; attempt < 200 && proofGate.session.autopilot.mode === "running"; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 25));
@@ -674,6 +794,7 @@ describe("RealityOrchestrator", () => {
         "create_nested_dream",
         "wake_nested",
         "create_nested_dream",
+        "intervene",
         "wake_nested",
         "wake_parent"
       ];
@@ -881,6 +1002,7 @@ describe("RealityOrchestrator", () => {
         "create_nested_dream",
         "wake_nested",
         "create_nested_dream",
+        "intervene",
         "wake_nested",
         "wake_parent",
         "synthesise",

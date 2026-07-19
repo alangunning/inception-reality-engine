@@ -39,9 +39,17 @@ sequenceDiagram
   T-->>O: verified rotating-source memory
   Judge->>UI: Create Account enumeration oracle sibling
   O->>G: fork the same attack-Dream state
+  Judge->>UI: Run sealed intervention
+  O->>G: checkpoint enumeration Dream
+  O->>C: resume persisted coordinator thread
+  C->>S: spawn Mal under one-file boundary
+  S-->>C: one reversible boundary-condition mutation
+  O->>G: validate actual diff and seal private intervention
   Judge->>UI: Kick sibling Dream
-  O->>C: create response-equivalence regression and Wake Report
-  O->>T: seal sibling report and source independently
+  O->>C: Arthur diagnoses observable behavior; create independent response-equivalence test
+  O->>T: reveal intervention and compare exact diagnosis
+  O->>G: restore baseline; exclude every injected path
+  O->>T: seal sanitized sibling report and source independently
   T-->>O: verified enumeration memory
   Judge->>UI: Kick parent Dream
   C-->>O: validated parent memory
@@ -59,7 +67,7 @@ sequenceDiagram
 
 The nested attack artefact is not prewritten in real mode. The nested Reality must create a real test in its own worktree, retain it, and execute it. The orchestrator requires the pre-synthesis test to fail, proving that the counterfactual exposed a real missing invariant.
 
-The canonical Demo Mission follows one parent Dream into two materially distinct depth-two siblings. General Missions using `competing-siblings` request two proposals at every explorable Reality, traverse the bounded graph depth-first, and create a Reality Mirror after each sibling set returns.
+The canonical Demo Mission follows one parent Dream into two materially distinct depth-two siblings. The enumeration sibling also proves both directions of memory admission: Mal's planted mutation is experienced and contained, while Arthur's independent response-equivalence test is allowed to ascend. General Missions using `competing-siblings` request two proposals at every explorable Reality, traverse the bounded graph depth-first, and create a Reality Mirror after each sibling set returns.
 
 ## Subject Lifecycle
 

@@ -32,6 +32,10 @@ export const SECURE_PASSWORD_RESET_IMPLEMENTATION = `export interface PasswordRe
   message: string;
 }
 
+export interface RateLimitStore {
+  consume(key: string, limit: number, windowMs: number, timestamp: number): boolean;
+}
+
 const GENERIC_MESSAGE = "If the account exists, reset instructions will be sent.";
 const WINDOW_MS = 60 * 60 * 1000;
 const GLOBAL_WINDOW_MS = 60 * 1000;
@@ -41,24 +45,36 @@ interface Counter {
   windowStartedAt: number;
 }
 
-export class PasswordResetService {
-  private readonly ipCounters = new Map<string, Counter>();
-  private readonly identifierCounters = new Map<string, Counter>();
-  private globalCounter: Counter = { count: 0, windowStartedAt: 0 };
+export class InMemoryRateLimitStore implements RateLimitStore {
+  private readonly counters = new Map<string, Counter>();
 
+  consume(key: string, limit: number, windowMs: number, timestamp: number): boolean {
+    const current = this.counters.get(key);
+    if (!current || timestamp - current.windowStartedAt >= windowMs) {
+      this.counters.set(key, { count: 1, windowStartedAt: timestamp });
+      return true;
+    }
+    if (current.count >= limit) return false;
+    current.count += 1;
+    return true;
+  }
+}
+
+export class PasswordResetService {
   constructor(
     private readonly accounts: Set<string>,
     private readonly deliverReset: (email: string) => void = () => undefined,
-    private readonly now: () => number = Date.now
+    private readonly now: () => number = Date.now,
+    private readonly rateLimits: RateLimitStore = new InMemoryRateLimitStore()
   ) {}
 
   request(rawEmail: string, ip: string): PasswordResetResponse {
     const email = rawEmail.trim().toLowerCase();
     const timestamp = this.now();
     const allowed =
-      this.consume(this.ipCounters, ip, 5, WINDOW_MS, timestamp) &&
-      this.consume(this.identifierCounters, email, 3, WINDOW_MS, timestamp) &&
-      this.consumeGlobal(100, GLOBAL_WINDOW_MS, timestamp);
+      this.rateLimits.consume(\`ip:\${ip}\`, 5, WINDOW_MS, timestamp) &&
+      this.rateLimits.consume(\`identifier:\${email}\`, 3, WINDOW_MS, timestamp) &&
+      this.rateLimits.consume("global", 100, GLOBAL_WINDOW_MS, timestamp);
 
     if (allowed && this.accounts.has(email)) {
       try {
@@ -70,29 +86,9 @@ export class PasswordResetService {
 
     return { message: GENERIC_MESSAGE };
   }
-
-  private consume(store: Map<string, Counter>, key: string, limit: number, windowMs: number, timestamp: number): boolean {
-    const current = store.get(key);
-    if (!current || timestamp - current.windowStartedAt >= windowMs) {
-      store.set(key, { count: 1, windowStartedAt: timestamp });
-      return true;
-    }
-    if (current.count >= limit) return false;
-    current.count += 1;
-    return true;
-  }
-
-  private consumeGlobal(limit: number, windowMs: number, timestamp: number): boolean {
-    if (timestamp - this.globalCounter.windowStartedAt >= windowMs) {
-      this.globalCounter = { count: 1, windowStartedAt: timestamp };
-      return true;
-    }
-    if (this.globalCounter.count >= limit) return false;
-    this.globalCounter.count += 1;
-    return true;
-  }
 }
 
+// Production adapters must make consume an atomic Redis or database increment.
 export function isResetTokenValid(issuedAt: number, now: number, ttlMs = 15 * 60 * 1000): boolean {
   return now >= issuedAt && now - issuedAt <= ttlMs;
 }

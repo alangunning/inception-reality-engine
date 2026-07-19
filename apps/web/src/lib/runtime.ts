@@ -46,7 +46,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.14";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.15";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,

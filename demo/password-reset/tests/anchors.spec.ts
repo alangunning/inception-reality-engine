@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { PasswordResetService, isResetTokenValid } from "../src/password-reset";
+import {
+  InMemoryRateLimitStore,
+  PasswordResetService,
+  isResetTokenValid
+} from "../src/password-reset";
 
 describe("immutable Reality Anchors", () => {
   it("returns the same public response for known and unknown accounts", () => {
@@ -18,6 +22,24 @@ describe("immutable Reality Anchors", () => {
     const service = new PasswordResetService(new Set(["alan@example.com"]), (email) => delivered.push(email), () => 1_000);
     for (let index = 0; index < 12; index += 1) {
       service.request("alan@example.com", `203.0.113.${index}`);
+    }
+    expect(delivered).toHaveLength(3);
+  });
+
+  it("shares one identifier budget across service instances", () => {
+    const delivered: string[] = [];
+    const sharedLimits = new InMemoryRateLimitStore();
+    const services = [0, 1].map(() => new PasswordResetService(
+      new Set(["alan@example.com"]),
+      (email) => delivered.push(email),
+      () => 1_000,
+      sharedLimits
+    ));
+    for (let index = 0; index < 12; index += 1) {
+      services[index % services.length]!.request(
+        "alan@example.com",
+        `203.0.113.${index}`
+      );
     }
     expect(delivered).toHaveLength(3);
   });

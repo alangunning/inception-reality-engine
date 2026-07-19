@@ -87,6 +87,7 @@ function toSession(record: RecordShape): DemoSession {
     anchorResults: parseJson(record.anchorResultsJson),
     regressionResult: record.regressionResultJson ? parseJson(record.regressionResultJson) : undefined,
     memoryIntegrity: record.memoryIntegrityJson ? parseJson(record.memoryIntegrityJson) : [],
+    interventions: record.interventionsJson ? parseJson(record.interventionsJson) : [],
     autopilot: record.autopilotJson ? parseJson(record.autopilotJson) : undefined,
     createdAt: new Date(record.createdAt).toISOString(),
     updatedAt: new Date(record.updatedAt).toISOString()
@@ -165,6 +166,7 @@ export class PrismaRealityRepository implements RealityRepository {
       anchorResultsJson: JSON.stringify(session.anchorResults),
       regressionResultJson: session.regressionResult ? JSON.stringify(session.regressionResult) : null,
       memoryIntegrityJson: JSON.stringify(session.memoryIntegrity),
+      interventionsJson: JSON.stringify(session.interventions),
       autopilotJson: JSON.stringify(session.autopilot),
       createdAt: new Date(session.createdAt),
       updatedAt: new Date(session.updatedAt)

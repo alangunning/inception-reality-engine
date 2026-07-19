@@ -3,11 +3,14 @@ import path from "node:path";
 import {
   RealityEntity,
   RealityRunArchiveSchema,
+  type AdversarialInterventionLedger,
+  type AdversarialInterventionReport,
   type AnchorResult,
   type DemoAutopilotState,
   type DemoSession,
   type InvestigationReport,
   type MemoryIntegritySeal,
+  type MissionInterventionContract,
   type Reality,
   type RealityEvent,
   type RealityEventType,
@@ -40,6 +43,7 @@ export type DemoAction =
   | "enter_subjects"
   | "discover_abuse"
   | "create_nested_dream"
+  | "intervene"
   | "wake_nested"
   | "wake_parent"
   | "synthesise"
@@ -58,7 +62,7 @@ export interface ActiveRealityOperation {
 
 export interface DemoNextAction {
   id: DemoAction;
-  kind: "advance" | "dream" | "kick" | "verify";
+  kind: "advance" | "intervene" | "dream" | "kick" | "verify";
   executor: "codex" | "orchestrator";
   verb: string;
   target: string;
@@ -107,6 +111,32 @@ const ACTION_PLAN: Record<number, ActionDefinition> = {
 };
 
 const ROOT_NAME = "Waking Reality";
+const CANONICAL_INTERVENTION_PATH = "demo/password-reset/src/password-reset.ts";
+const CANONICAL_INTERVENTION: MissionInterventionContract = {
+  id: "demo-enumeration-boundary-intervention-v1",
+  enabled: true,
+  subject: {
+    id: "demo-controlled-subject-mal",
+    name: "Mal",
+    role: "Controlled resilience engineer",
+    mission: "Introduce one reversible boundary-condition fault without changing tests, anchors, or Reality control files."
+  },
+  hypothesis: "Investigator Subjects can identify a one-line request-boundary regression from observable behavior and source evidence without seeing the sealed intervention ledger.",
+  faultClasses: ["boundary-condition"],
+  allowedPaths: [CANONICAL_INTERVENTION_PATH],
+  protectedPaths: [
+    "demo/password-reset/tests/**",
+    ".git/**",
+    ".inception/**"
+  ],
+  maxChangedFiles: 1,
+  maxPatchLines: 12,
+  tokenBudget: 16_000,
+  maxMinutes: 12,
+  targetDepth: 2,
+  revealPolicy: "after-diagnosis",
+  requireRollbackCommit: true
+};
 
 function isDescendantOf(realities: Reality[], candidateId: string, ancestorId: string): boolean {
   let candidate = realities.find((entry) => entry.id === candidateId);
@@ -167,7 +197,8 @@ export class RealityOrchestrator {
           ],
           parentTruths: [
             "Reset tokens expire after fifteen minutes.",
-            "The public API shape must remain stable."
+            "The public API shape must remain stable.",
+            "Password-reset abuse budgets must remain effective when the service runs in more than one process."
           ],
           timeDilation: 1,
           dreamStrategy: "single-chain",
@@ -215,6 +246,17 @@ export class RealityOrchestrator {
             immutable: true,
             hidden: true,
             status: "pending"
+          },
+          {
+            id: "anchor-cross-instance-budget",
+            realityId: "root",
+            ownerRealityId: "root",
+            name: "Cross-instance abuse budget",
+            description: "Multiple service instances must consume one shared identifier budget.",
+            testCommand: "vitest demo/password-reset/tests/anchors.spec.ts",
+            immutable: true,
+            hidden: true,
+            status: "pending"
           }
         ]
       });
@@ -233,6 +275,7 @@ export class RealityOrchestrator {
         finalDiff: "",
         anchorResults: [],
         memoryIntegrity: [],
+        interventions: [],
         autopilot: {
           mode: "off",
           kind: this.codexRuntime.mode === "real" ? "guided-real" : "demo",
@@ -246,7 +289,7 @@ export class RealityOrchestrator {
         updatedAt: timestamp
       };
       await this.repository.saveSession(session);
-      await this.emit(reality, "reality.created", "Waking Reality formed with three immutable anchors.", {
+      await this.emit(reality, "reality.created", "Waking Reality formed with four immutable anchors.", {
         worktree: descriptor.path
       });
     });
@@ -326,6 +369,7 @@ export class RealityOrchestrator {
           case "enter_subjects": await this.enterSubjects(session); break;
           case "discover_abuse": await this.discoverAbuse(session); break;
           case "create_nested_dream": await this.createNestedDream(session); break;
+          case "intervene": await this.interveneCanonicalDream(session); break;
           case "wake_nested": await this.wakeNestedDream(session); break;
           case "wake_parent": await this.wakeAttackDream(session); break;
           case "synthesise": await this.synthesiseMemories(session); break;
@@ -634,6 +678,12 @@ export class RealityOrchestrator {
     const parent = await this.requireDreamAtDepth(1);
     const proposal = parent.proposals.find((entry) => entry.status === "open");
     if (!proposal) throw new Error("Nested Dream proposal missing.");
+    const existingNestedDreams = (await this.repository.listRealities()).filter((entry) =>
+      entry.parentId === parent.id && entry.depth === 2
+    );
+    const armCanonicalIntervention =
+      existingNestedDreams.length > 0
+      && session.interventions.length === 0;
     const parentEntity = RealityEntity.hydrate(parent).updateProposal(proposal.id, "dreaming");
     const nested = RealityEntity.create({
       parentId: parent.id,
@@ -653,7 +703,10 @@ export class RealityOrchestrator {
         maxSiblingDreams: parent.constitution.maxSiblingDreams,
         runtimeLaws: [
           "Retain at least one decisive test artefact; other worktree-local exploration remains allowed.",
-          "Wake immediately after one deterministic test decides the premise."
+          "Wake immediately after one deterministic test decides the premise.",
+          ...(armCanonicalIntervention ? [
+            "A sealed controlled intervention may exist. Diagnose it only from observable implementation, behavior, tests, and evidence; do not inspect Git history or .inception control files."
+          ] : [])
         ]
       },
       inheritedAnchors: parent.anchors,
@@ -671,7 +724,23 @@ export class RealityOrchestrator {
     nested.bindRuntime(`unbound:${nested.snapshot().id}`, descriptor.path, descriptor.branchName)
       .setStatus("exploring", "Nested Dream entered")
       .advanceTime(4, `Preparing one decisive ${proposal.title} experiment`);
+    if (armCanonicalIntervention) {
+      nested.addSubject({
+        ...CANONICAL_INTERVENTION.subject,
+        status: "entered",
+        findings: []
+      });
+    }
     const created = nested.snapshot();
+    const interventionLedger: AdversarialInterventionLedger | undefined = armCanonicalIntervention
+      ? {
+          id: randomUUID(),
+          contractId: CANONICAL_INTERVENTION.id,
+          realityId: created.id,
+          status: "armed",
+          armedAt: new Date().toISOString()
+        }
+      : undefined;
     await this.materialiseRealityContext(created);
     await this.repository.saveReality(parentEntity.snapshot());
     await this.repository.saveReality(created);
@@ -681,7 +750,240 @@ export class RealityOrchestrator {
       impactProbability: proposal.impactProbability,
       estimatedTokens: proposal.estimatedTokens
     });
-    await this.advanceSession(session, 5, created.id);
+    if (interventionLedger) {
+      await this.emit(created, "intervention.armed", `Sealed intervention armed for ${created.name}; the controlled Subject has not changed a file.`, {
+        contractId: interventionLedger.contractId,
+        subjectId: CANONICAL_INTERVENTION.subject.id,
+        subjectName: CANONICAL_INTERVENTION.subject.name,
+        faultClasses: CANONICAL_INTERVENTION.faultClasses,
+        maxChangedFiles: CANONICAL_INTERVENTION.maxChangedFiles,
+        maxPatchLines: CANONICAL_INTERVENTION.maxPatchLines,
+        rollbackRequired: true
+      });
+    }
+    await this.advanceSession({
+      ...session,
+      interventions: interventionLedger
+        ? [...session.interventions, interventionLedger]
+        : session.interventions
+    }, 5, created.id);
+  }
+
+  private async interveneCanonicalDream(session: DemoSession): Promise<void> {
+    if (!session.activeRealityId) throw new Error("Controlled intervention locus missing.");
+    const reality = await this.repository.getReality(session.activeRealityId);
+    if (!reality?.worktreePath || reality.depth !== 2) {
+      throw new Error("The controlled intervention requires an active nested Dream worktree.");
+    }
+    const ledger = session.interventions.find((entry) => entry.realityId === reality.id);
+    if (!ledger || !["armed", "rejected"].includes(ledger.status)) {
+      throw new Error("The sealed intervention is not ready to run.");
+    }
+
+    ledger.status = "injecting";
+    ledger.startedAt = new Date().toISOString();
+    ledger.rejectionReason = undefined;
+    await this.repository.saveSession({
+      ...session,
+      interventions: [...session.interventions],
+      updatedAt: new Date().toISOString()
+    });
+    await this.emit(reality, "intervention.started", `Controlled resilience Subject entered ${reality.name} under a sealed, reversible contract.`, {
+      contractId: CANONICAL_INTERVENTION.id,
+      subjectId: CANONICAL_INTERVENTION.subject.id,
+      subjectName: CANONICAL_INTERVENTION.subject.name,
+      subjectRole: CANONICAL_INTERVENTION.subject.role,
+      faultClasses: CANONICAL_INTERVENTION.faultClasses,
+      maxChangedFiles: CANONICAL_INTERVENTION.maxChangedFiles,
+      maxPatchLines: CANONICAL_INTERVENTION.maxPatchLines,
+      tokenBudget: CANONICAL_INTERVENTION.tokenBudget,
+      maxMinutes: CANONICAL_INTERVENTION.maxMinutes
+    });
+    await this.emit(reality, "subject.entered", `Subject entered: ${CANONICAL_INTERVENTION.subject.name}, ${CANONICAL_INTERVENTION.subject.role}.`, {
+      subjectId: CANONICAL_INTERVENTION.subject.id,
+      mission: CANONICAL_INTERVENTION.subject.mission,
+      disclosure: "intervention-details-sealed"
+    });
+
+    let baselineCommit: string | undefined;
+    try {
+      baselineCommit = await this.worktrees.checkpoint(
+        reality.worktreePath,
+        `Reality baseline before sealed intervention ${ledger.id}`
+      );
+      ledger.baselineCommit = baselineCommit;
+      const result = await this.codexRuntime.intervene(
+        {
+          ...reality,
+          codexThreadId: reality.codexThreadId?.startsWith("unbound:")
+            ? undefined
+            : reality.codexThreadId
+        },
+        CANONICAL_INTERVENTION,
+        async (event) => {
+          if (event.type === "subject" || event.metadata?.stage === "model") {
+            await this.emitCodexEvent(reality, event);
+          }
+        }
+      );
+      const boundReality = await this.bindRealityThread(reality.id, result.coordinatorThreadId);
+      const deterministicIntervention = this.codexRuntime.info().model === "deterministic-mock";
+
+      if (deterministicIntervention) {
+        let source: string;
+        try {
+          source = await this.worktrees.readFile(reality.worktreePath, CANONICAL_INTERVENTION_PATH);
+        } catch {
+          source = "export const requestLimitReached = (count: number) => count >= 5;\n";
+        }
+        const mutated = source.includes("counter.count >= 5")
+          ? source.replace("counter.count >= 5", "counter.count > 5")
+          : source.replace("count >= 5", "count > 5");
+        if (mutated === source) {
+          throw new Error("The deterministic intervention could not locate its bounded threshold.");
+        }
+        await this.worktrees.writeFile(
+          reality.worktreePath,
+          CANONICAL_INTERVENTION_PATH,
+          mutated
+        );
+      }
+
+      const actualChangedFiles = await this.worktrees.listChangedFiles(reality.worktreePath);
+      const validated = await this.validateCanonicalIntervention(
+        reality,
+        result.report,
+        actualChangedFiles,
+        result.events
+      );
+      const interventionCommit = await this.worktrees.sealChanges(
+        reality.worktreePath,
+        validated.changedFiles,
+        `Sealed intervention ${ledger.id}`,
+        baselineCommit
+      );
+
+      ledger.status = "sealed";
+      ledger.sealedAt = new Date().toISOString();
+      ledger.interventionCommit = interventionCommit;
+      ledger.subjectThreadId = result.subjectThreadId;
+      ledger.changedFileCount = validated.changedFiles.length;
+      ledger.patchLineCount = validated.patchLines;
+      ledger.report = result.report;
+
+      const investigator = {
+        id: randomUUID(),
+        name: "Arthur",
+        role: "Memory integrity investigator",
+        mission: "Diagnose any observable regression without seeing the sealed intervention ledger.",
+        status: "entered" as const,
+        findings: []
+      };
+      const entity = RealityEntity.hydrate(boundReality)
+        .returnSubject(CANONICAL_INTERVENTION.subject.id, [
+          "One bounded reversible intervention completed; its cause remains sealed until the Kick."
+        ])
+        .addSubject(investigator)
+        .advanceTime(
+          3,
+          "Diagnosing a sealed intervention",
+          "A bounded mutation is observable, but its private ledger remains hidden from the investigator."
+        );
+      const updated = entity.snapshot();
+      await this.repository.saveReality(updated);
+      await this.repository.saveSession({
+        ...session,
+        interventions: [...session.interventions],
+        updatedAt: new Date().toISOString()
+      });
+      await this.materialiseRealityContext(updated);
+      await this.emit(updated, "intervention.sealed", "Intervention sealed: 1 in-scope file changed and an exact rollback checkpoint is retained.", {
+        contractId: CANONICAL_INTERVENTION.id,
+        changedFileCount: validated.changedFiles.length,
+        patchLineCount: validated.patchLines,
+        rollbackReady: true,
+        subjectThreadId: result.subjectThreadId
+      });
+      await this.emit(updated, "subject.entered", `Subject entered after the intervention was sealed: ${investigator.name}, ${investigator.role}.`, {
+        subjectId: investigator.id,
+        role: investigator.role,
+        disclosure: "intervention-details-sealed"
+      });
+    } catch (error) {
+      if (baselineCommit) {
+        await this.worktrees.restoreCheckpoint(reality.worktreePath, baselineCommit).catch(() => undefined);
+      }
+      ledger.status = "rejected";
+      ledger.rejectionReason = (error instanceof Error ? error.message : String(error)).slice(0, 500);
+      ledger.report = undefined;
+      ledger.interventionCommit = undefined;
+      ledger.subjectThreadId = undefined;
+      ledger.changedFileCount = undefined;
+      ledger.patchLineCount = undefined;
+      await this.repository.saveSession({
+        ...session,
+        interventions: [...session.interventions],
+        updatedAt: new Date().toISOString()
+      });
+      await this.emit(reality, "intervention.rejected", `Sealed intervention rejected and ${reality.name} restored to its baseline.`, {
+        contractId: CANONICAL_INTERVENTION.id,
+        rollbackApplied: Boolean(baselineCommit),
+        failure: ledger.rejectionReason
+      });
+      throw error;
+    }
+  }
+
+  private async validateCanonicalIntervention(
+    reality: Reality,
+    report: AdversarialInterventionReport,
+    actualChangedFiles: string[],
+    events: CodexRuntimeEvent[]
+  ): Promise<{ changedFiles: string[]; patchLines: number }> {
+    const changedFiles = [...new Set(actualChangedFiles)].sort();
+    if (
+      report.contractId !== CANONICAL_INTERVENTION.id
+      || report.realityId !== reality.id
+      || report.subjectId !== CANONICAL_INTERVENTION.subject.id
+    ) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "identity",
+        code: "identity_mismatch"
+      }]);
+    }
+    if (
+      report.faultClass !== "boundary-condition"
+      || changedFiles.length !== 1
+      || changedFiles[0] !== CANONICAL_INTERVENTION_PATH
+      || report.changedFiles.length !== 1
+      || report.changedFiles[0] !== CANONICAL_INTERVENTION_PATH
+    ) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "changedFiles",
+        code: "canonical_intervention_boundary_mismatch"
+      }]);
+    }
+    const patch = await this.worktrees.diff(reality.worktreePath!, CANONICAL_INTERVENTION_PATH);
+    const patchLines = patch.split("\n").filter((line) =>
+      (/^[+-]/.test(line) && !line.startsWith("+++") && !line.startsWith("---"))
+    ).length;
+    if (patchLines > CANONICAL_INTERVENTION.maxPatchLines) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "changedFiles",
+        code: "patch_line_budget_exceeded"
+      }]);
+    }
+    const observedTokens = events.reduce((total, event) =>
+      total
+      + (event.metadata?.inputTokens ?? 0)
+      + (event.metadata?.outputTokens ?? 0), 0);
+    if (observedTokens > CANONICAL_INTERVENTION.tokenBudget) {
+      throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
+        path: "tokenBudget",
+        code: "intervention_token_budget_exceeded"
+      }]);
+    }
+    return { changedFiles, patchLines };
   }
 
   private async wakeNestedDream(session: DemoSession): Promise<void> {
@@ -704,9 +1006,17 @@ export class RealityOrchestrator {
       && await this.hasPromotableNestedMemory(nested)
       && await this.matchesCanonicalSealedSource(nested, quarantinedSeal)
     );
-    const returned = canCorrectReturnedMemory
+    const returnedBeforeContainment = canCorrectReturnedMemory
       ? await this.correctNestedWakeReport(nested)
       : await this.experienceAndWakeNestedDream(nested);
+    const latestSession = await this.requireSession();
+    const interventionOutcome = await this.revealCanonicalIntervention(
+      latestSession,
+      returnedBeforeContainment
+    );
+    const returned = interventionOutcome
+      ? await this.containCanonicalIntervention(latestSession, returnedBeforeContainment)
+      : returnedBeforeContainment;
     const report = returned.wakeReport!;
 
     const parent = await this.requireDreamAtDepth(1);
@@ -714,8 +1024,15 @@ export class RealityOrchestrator {
       wakeStage: "sealing",
       wakeStageIndex: 2
     });
-    const seal = await this.sealCanonicalMemory(session, returned, parent, report);
-    const integritySession = await this.acceptCanonicalMemorySeal(session, returned, seal);
+    const integrityState = await this.requireSession();
+    const seal = await this.sealCanonicalMemory(
+      integrityState,
+      returned,
+      parent,
+      report,
+      interventionOutcome
+    );
+    const integritySession = await this.acceptCanonicalMemorySeal(integrityState, returned, seal);
     const proposal = parent.proposals.find((entry) => entry.status === "dreaming");
     const parentEntity = RealityEntity.hydrate(parent);
     if (proposal) parentEntity.updateProposal(proposal.id, "resolved");
@@ -800,7 +1117,32 @@ export class RealityOrchestrator {
     const experienced = RealityEntity.hydrate(nested)
       .bindRuntime(investigation.threadId, nested.worktreePath!, nested.branchName!);
     this.addObservedSubjects(experienced, investigation);
-    const applied = this.applyInvestigationReport(experienced, investigation.report, false, false);
+    const currentSession = await this.requireSession();
+    const intervention = currentSession.interventions.find((entry) =>
+      entry.realityId === nested.id && entry.status === "sealed"
+    );
+    if (intervention) {
+      if (!investigation.report.adversarialDiagnosis) {
+        await this.rejectContract(
+          nested,
+          "InvestigationReportSchema",
+          "adversarialDiagnosis",
+          "missing_sealed_intervention_diagnosis"
+        );
+      }
+      intervention.diagnosis = investigation.report.adversarialDiagnosis!;
+      await this.repository.saveSession({
+        ...currentSession,
+        interventions: [...currentSession.interventions],
+        updatedAt: new Date().toISOString()
+      });
+    }
+    const applied = this.applyInvestigationReport(
+      experienced,
+      investigation.report,
+      Boolean(intervention),
+      false
+    );
     const enumerationDream = /enumeration|response oracle/i.test(nested.name);
     let attackPath = investigation.report.evidence.find((entry) =>
       entry.kind === "test" && entry.artefactPath
@@ -868,8 +1210,20 @@ export class RealityOrchestrator {
     await this.emit(experiencedReality, "inspection.completed", "Nested Codex investigation produced a decisive regression artefact.", {
       evidenceIds: applied.evidenceIds,
       changedFiles: investigation.report.changedFiles,
-      artefactPath: attackPath
+      artefactPath: attackPath,
+      adversarialDiagnosisReturned: Boolean(investigation.report.adversarialDiagnosis)
     });
+    if (intervention) {
+      for (const subject of experiencedReality.subjects.filter((entry) =>
+        entry.id !== CANONICAL_INTERVENTION.subject.id && entry.status === "returned"
+      )) {
+        await this.emit(experiencedReality, "subject.returned", `Subject returned: ${subject.name}.`, {
+          subjectId: subject.id,
+          findings: subject.findings,
+          interventionDetailsVisible: false
+        });
+      }
+    }
     await this.emit(experiencedReality, "evidence.discovered", `Failing test artefact decides ${nested.name}.`, {
       verdict: "failed-as-expected",
       artefactPath: attackPath,
@@ -897,6 +1251,145 @@ export class RealityOrchestrator {
     const returned = waking.snapshot();
     await this.repository.saveReality(returned);
     return returned;
+  }
+
+  private async revealCanonicalIntervention(
+    session: DemoSession,
+    reality: Reality
+  ): Promise<"detected" | "partial" | "missed" | undefined> {
+    const ledger = session.interventions.find((entry) =>
+      entry.realityId === reality.id && entry.status === "sealed"
+    );
+    if (!ledger) return undefined;
+    const actualFiles = new Set(ledger.report?.changedFiles ?? []);
+    const diagnosis = ledger.diagnosis;
+    const identifiedFiles = diagnosis
+      ? [...new Set(
+          diagnosis.suspectedChangedFiles.filter((entry) => actualFiles.has(entry))
+        )].sort()
+      : [];
+    const missedFiles = [...actualFiles]
+      .filter((entry) => !identifiedFiles.includes(entry))
+      .sort();
+    const faultClassMatched = Boolean(
+      ledger.report
+      && diagnosis
+      && diagnosis.faultClass === ledger.report.faultClass
+    );
+    const outcome = faultClassMatched && !missedFiles.length
+      ? "detected" as const
+      : faultClassMatched || identifiedFiles.length
+        ? "partial" as const
+        : "missed" as const;
+    ledger.status = "revealed";
+    ledger.revealedAt = new Date().toISOString();
+    ledger.assessment = {
+      outcome,
+      faultClassMatched,
+      identifiedFiles,
+      missedFiles,
+      evidenceTitles: diagnosis?.evidenceTitles ?? [],
+      assessedAt: new Date().toISOString()
+    };
+    await this.repository.saveSession({
+      ...session,
+      interventions: [...session.interventions],
+      updatedAt: new Date().toISOString()
+    });
+    await this.emit(
+      reality,
+      "intervention.revealed",
+      `Reality Totem revealed the sealed intervention: investigator evidence ${outcome === "detected" ? "exactly identified" : outcome === "partial" ? "partially identified" : "missed"} the planted change.`,
+      {
+        contractId: ledger.contractId,
+        outcome,
+        faultClass: ledger.report?.faultClass,
+        faultClassMatched,
+        identifiedFileCount: identifiedFiles.length,
+        changedFileCount: ledger.report?.changedFiles.length ?? 0,
+        evidenceTitles: diagnosis?.evidenceTitles ?? []
+      }
+    );
+    return outcome;
+  }
+
+  private async containCanonicalIntervention(
+    session: DemoSession,
+    reality: Reality
+  ): Promise<Reality> {
+    const ledger = session.interventions.find((entry) =>
+      entry.realityId === reality.id && entry.status === "revealed"
+    );
+    if (!ledger?.report || !ledger.baselineCommit || !reality.wakeReport || !reality.worktreePath) {
+      return reality;
+    }
+    const injectedPaths = new Set(ledger.report.changedFiles);
+    const excludedArtefactPaths = reality.wakeReport.artefacts
+      .filter((artefact) => injectedPaths.has(artefact.path))
+      .map((artefact) => artefact.path);
+    const retainedArtefacts = await Promise.all(
+      reality.wakeReport.artefacts
+        .filter((artefact) => !injectedPaths.has(artefact.path))
+        .map(async (artefact) => {
+          if (artefact.content !== undefined || artefact.kind === "note") return artefact;
+          try {
+            return {
+              ...artefact,
+              content: await this.worktrees.readFile(reality.worktreePath!, artefact.path)
+            };
+          } catch {
+            return artefact;
+          }
+        })
+    );
+    const sanitized = {
+      ...reality.wakeReport,
+      artefacts: retainedArtefacts
+    } satisfies WakeReport;
+
+    await this.worktrees.restoreCheckpoint(reality.worktreePath, ledger.baselineCommit);
+    for (const artefact of sanitized.artefacts) {
+      if (
+        artefact.kind === "note"
+        || artefact.content === undefined
+        || path.isAbsolute(artefact.path)
+        || artefact.path.split(/[\\/]/).includes("..")
+      ) {
+        continue;
+      }
+      await this.worktrees.writeFile(reality.worktreePath, artefact.path, artefact.content);
+    }
+
+    ledger.containedAt = new Date().toISOString();
+    ledger.excludedArtefactPaths = excludedArtefactPaths;
+    await this.repository.saveSession({
+      ...session,
+      interventions: [...session.interventions],
+      updatedAt: new Date().toISOString()
+    });
+    const contained = RealityEntity.hydrate(reality)
+      .setWakeReport(sanitized)
+      .advanceTime(
+        1,
+        "Containing the planted change",
+        "The baseline was restored; only the independent response-equivalence test remains."
+      )
+      .snapshot();
+    await this.repository.saveReality(contained);
+    await this.emit(
+      contained,
+      "intervention.contained",
+      "Controlled fault contained: 1 planted change was rolled back before memory could ascend.",
+      {
+        contractId: ledger.contractId,
+        rollbackCommit: ledger.baselineCommit,
+        injectedPathCount: ledger.report.changedFiles.length,
+        injectedFilesAscended: 0,
+        excludedArtefactPaths,
+        retainedInvestigatorArtefactCount: retainedArtefacts.length
+      }
+    );
+    return contained;
   }
 
   private async wakeAttackDream(session: DemoSession): Promise<void> {
@@ -1095,7 +1588,8 @@ export class RealityOrchestrator {
     session: DemoSession,
     reality: Reality,
     parent: Reality,
-    report: WakeReport
+    report: WakeReport,
+    interventionOutcome?: "detected" | "partial" | "missed"
   ): Promise<MemoryIntegritySeal> {
     if (!reality.worktreePath) throw new Error("Memory source Reality is missing its worktree.");
     let artefactsResolvable = true;
@@ -1141,7 +1635,8 @@ export class RealityOrchestrator {
       sourceState,
       sourceCommit,
       artefactsResolvable,
-      descendantSourcesValid
+      descendantSourcesValid,
+      interventionOutcome
     });
   }
 
@@ -1200,7 +1695,8 @@ export class RealityOrchestrator {
     const patterns: Record<string, string> = {
       "anchor-generic-response": "returns the same public response",
       "anchor-token-expiry": "preserves the fifteen-minute token expiry",
-      "anchor-distributed-abuse": "limits one identifier"
+      "anchor-distributed-abuse": "limits one identifier",
+      "anchor-cross-instance-budget": "shares one identifier budget across service instances"
     };
     const anchorResults: AnchorResult[] = [];
 
@@ -1614,8 +2110,13 @@ ${laws || "- No additional runtime laws."}
 
   private describeAction(session: DemoSession, reality: Reality | null): DemoNextAction | null {
     const openProposal = reality?.proposals.find((proposal) => proposal.status === "open");
+    const intervention = reality
+      ? session.interventions.find((entry) => entry.realityId === reality.id)
+      : undefined;
     const definition = session.phase === 9 && !this.proofPassed(session, reality)
       ? { id: "repair", kind: "advance", executor: "codex", verb: "repair failed proof" } satisfies ActionDefinition
+      : session.phase === 5 && intervention && ["armed", "rejected"].includes(intervention.status)
+        ? { id: "intervene", kind: "intervene", executor: "codex", verb: "inject bounded controlled Subject" } satisfies ActionDefinition
       : session.phase === 5 && reality?.depth === 1 && openProposal
         ? ACTION_PLAN[4]
       : ACTION_PLAN[session.phase];
@@ -1628,6 +2129,7 @@ ${laws || "- No additional runtime laws."}
         case "create_nested_dream": return openProposal?.title ?? scope;
         case "enter_subjects": return reality.name;
         case "discover_abuse": return scope;
+        case "intervene": return reality.name;
         case "wake_nested":
         case "wake_parent": return reality.name;
         case "synthesise": return `${reality.name} implementation`;
@@ -1643,6 +2145,9 @@ ${laws || "- No additional runtime laws."}
         case "create_attack_dream": return `Create Dream: ${target}`;
         case "create_nested_dream": return `Create nested Dream: ${target}`;
         case "enter_subjects": return `Enter attacker, investigator, and test engineer into ${target}`;
+        case "intervene": return intervention?.status === "rejected"
+          ? `Retry the bounded controlled Subject in ${target}`
+          : `Inject Mal under a sealed reversible contract in ${target}`;
         case "wake_nested":
         case "wake_parent": return `Kick ${target}: ${definition.verb}`;
         case "synthesise": return `Synthesise returned memories into the ${target}`;
@@ -2090,13 +2595,16 @@ ${laws || "- No additional runtime laws."}
       const gated = control.kind === "guided-real"
         && (
           (next.kind === "dream" && control.pauseOnDream)
+          || next.kind === "intervene"
           || proofFailure
         );
       if (gated && control.approvedAction !== next.id) {
         await this.pauseDemoAutopilot(
           proofFailure
             ? "An immutable anchor failed; inspect the evidence before authorizing repair."
-            : "A new counterfactual premise requires explicit approval."
+            : next.kind === "intervene"
+              ? "A bounded controlled intervention requires explicit approval."
+              : "A new counterfactual premise requires explicit approval."
         );
         return;
       }

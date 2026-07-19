@@ -11,10 +11,12 @@ const ActionSchema = z.object({
     "enter_subjects",
     "discover_abuse",
     "create_nested_dream",
+    "intervene",
     "wake_nested",
     "wake_parent",
     "synthesise",
     "run_anchors",
+    "repair",
     "stabilise"
   ])
 });

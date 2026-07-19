@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AdversarialInterventionLedgerSchema,
+  DemoSessionSchema,
   MemoryIntegritySealSchema,
   MissionDefinitionDraftSchema,
   RealityEntity,
@@ -209,6 +210,21 @@ describe("Reality domain", () => {
       status: "unbounded",
       armedAt: new Date().toISOString()
     })).toThrow();
+  });
+
+  it("keeps legacy Demo sessions readable with an empty intervention ledger", () => {
+    const timestamp = new Date().toISOString();
+    const parsed = DemoSessionSchema.parse({
+      id: "singleton",
+      phase: 0,
+      activeRealityId: null,
+      finalDiff: "",
+      anchorResults: [],
+      memoryIntegrity: [],
+      createdAt: timestamp,
+      updatedAt: timestamp
+    });
+    expect(parsed.interventions).toEqual([]);
   });
 
   it("keeps v1 memory seals readable while requiring every v2 integrity check", () => {

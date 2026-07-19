@@ -2,24 +2,27 @@
 
 **Runbook version:** 0.1.0
 **Target:** Desktop or tablet Chromium
-**Last rehearsed against UI:** 2026-07-19
+**Last verified against UI:** 2026-07-19
 
 ## Choose The Runtime
 
-Use deterministic recording mode for the submitted video:
+For the submitted video, first complete a fresh live run:
+
+```bash
+npm ci
+npm run demo:reset
+codex login              # skip if already authenticated or using an API key
+npm run judge:demo
+```
+
+After Reality stabilises, open Admin and choose **Export current safe run log**. Keep that completed run loaded and record with the adaptive timeline replay; do not wait for live Codex during the recording itself. Open one model event, one persisted Reality-thread event, and one native Subject event while narrating how GPT-5.6 and Codex were used.
+
+Use deterministic mode only as the credential-free fallback or to reproduce a fixed UI take:
 
 ```bash
 npm ci
 npm run demo:reset
 npm run record:demo
-```
-
-Use live Codex for technical evaluation:
-
-```bash
-npm ci
-codex login              # skip if already authenticated or using an API key
-npm run judge:demo
 ```
 
 Open `http://localhost:3000`. An ignored `.env` containing `CODEX_API_KEY` or `OPENAI_API_KEY` is the alternative to CLI auth. Docker is not required.
@@ -88,7 +91,15 @@ Click **Kick and return memory**. During the staged Wake, call out:
 
 Show the failing `rotating-ip.attack.spec.ts` artefact and the memory path on the graph. The parent retains the competing proposal rather than waking early.
 
-Create **Account enumeration oracle**, then Kick it with its response-equivalence regression. Collapse and re-expand the **Under coordinated attack** branch once to show that both child Realities and their memory paths remain independently inspectable. Subject nodes under the parent show which bounded investigators produced the evidence.
+Create **Account enumeration oracle**. Before its Kick, run **Run sealed intervention**:
+
+1. Mal enters as a native controlled Subject with one allowed source path, one fault class, a line/token/time ceiling, and a rollback checkpoint;
+2. the intervention changes one request-boundary condition while its private ledger remains sealed;
+3. Arthur diagnoses the observable regression without seeing that ledger;
+4. the Reality Totem reveals the exact planted change at Kick;
+5. the orchestrator restores the checkpoint and retains only the independent response-equivalence test.
+
+Pause on **1 planted change contained / 0 injected files entered Reality**, then show the native Subject thread in the intervention ledger or its event detail. Collapse and re-expand the **Under coordinated attack** branch once to show that both child Realities and their memory paths remain independently inspectable.
 
 Kick **Under coordinated attack** only after both nested memories return.
 
@@ -101,7 +112,8 @@ Show that returned knowledge changes the waking implementation while the Dream w
 - Enumeration-safe response;
 - Token expiry preserved;
 - Rotating-IP resistance;
-- the returned rotating-IP regression.
+- Cross-instance abuse budget using two service instances and one injected shared store;
+- both returned nested regressions.
 
 If proof fails in live mode, the engine offers **Repair proof** and cannot stabilise. On the successful path, click **Stabilise Reality**.
 
@@ -116,23 +128,23 @@ Show:
 - final proof results;
 - **Reveal code** for the waking Git diff;
 - timestamped, searchable events with inspectable metadata;
-- the Reality Timeline moving through earlier states and returning to **Live**.
+- the Reality Timeline **Play** control replaying high-signal milestones at adaptive pacing and returning to **Live**;
+- the measured outcome: **12/12** deliveries before, **3/12** after, **1** planted mutation rolled back, **0** injected files ascended, **4/4** parent requirements passed.
 
 Say: “Good evidence and tested artefacts can wake into Reality. Unsupported assumptions, stale lineage, and planted changes are quarantined before they cross a Kick boundary.”
 
 If time permits, open **Mission Control** and show the generalized VAmPI preset, editable proofs and Subject charters, sibling-Dream strategy, and bounded controlled Subject. Do not prepare or run it during the three-minute canonical recording.
 
-## Optional Controlled-Subject Shot
+## Replay Evidence Shot
 
-Use a previously completed generalized Mission or a dedicated recording fixture. Show:
+On the completed live run, press **Play** in the Reality Timeline. Pause on:
 
-1. **Injected Subject / contained** in the intervention ledger;
-2. the diagnosis verdict;
-3. the restored baseline and excluded injected artefact count;
-4. **Memory verified** or **Memory quarantined**;
-5. the containment event and upward memory path.
+1. the model-binding event to show `gpt-5.6-sol` and the SDK version;
+2. a Reality thread event to show the persisted thread, worktree, and Git branch;
+3. a Subject event to show the native child thread and terminal collaboration evidence;
+4. the containment event to show that the rollback happened before memory admission.
 
-The correct claim is: the injected mutation never ascends. An exact diagnosis may return independent knowledge and safe investigator tests; a partial or missed diagnosis quarantines the entire Wake Report.
+The correct claim is: the injected mutation never ascends. An exact diagnosis may return independent knowledge and safe investigator tests; a partial or missed diagnosis quarantines the entire Wake Report. Event details contain only validated safe metadata, never raw Subject messages or hidden reasoning.
 
 ## Recovery
 

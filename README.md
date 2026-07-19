@@ -23,7 +23,7 @@ flowchart LR
   A --> A1["Nested Dream A.1<br/>rotating sources"]
   A --> A2["Nested Dream A.2<br/>enumeration"]
   B --> B1["Nested Dream B.1<br/>recovery load"]
-  X["Controlled adversarial Subject"] -. "sealed, bounded mutation" .-> A1
+  X["Controlled adversarial Subject"] -. "sealed, bounded mutation" .-> A2
   A1 -. "Kick: verified or quarantined memory" .-> A
   A2 -. "Kick: verified memory" .-> A
   B1 -. "Kick: verified memory" .-> B
@@ -52,13 +52,13 @@ Open [http://localhost:3000](http://localhost:3000). `judge:demo` starts full-po
 
 Page load, refresh, timeline replay, Admin, and Mission creation never start Codex. Usage begins only after an explicit Codex-backed action.
 
-For the repeatable three-minute recording or credential-free UI evaluation:
+For credential-free UI evaluation and a deterministic fallback take:
 
 ```bash
 npm run record:demo
 ```
 
-Recording mode is deterministic but uses the same domain, worktree, memory-integrity, event, and UI contracts. Live mode is the recommended technical evaluation.
+Recording mode is deterministic but uses the same domain, worktree, memory-integrity, event, and UI contracts. For the submitted video, complete a fresh real run first, export its safe run log, and record the completed run with adaptive timeline playback rather than waiting for Codex on camera. Live mode remains the recommended technical evaluation.
 
 ## What To Try
 
@@ -68,8 +68,11 @@ The immutable password-reset **Demo Mission** is the fastest complete story:
 2. create **Under coordinated attack**;
 3. observe attacker, investigator, and test-engineer Subjects;
 4. compare **Rotating IP swarm** with the sibling **Account enumeration oracle**;
-5. Kick both nested Dreams and their parent, then synthesise three verified memories;
-6. run immutable proofs and inspect the final waking diff.
+5. inject Mal into the enumeration Dream under a sealed one-file contract, then watch the Reality Totem reveal and contain the planted boundary fault;
+6. Kick both nested Dreams and their parent, then synthesise three verified memories;
+7. run four immutable proofs and inspect the final waking diff.
+
+The completed outcome is deliberately concrete: rotating sources deliver `12/12` resets before synthesis and `3/12` after it; known and unknown accounts receive the same response; one planted mutation is rolled back; zero injected files ascend; and all four parent requirements pass across two service instances sharing one abuse budget.
 
 The Demo Mission deliberately uses one parent Dream with two depth-two siblings, so the recording shows genuine counterfactual breadth without multiplying every expensive real-mode investigation. General Missions default to `competing-siblings`: Codex proposes two bounded counterfactuals at every explorable Reality, so a depth-two run may form one waking node, two sibling Dreams, and four nested Dreams before Reality Mirror synthesis.
 

@@ -45,6 +45,7 @@ import {
   XCircle
 } from "lucide-react";
 import type {
+  AdversarialInterventionLedger,
   AnchorResult,
   DreamProposal,
   MemoryIntegritySeal,
@@ -96,6 +97,7 @@ interface SafeEventMetadata {
   model?: string;
   sdkVersion?: string;
   authSource?: "cli" | "api-key" | "none";
+  threadId?: string;
   subjectId?: string;
   subjectName?: string;
   subjectRole?: string;
@@ -458,7 +460,11 @@ function replayPhase(events: RealityEvent[], realities: Reality[]): number {
 }
 
 function isTimelineMilestone(event: RealityEvent): boolean {
-  return event.type !== "codex.progress" && event.type !== "anchor.started";
+  if (event.type === "codex.progress") {
+    const stage = safeEventMetadata(event).stage;
+    return stage === "model" || stage === "thread";
+  }
+  return event.type !== "anchor.started";
 }
 
 export function SectionHeading({ icon, eyebrow, title, meta }: {
@@ -992,6 +998,89 @@ export function MemoryReport({
   );
 }
 
+function CanonicalInterventionLedger({
+  interventions,
+  realities
+}: {
+  interventions: AdversarialInterventionLedger[];
+  realities: Reality[];
+}) {
+  if (!interventions.length) return null;
+  return (
+    <section className="canonical-intervention-ledger" data-testid="canonical-intervention-ledger">
+      <SectionHeading
+        icon={<Fingerprint size={18} />}
+        eyebrow="REALITY TOTEM / CONTROLLED SUBJECT"
+        title="Planted-memory containment"
+        meta={<span className="count-label">{interventions.length} controlled intervention</span>}
+      />
+      <div className="canonical-intervention-list">
+        {interventions.map((intervention) => {
+          const reality = realities.find((candidate) => candidate.id === intervention.realityId);
+          const revealed = intervention.status === "revealed";
+          const contained = Boolean(intervention.containedAt);
+          const outcome = intervention.assessment?.outcome;
+          const statusLabel = intervention.status === "armed"
+            ? "CONTROLLED SUBJECT / ARMED"
+            : intervention.status === "injecting"
+              ? "INJECTED SUBJECT / ENTERED"
+              : intervention.status === "sealed"
+                ? "INJECTED SUBJECT / SEALED"
+                : intervention.status === "rejected"
+                  ? "CONTROLLED SUBJECT / REJECTED"
+                  : "INJECTED SUBJECT / REVEALED";
+          return (
+            <article className={`canonical-intervention intervention-${intervention.status}`} key={intervention.id}>
+              <header>
+                <span>
+                  <Fingerprint size={16} />
+                  <b>{statusLabel}</b>
+                </span>
+                <strong>{reality?.name ?? "Nested Reality"}</strong>
+                <em>{contained ? "CONTAINED" : intervention.status.toUpperCase()}</em>
+              </header>
+              <div className="canonical-intervention-story">
+                <div>
+                  <small>SUBJECT</small>
+                  <b>Mal / controlled resilience engineer</b>
+                  <p>{revealed
+                    ? "The Totem compared the investigator diagnosis with the private mutation ledger."
+                    : "The reversible mutation remains hidden until investigator evidence returns at the Kick."}</p>
+                </div>
+                <ArrowRight size={17} />
+                <div>
+                  <small>DIAGNOSIS</small>
+                  <b>{outcome ? outcome.toUpperCase() : "AWAITING INDEPENDENT EVIDENCE"}</b>
+                  <p>{revealed
+                    ? `${intervention.assessment?.identifiedFiles.length ?? 0} of ${intervention.changedFileCount ?? 0} planted files identified.`
+                    : "Investigators may inspect only observable behavior, implementation, and tests."}</p>
+                </div>
+                <ArrowRight size={17} />
+                <div>
+                  <small>MEMORY ASCENT</small>
+                  <b>{contained ? "0 INJECTED FILES ENTERED REALITY" : "GATE ARMED"}</b>
+                  <p>{contained
+                    ? `${intervention.changedFileCount ?? 0} planted change rolled back; independent test artefacts were retained.`
+                    : "No Wake Report can ascend before reveal, rollback, and integrity sealing."}</p>
+                </div>
+              </div>
+              {contained && (
+                <footer>
+                  <span><CheckCircle2 size={13} /> {intervention.changedFileCount ?? 0} planted change contained</span>
+                  <span><ShieldCheck size={13} /> 0 injected files entered Reality</span>
+                  {intervention.subjectThreadId && (
+                    <code title="Native controlled Subject thread">{intervention.subjectThreadId}</code>
+                  )}
+                </footer>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function OperationMonitor({ operation, realities, events, now }: {
   operation: PresentedRealityOperation;
   realities: Reality[];
@@ -1278,6 +1367,21 @@ function EventDetailDialog({
   const planSteps = metadata.planSteps ?? [];
   const payloadEntries = Object.entries(event.payload)
     .filter(([key]) => key !== "metadata");
+  const payloadThreadId = typeof event.payload.threadId === "string"
+    ? event.payload.threadId
+    : undefined;
+  const executionEvidence = [
+    ["MODEL", metadata.model],
+    ["REALITY THREAD", metadata.threadId ?? payloadThreadId],
+    ["SUBJECT", metadata.subjectName
+      ? `${metadata.subjectName}${metadata.subjectRole ? ` / ${metadata.subjectRole}` : ""}`
+      : undefined],
+    ["SUBJECT THREAD", metadata.subjectThreadId],
+    ["WORKTREE", reality?.worktreePath],
+    ["GIT BRANCH", reality?.branchName],
+    ["SDK", metadata.sdkVersion],
+    ["AUTH", metadata.authSource]
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
   const eventRecord = {
     id: event.id,
     type: event.type,
@@ -1333,6 +1437,23 @@ function EventDetailDialog({
             <div><dt>EVENT ID</dt><dd><code>{event.id}</code></dd></div>
             <div><dt>REALITY ID</dt><dd><code>{event.realityId}</code></dd></div>
           </dl>
+
+          {executionEvidence.length > 0 && (
+            <section className="event-execution-evidence" data-testid="event-execution-evidence">
+              <header>
+                <span>EXECUTION EVIDENCE AT THIS EVENT</span>
+                <b>SAFE METADATA</b>
+              </header>
+              <dl>
+                {executionEvidence.map(([label, value]) => (
+                  <div key={label}>
+                    <dt>{label}</dt>
+                    <dd><code>{value}</code></dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
 
           {metadata.totalItems !== undefined && (
             <section className="event-plan-snapshot" data-testid="event-plan-snapshot">
@@ -1842,11 +1963,37 @@ export function AdminDrawer({
   );
 }
 
+function adaptiveReplayDelay(event: RealityEvent | undefined): number {
+  if (!event) return 700;
+  if (event.type === "reality.stabilised") return 2_600;
+  if (
+    event.type === "dream.created"
+    || event.type === "kick.triggered"
+    || event.type.startsWith("wake.")
+    || event.type === "memory.returned"
+  ) return 1_650;
+  if (event.type.startsWith("intervention.")) return 2_000;
+  if (
+    event.type.startsWith("subject.")
+    || event.type === "codex.thread.bound"
+    || safeEventMetadata(event).stage === "model"
+  ) return 1_350;
+  if (
+    event.type === "inspection.completed"
+    || event.type === "belief.changed"
+    || event.type === "evidence.discovered"
+    || event.type === "synthesis.completed"
+  ) return 1_200;
+  if (event.type.startsWith("anchor.") || event.type.startsWith("verification.")) return 850;
+  return 700;
+}
+
 export function RealityTimeline({ events, index, onChange }: {
   events: RealityEvent[];
   index: number | null;
   onChange: (index: number | null) => void;
 }) {
+  const [playing, setPlaying] = useState(false);
   const milestoneIndexes = events.reduce<number[]>((indexes, event, eventIndex) => {
     if (isTimelineMilestone(event)) indexes.push(eventIndex);
     return indexes;
@@ -1860,12 +2007,36 @@ export function RealityTimeline({ events, index, onChange }: {
     : Math.max(0, firstLaterMilestone - 1);
   const selectedIndex = milestoneIndexes[position] ?? 0;
   const selected = events[selectedIndex];
+
+  useEffect(() => {
+    if (!playing) return;
+    if (position >= maximum) {
+      setPlaying(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      onChange(milestoneIndexes[position + 1] ?? null);
+    }, adaptiveReplayDelay(selected));
+    return () => window.clearTimeout(timer);
+  }, [maximum, onChange, playing, position, selected]);
+
+  const togglePlayback = () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (index === null || position >= maximum) {
+      onChange(milestoneIndexes[0] ?? 0);
+    }
+    setPlaying(true);
+  };
+
   return (
-    <section className={`reality-timeline ${index !== null ? "is-replaying" : ""}`} data-testid="reality-timeline">
+    <section className={`reality-timeline ${index !== null ? "is-replaying" : ""} ${playing ? "is-playing" : ""}`} data-testid="reality-timeline">
       <div>
         <History size={16} />
         <span>
-          <small>{index === null ? "LIVE REALITY TIMELINE" : "REPLAYING VALIDATED EXPERIENCE"}</small>
+          <small>{playing ? "ADAPTIVE REPLAY / HIGH-SIGNAL PACING" : index === null ? "LIVE REALITY TIMELINE" : "REPLAYING VALIDATED EXPERIENCE"}</small>
           <strong>{selected?.summary ?? "Waking Reality formed"}</strong>
         </span>
       </div>
@@ -1875,13 +2046,29 @@ export function RealityTimeline({ events, index, onChange }: {
         max={maximum}
         value={position}
         disabled={milestoneIndexes.length < 2}
-        onChange={(event) => onChange(milestoneIndexes[Number(event.target.value)] ?? 0)}
+        onChange={(event) => {
+          setPlaying(false);
+          onChange(milestoneIndexes[Number(event.target.value)] ?? 0);
+        }}
         aria-label="Replay Reality timeline"
       />
       <span className="timeline-position">
         {selected ? formatClock(selected.occurredAt) : "--:--:--"} / {position + 1} of {milestoneIndexes.length} milestones
       </span>
-      <button type="button" onClick={() => onChange(null)} disabled={index === null}>
+      <button
+        type="button"
+        className="timeline-play"
+        onClick={togglePlayback}
+        disabled={milestoneIndexes.length < 2}
+        aria-label={playing ? "Pause adaptive timeline replay" : "Play adaptive timeline replay"}
+      >
+        {playing ? <Pause size={13} /> : <Play size={13} />}
+        {playing ? "Pause" : "Play"}
+      </button>
+      <button type="button" onClick={() => {
+        setPlaying(false);
+        onChange(null);
+      }} disabled={index === null}>
         <Radio size={13} /> Live
       </button>
     </section>
@@ -1955,6 +2142,7 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
       case "inspect": return "Run Codex audit";
       case "enter_subjects": return "Enter Subjects";
       case "discover_abuse": return "Run Codex investigation";
+      case "intervene": return "Run sealed intervention";
       case "synthesise": return "Synthesise memories";
       case "run_anchors": return "Run anchor tests";
       case "repair": return "Repair proof";
@@ -2084,6 +2272,7 @@ export function RealityWorkspace({
   pulseRealityId = null,
   graphRealities = realities,
   memoryIntegrity = [],
+  interventions = [],
   anchorResults = [],
   regressionResult,
   finalDiff = "",
@@ -2107,6 +2296,7 @@ export function RealityWorkspace({
   pulseRealityId?: string | null;
   graphRealities?: Reality[];
   memoryIntegrity?: MemoryIntegritySeal[];
+  interventions?: AdversarialInterventionLedger[];
   anchorResults?: AnchorResult[];
   regressionResult?: RegressionResult;
   finalDiff?: string;
@@ -2358,6 +2548,11 @@ export function RealityWorkspace({
             : <EmptyState icon={<ArrowUpFromLine size={19} />}>Kick a Dream to return a validated Wake Report.</EmptyState>}
         </div>
       </section>
+
+      <CanonicalInterventionLedger
+        interventions={interventions}
+        realities={sourceRealities}
+      />
 
       <section className="proof-workspace">
         <div className="proof-column anchor-proof">
@@ -2662,6 +2857,22 @@ export function RealityEngine() {
   const passedAnchorCount = snapshot?.session.anchorResults.filter((anchor) => anchor.status === "passed").length ?? 0;
   const verifiedMemoryCount = snapshot?.session.memoryIntegrity.filter((seal) => seal.verdict === "verified").length ?? 0;
   const outcomeSubjectCount = snapshot?.realities.reduce((total, reality) => total + reality.subjects.length, 0) ?? 0;
+  const containedInterventions = snapshot?.session.interventions.filter((entry) => entry.containedAt) ?? [];
+  const plantedChangeCount = containedInterventions.reduce(
+    (total, entry) => total + (entry.changedFileCount ?? 0),
+    0
+  );
+  const injectedPaths = new Set(
+    containedInterventions.flatMap((entry) => entry.report?.changedFiles ?? [])
+  );
+  const injectedFilesAscended = new Set(
+    snapshot?.realities.flatMap((reality) =>
+      reality.wakeReport?.artefacts
+        .map((artefact) => artefact.path)
+        .filter((artefactPath) => injectedPaths.has(artefactPath))
+      ?? []
+    ) ?? []
+  ).size;
   const changedFileCount = new Set(
     snapshot?.session.finalDiff.match(/^diff --git a\/(.+?) b\//gm)
       ?.map((line) => line.replace(/^diff --git a\//, "").replace(/ b\/$/, ""))
@@ -2769,7 +2980,7 @@ export function RealityEngine() {
           <div className="outcome-intro">
             <span className="eyebrow">WAKING OUTCOME</span>
             <h2>Password reset survives coordinated abuse without exposing account state</h2>
-            <p>{memories.length} returned memories changed one IP-only control into generic responses plus IP, identifier, and global request budgets while preserving token expiry.</p>
+            <p>{memories.length} returned memories changed one process-local IP control into a generic response and shared IP, identifier, and global budgets while preserving token expiry.</p>
           </div>
           <div className="outcome-causal-chain" aria-label="Validated causal path">
             <span><b>{snapshot.realities.length}</b><small>isolated Realities</small></span>
@@ -2784,21 +2995,25 @@ export function RealityEngine() {
           </div>
           <div className="outcome-results" aria-label="Security outcome">
             <div>
-              <ShieldCheck size={19} />
-              <span><b>Enumeration closed</b><small>Known and unknown accounts receive one public response.</small></span>
+              <XCircle size={19} />
+              <span><b>Before / 12 of 12 delivered</b><small>Rotating sources bypassed the IP-only limit and account existence was exposed.</small></span>
             </div>
             <div>
-              <CircleDot size={19} />
-              <span><b>Rotating sources contained</b><small>One identifier is capped at 3 delivered resets per hour.</small></span>
+              <ShieldCheck size={19} />
+              <span><b>After / 3 of 12 delivered</b><small>A shared identifier budget holds across replicas; known and unknown responses match.</small></span>
+            </div>
+            <div>
+              <Fingerprint size={19} />
+              <span><b>Integrity / {plantedChangeCount} rolled back</b><small>{injectedFilesAscended} injected files ascended; only the independent response-equivalence test returned.</small></span>
             </div>
             <div>
               <CheckCircle2 size={19} />
-              <span><b>Anchor proof</b><small>{passedAnchorCount} of {snapshot.session.anchorResults.length} immutable requirements passed.</small></span>
+              <span><b>Proof / {passedAnchorCount} of {snapshot.session.anchorResults.length}</b><small>Every parent-owned requirement and inherited regression passed.</small></span>
             </div>
           </div>
           <p className="outcome-boundary">
             <LockKeyhole size={15} />
-            <span><b>Production boundary</b> Move counters to an atomic shared store and calibrate thresholds from operational telemetry.</span>
+            <span><b>Production boundary</b> Replace the injectable in-memory store with a Redis or database adapter whose consume operation is one atomic increment; calibrate thresholds from operational telemetry.</span>
           </p>
           <div className="outcome-actions">
             <button type="button" onClick={() => {
@@ -2841,6 +3056,7 @@ export function RealityEngine() {
         pulseRealityId={pulseRealityId}
         graphRealities={graphRealities}
         memoryIntegrity={snapshot.session.memoryIntegrity}
+        interventions={snapshot.session.interventions}
         anchorResults={snapshot.session.anchorResults}
         regressionResult={snapshot.session.regressionResult}
         finalDiff={snapshot.session.finalDiff}
