@@ -110,8 +110,15 @@ sequenceDiagram
   Note over O,C: No Codex call yet
   loop Until depth budget or uncertainty resolved
     Developer->>O: Explicit next action
+    O->>G: Checkpoint the active Reality
     O->>C: Review local source for the bounded maintenance task
+    C-->>O: thread.started; persist resumable Reality thread
     C-->>O: Evidence, belief changes, Dream proposal
+    alt Waking inspection or rejected contract
+      O->>G: Restore checkpoint
+    else Validated Dream inspection
+      O->>G: Retain world-local changes
+    end
     Developer->>O: Create Dream
     O->>G: Fork current Reality state
     opt Bounded intervention at configured depth

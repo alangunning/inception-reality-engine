@@ -147,6 +147,10 @@ All Codex responses cross a Zod boundary before persistence. SDK events are proj
 1. a `spawn_agent` completed for the exact `SUBJECT_ID`; and
 2. a terminal `wait` returned that child thread successfully.
 
+When a Reality has no pre-chartered Subjects, Codex may still delegate bounded independent work. Each opportunistic Subject must use its returned native child thread ID as the report identity. The runtime binds that report to completed `spawn_agent` and terminal `wait` evidence before the orchestrator creates a returned Subject in the Reality.
+
+Mission inspection is a Git transaction. The orchestrator checkpoints the Reality before Codex enters it, persists the primary SDK thread as soon as `thread.started` arrives, and rolls back on runtime or contract failure. A successful waking inspection also restores the checkpoint so evidence may enter the waking Reality while implementation changes wait for Dream synthesis. Dream inspections retain validated world-local changes.
+
 Zod validation establishes structure, not truth. Every Kick therefore runs `MemoryIntegrityService` before the parent receives memory:
 
 1. validate the structured Wake Report;

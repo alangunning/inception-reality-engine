@@ -319,6 +319,171 @@ describe("Codex runtime", () => {
     expect(prompt).toContain("must not spawn further subagents");
   });
 
+  it("binds opportunistic Subjects to completed native child threads", () => {
+    const trace = new SubjectCollaborationTrace([]);
+    const prompt = buildSubjectOrchestrationPrompt(RealityEntity.create({
+      depth: 0,
+      kind: "waking",
+      name: "Waking",
+      premise: constitution.premise,
+      constitution
+    }).snapshot());
+    expect(prompt).toContain("native child thread ID");
+
+    const enteredLaplace = trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["019f775d-8629-7db0-8fca-de9bcac91c34"],
+        prompt: "Audit one bounded authorization boundary.",
+        status: "completed"
+      }
+    });
+    const enteredHume = trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["019f775d-8629-7db0-8fca-de9bcac91c35"],
+        prompt: "Test one independent authorization boundary.",
+        status: "completed"
+      }
+    });
+    const returned = trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "wait",
+        receiver_thread_ids: [
+          "019f775d-8629-7db0-8fca-de9bcac91c34",
+          "019f775d-8629-7db0-8fca-de9bcac91c35"
+        ],
+        agents_states: {
+          "019f775d-8629-7db0-8fca-de9bcac91c34": {
+            status: "completed",
+            message: "raw Subject response"
+          },
+          "019f775d-8629-7db0-8fca-de9bcac91c35": {
+            status: "completed",
+            message: "another raw Subject response"
+          }
+        },
+        status: "completed"
+      }
+    });
+    const observed = trace.bindReports([
+      {
+        subjectId: "019f775d-8629-7db0-8fca-de9bcac91c34",
+        name: "Laplace",
+        role: "Explorer",
+        findings: ["The owner predicate is missing."],
+        artefactPaths: ["api_views/books.py"]
+      },
+      {
+        subjectId: "019f775d-8629-7db0-8fca-de9bcac91c35",
+        name: "Hume",
+        role: "Test engineer",
+        findings: ["The cross-owner request is not covered."],
+        artefactPaths: ["tests/test_authorization.py"]
+      }
+    ]);
+
+    expect(enteredLaplace[0]).toMatchObject({
+      type: "subject",
+      metadata: {
+        subjectId: "019f775d-8629-7db0-8fca-de9bcac91c34",
+        subjectState: "started"
+      }
+    });
+    expect(enteredHume[0]).toMatchObject({
+      type: "subject",
+      metadata: {
+        subjectId: "019f775d-8629-7db0-8fca-de9bcac91c35",
+        subjectState: "started"
+      }
+    });
+    expect(returned[0]).toMatchObject({
+      type: "subject",
+      metadata: {
+        subjectId: "019f775d-8629-7db0-8fca-de9bcac91c34",
+        subjectState: "completed"
+      }
+    });
+    expect(returned[1]).toMatchObject({
+      type: "subject",
+      metadata: {
+        subjectId: "019f775d-8629-7db0-8fca-de9bcac91c35",
+        subjectState: "completed"
+      }
+    });
+    expect(observed).toEqual([
+      {
+        id: "019f775d-8629-7db0-8fca-de9bcac91c34",
+        name: "Laplace",
+        role: "Explorer",
+        mission: "Bounded independent investigation selected by Codex.",
+        threadId: "019f775d-8629-7db0-8fca-de9bcac91c34"
+      },
+      {
+        id: "019f775d-8629-7db0-8fca-de9bcac91c35",
+        name: "Hume",
+        role: "Test engineer",
+        mission: "Bounded independent investigation selected by Codex.",
+        threadId: "019f775d-8629-7db0-8fca-de9bcac91c35"
+      }
+    ]);
+    expect(JSON.stringify([...enteredLaplace, ...enteredHume, ...returned])).not.toContain("raw Subject response");
+  });
+
+  it("rejects opportunistic Subject reports without matching native return evidence", () => {
+    const trace = new SubjectCollaborationTrace([]);
+    trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "spawn_agent",
+        receiver_thread_ids: ["native-thread-1"],
+        prompt: "Audit one bounded boundary.",
+        status: "completed"
+      }
+    });
+    trace.observe({
+      type: "item.completed",
+      item: {
+        type: "collab_tool_call",
+        tool: "wait",
+        receiver_thread_ids: ["native-thread-1"],
+        agents_states: {
+          "native-thread-1": { status: "completed" }
+        },
+        status: "completed"
+      }
+    });
+
+    expect(() => trace.bindReports([{
+      subjectId: "invented-thread",
+      name: "Invented",
+      role: "Explorer",
+      findings: ["Unsupported finding."],
+      artefactPaths: []
+    }])).toThrow(/subjectReports.*subject_native_trace_mismatch/);
+  });
+
+  it("retains the Reality thread ID in the safe thread-start event", () => {
+    expect(toSafeCodexRuntimeEvent({
+      type: "thread.started",
+      thread_id: "019f775b-ef89-7550-9834-e0f4244d2ac0"
+    }, "Waking Reality", "authorization review")).toMatchObject({
+      type: "progress",
+      metadata: {
+        stage: "thread",
+        status: "started",
+        threadId: "019f775b-ef89-7550-9834-e0f4244d2ac0"
+      }
+    });
+  });
+
   it("pins real Reality threads to GPT-5.6 with the full worktree capability", () => {
     const previousModel = process.env.INCEPTION_CODEX_MODEL;
     delete process.env.INCEPTION_CODEX_MODEL;

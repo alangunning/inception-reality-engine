@@ -15,7 +15,7 @@ const fieldLabels: Record<string, string> = {
   constraints: "constitution constraints",
   proofs: "immutable proof",
   subjects: "Subject charters",
-  tokenBudget: "token evidence limit",
+  tokenBudget: "observed SDK token ceiling",
   maxDreamDepth: "Dream depth"
 };
 

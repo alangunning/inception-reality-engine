@@ -21,7 +21,7 @@ Reality Engine separates those responsibilities:
 5. synthesise what generalises in the waking worktree;
 6. require immutable parent-owned proof before stabilisation.
 
-The canonical scenario exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. Real-mode **Mission Composer** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, token budget, and Dream depth.
+The canonical scenario exposes account enumeration and rotating-IP abuse in an incomplete password-reset implementation. Real-mode **Mission Composer** applies the same mechanism to an arbitrary local Git repository, mission, proof suite, Subject roster, observed SDK token ceiling, and Dream depth.
 
 ## Run in Two Commands
 
@@ -106,7 +106,7 @@ Define:
 - the mission, bounded scope, and initial belief to challenge;
 - constitution constraints and parent truths;
 - structured immutable proof commands;
-- token and Dream-depth budgets;
+- an observed SDK token ceiling and a Dream-depth budget;
 - bounded Subject charters.
 
 The default preset is [VAmPI](https://github.com/erev0s/VAmPI), a small deliberately vulnerable Flask API listed in the [OWASP CTF catalogue](https://ctf.owasp.org/). **Prepare VAmPI locally** is an explicit, no-Codex action that clones one pinned revision into `.inception/training-targets`; page load never clones, installs, starts, or sends traffic to the target. The curated Mission is framed as maintenance of one documented ownership regression using only the local source, local tests, and synthetic data. It never requests a service, external target, account, credential, or network interaction.
@@ -114,6 +114,10 @@ The default preset is [VAmPI](https://github.com/erev0s/VAmPI), a small delibera
 An optional sealed intervention can assign one native Codex Subject as a bounded chaos engineer. The operator owns its fault classes, allowed and protected paths, changed-file and patch limits, token/time budget, target depth, rollback commit, and reveal policy. The mutation is sealed before investigator Subjects enter. A partial or missed diagnosis quarantines the Wake Report automatically; an exact diagnosis allows it to join the descendant integrity chain.
 
 Forming the waking Reality creates isolated Git state but makes no Codex call. Subsequent explicit actions can generate multiple nested Dreams, return integrity-sealed memories upward, synthesise the waking implementation, run proofs, repair failures, and stabilise.
+
+Codex remains fully capable of editing and testing inside every worktree. Waking inspection is transactional: the orchestrator checkpoints the isolated baseline, admits only validated evidence and Subject reports, and restores the filesystem before a Dream is created. Any rejected turn is also rolled back while its SDK thread ID and safe validation telemetry remain available for diagnosis and retry.
+
+The Mission token setting defaults to an **8,000,000 observed SDK token ceiling**, not a provider spend cap. The SDK reports authoritative input/output usage when a turn completes. A turn that crosses the ceiling is rejected, its filesystem transaction is rolled back, and later actions are stopped. Use OpenAI workspace or API project controls when a hard billing limit is required.
 
 Saved Missions reopen from the composer with the same branded header, phase tracker, Admin controls, action dock, topology, Reality inspector, uncertainty, Subject, evidence, memory, proof, event, timeline, and diff surfaces as the canonical scenario.
 

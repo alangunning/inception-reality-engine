@@ -21,6 +21,7 @@ import {
   CodexRuntimeEventSchema,
   type CodexExecutionResult,
   type CodexInterventionResult,
+  type CodexObservedSubject,
   type CodexRuntime,
   type CodexRuntimeEvent,
   type CodexSynthesisResult,
@@ -184,6 +185,8 @@ const CollabEventSchema = z.object({
 
 export class SubjectCollaborationTrace {
   private readonly subjects: Map<string, Pick<Subject, "id" | "name" | "role">>;
+  private readonly acceptsOpportunisticSubjects: boolean;
+  private readonly opportunistic = new Set<string>();
   private readonly subjectByThread = new Map<string, string>();
   private readonly spawned = new Set<string>();
   private readonly returned = new Set<string>();
@@ -191,6 +194,7 @@ export class SubjectCollaborationTrace {
 
   constructor(subjects: Subject[]) {
     this.subjects = new Map(subjects.map((subject) => [subject.id, subject]));
+    this.acceptsOpportunisticSubjects = subjects.length === 0;
   }
 
   observe(rawEvent: unknown): CodexRuntimeEvent[] {
@@ -200,8 +204,17 @@ export class SubjectCollaborationTrace {
 
     if (item.tool === "spawn_agent" && item.status === "completed") {
       const subjectId = item.prompt?.match(/\bSUBJECT_ID:([A-Za-z0-9_-]+)\b/)?.[1];
-      const subject = subjectId ? this.subjects.get(subjectId) : undefined;
       const threadId = item.receiver_thread_ids[0];
+      let subject = subjectId ? this.subjects.get(subjectId) : undefined;
+      if (!subject && this.acceptsOpportunisticSubjects && threadId) {
+        subject = {
+          id: threadId,
+          name: `Codex Subject ${this.opportunistic.size + 1}`,
+          role: "Independent investigator"
+        };
+        this.subjects.set(subject.id, subject);
+        this.opportunistic.add(subject.id);
+      }
       if (!subject || !threadId) return [];
       this.spawned.add(subject.id);
       this.subjectByThread.set(threadId, subject.id);
@@ -282,6 +295,32 @@ export class SubjectCollaborationTrace {
     }
   }
 
+  bindReports(
+    reports: InvestigationReport["subjectReports"]
+  ): CodexObservedSubject[] {
+    this.requireComplete();
+    if (!this.opportunistic.size) return [];
+
+    const unexpected = reports.find((report) =>
+      !this.opportunistic.has(report.subjectId)
+      || !this.returned.has(report.subjectId)
+    );
+    if (unexpected || reports.length !== this.opportunistic.size) {
+      throw new CodexOutputValidationError("InvestigationReportSchema", [{
+        path: "subjectReports",
+        code: "subject_native_trace_mismatch"
+      }]);
+    }
+
+    return reports.map((report) => ({
+      id: report.subjectId,
+      name: report.name,
+      role: report.role,
+      mission: "Bounded independent investigation selected by Codex.",
+      threadId: this.threadIdFor(report.subjectId)!
+    }));
+  }
+
   threadIdFor(subjectId: string): string | undefined {
     for (const [threadId, mappedSubjectId] of this.subjectByThread) {
       if (mappedSubjectId === subjectId && this.returned.has(subjectId)) return threadId;
@@ -296,7 +335,8 @@ export function buildSubjectOrchestrationPrompt(reality: Reality): string {
   );
   if (!activeSubjects.length) {
     return `SUBJECT ORCHESTRATION
-Delegate only when you identify at least two bounded, independent investigations that can run concurrently. When that condition is met, use Codex subagent collaboration tools, wait for every Subject to return, and incorporate only concise findings and evidence. Keep sequential or tightly coupled work in this thread.`;
+Delegate only when you identify at least two bounded, independent investigations that can run concurrently. When that condition is met, use Codex subagent collaboration tools, wait for every Subject to return, and incorporate only concise findings and evidence. Keep sequential or tightly coupled work in this thread.
+For every opportunistic Subject, use the native child thread ID returned by spawn_agent as subjectReports[].subjectId and return exactly one Subject report after that thread reaches a completed terminal state.`;
   }
 
   const charters = activeSubjects
@@ -313,6 +353,7 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
   if (!rawEvent || typeof rawEvent !== "object") return null;
   const event = rawEvent as {
     type?: string;
+    thread_id?: unknown;
     message?: unknown;
     error?: { message?: unknown };
     usage?: {
@@ -342,7 +383,11 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
     return CodexRuntimeEventSchema.parse({
       type: "progress",
       summary: `Codex thread entered ${safeRealityName} worktree.`,
-      metadata: { stage: "thread", status: "started" }
+      metadata: {
+        stage: "thread",
+        status: "started",
+        threadId: compact(event.thread_id, 100)
+      }
     });
   }
   if (event.type === "turn.started") {
@@ -601,13 +646,14 @@ Every active Subject must be represented by one subjectReports entry using its e
         code: "identity_mismatch"
       }]);
     }
-    if (activeSubjects.length) subjectTrace.requireComplete();
+    const observedSubjects = subjectTrace.bindReports(report.subjectReports);
 
     return {
       threadId: this.requireThreadId(thread),
       events,
       summary: report.summary,
-      report
+      report,
+      observedSubjects
     };
   }
 

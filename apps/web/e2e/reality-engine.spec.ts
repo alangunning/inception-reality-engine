@@ -345,6 +345,15 @@ test("timeline replay survives a retained window without the creation event", as
 });
 
 test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ page }) => {
+  await page.route("**/api/admin/codex", (route) => route.fulfill({
+    json: {
+      processes: [],
+      sdkOperations: [],
+      mode: "mock",
+      model: "mock-codex",
+      sdkVersion: "mock"
+    }
+  }));
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: "A waking world, one untested belief" })).toBeVisible();
@@ -586,6 +595,7 @@ test("Mission Composer does not show a false real-mode warning while runtime dat
 });
 
 test("Mission Composer exposes general nested Reality and native Subject evidence", async ({ page }) => {
+  await page.clock.setFixedTime(new Date("2026-07-18T22:08:00.000Z"));
   const fixture = missionSnapshotFixture();
   expect("memoryIntegrity" in fixture.run).toBe(false);
   const pageErrors: string[] = [];

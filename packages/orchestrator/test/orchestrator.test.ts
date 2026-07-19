@@ -22,6 +22,8 @@ import {
 } from "../src";
 
 class FakeWorktreeManager implements WorktreeManager {
+  restoreCalls = 0;
+
   constructor(private readonly root: string) {}
   async discoverRepoRoot(): Promise<string> { return this.root; }
   async create(realityId: string): Promise<WorktreeDescriptor> {
@@ -54,7 +56,9 @@ class FakeWorktreeManager implements WorktreeManager {
   async currentCommit(): Promise<string> { return "a".repeat(40); }
   async isClean(): Promise<boolean> { return true; }
   async sealChanges(): Promise<string> { return "b".repeat(40); }
-  async restoreCheckpoint(): Promise<void> {}
+  async restoreCheckpoint(): Promise<void> {
+    this.restoreCalls += 1;
+  }
   async run(_worktreePath: string, _command: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     if (args.some((arg) => arg.includes("rotating-ip.attack.spec.ts"))) {
       return { stdout: "1 test failed", stderr: "", exitCode: 1 };
@@ -104,6 +108,27 @@ class InvalidInspectionRuntime extends MockCodexRuntime {
     throw new CodexOutputValidationError("InvestigationReportSchema", [{
       path: "evidence",
       code: "invalid_type"
+    }]);
+  }
+}
+
+class ThreadThenInvalidInspectionRuntime extends MockCodexRuntime {
+  override async inspect(
+    _reality: Reality,
+    onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
+  ): Promise<CodexExecutionResult> {
+    await onEvent?.({
+      type: "progress",
+      summary: "Codex thread entered the waking Reality worktree.",
+      metadata: {
+        stage: "thread",
+        status: "started",
+        threadId: "thread-retained-after-rejection"
+      }
+    });
+    throw new CodexOutputValidationError("InvestigationReportSchema", [{
+      path: "subjectReports",
+      code: "subject_identity_mismatch"
     }]);
   }
 }
@@ -208,11 +233,12 @@ describe("RealityOrchestrator", () => {
     try {
       const repository = new InMemoryRealityRepository();
       const runtime = new BlockingInspectRuntime();
+      const worktrees = new FakeWorktreeManager(temp);
       const orchestrator = new RealityOrchestrator(
         repository,
         new InMemoryRealityEventBus(),
         runtime,
-        new FakeWorktreeManager(temp),
+        worktrees,
         new SynthesisService(),
         temp
       );
@@ -233,6 +259,11 @@ describe("RealityOrchestrator", () => {
       const after = await orchestrator.snapshot();
       expect(after.operation).toBeNull();
       expect(after.nextAction?.id).toBe("create_attack_dream");
+      expect(worktrees.restoreCalls).toBe(1);
+      expect(after.events.some((event) =>
+        event.type === "inspection.completed"
+        && event.payload.baselineRestored === true
+      )).toBe(true);
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -415,6 +446,52 @@ describe("RealityOrchestrator", () => {
         }
       });
       expect((await repository.listRealities())[0]?.evidence).toHaveLength(0);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("retains the Codex thread and restores the waking baseline when inspection is rejected", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "inception-inspection-transaction-"));
+    try {
+      const repository = new InMemoryRealityRepository();
+      const worktrees = new FakeWorktreeManager(temp);
+      const orchestrator = new RealityOrchestrator(
+        repository,
+        new InMemoryRealityEventBus(),
+        new ThreadThenInvalidInspectionRuntime(),
+        worktrees,
+        new SynthesisService(),
+        temp
+      );
+
+      await expect(orchestrator.act("inspect")).rejects.toThrow(
+        "Investigation Report could not enter the Reality because validation failed"
+      );
+
+      const root = (await repository.listRealities())[0]!;
+      const events = await repository.listEvents();
+      expect(root.codexThreadId).toBe("thread-retained-after-rejection");
+      expect(root.evidence).toHaveLength(0);
+      expect(worktrees.restoreCalls).toBe(1);
+      expect(events.some((event) =>
+        event.type === "codex.thread.bound"
+        && event.payload.threadId === "thread-retained-after-rejection"
+      )).toBe(true);
+      expect(events.some((event) =>
+        event.type === "reality.recovered"
+        && event.payload.validation !== undefined
+      )).toBe(true);
+      expect(events.at(-1)).toMatchObject({
+        type: "validation.rejected",
+        payload: {
+          contract: "InvestigationReportSchema",
+          issues: [{
+            path: "subjectReports",
+            code: "subject_identity_mismatch"
+          }]
+        }
+      });
     } finally {
       await rm(temp, { recursive: true, force: true });
     }

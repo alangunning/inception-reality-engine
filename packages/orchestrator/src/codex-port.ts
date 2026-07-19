@@ -30,6 +30,7 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   diagnostic: z.string().min(1).max(180).optional(),
   model: z.string().min(1).max(80).optional(),
   sdkVersion: z.string().min(1).max(40).optional(),
+  threadId: z.string().min(1).max(100).optional(),
   subjectId: z.string().min(1).max(100).optional(),
   subjectName: z.string().min(1).max(100).optional(),
   subjectRole: z.string().min(1).max(100).optional(),
@@ -64,6 +65,15 @@ export interface CodexExecutionResult {
   events: CodexRuntimeEvent[];
   summary: string;
   report: InvestigationReport;
+  observedSubjects?: CodexObservedSubject[];
+}
+
+export interface CodexObservedSubject {
+  id: string;
+  name: string;
+  role: string;
+  mission: string;
+  threadId: string;
 }
 
 export interface CodexWakeResult {
@@ -122,7 +132,10 @@ export class CodexOutputValidationError extends Error {
     readonly contract: "InvestigationReportSchema" | "AdversarialInterventionReportSchema" | "WakeReportSchema" | "SynthesisReportSchema",
     readonly issues: WakeReportValidationIssue[] = []
   ) {
-    super(`${contract} failed schema validation.`);
+    const first = issues[0];
+    super(first
+      ? `${contract} rejected ${first.path || "output"} (${first.code}).`
+      : `${contract} failed schema validation.`);
     this.name = "CodexOutputValidationError";
   }
 }

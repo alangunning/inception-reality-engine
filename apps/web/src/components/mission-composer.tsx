@@ -96,7 +96,7 @@ const initialState: ComposerState = {
   proofName: "Authorization regression",
   proofExecutable: "python3",
   proofArgs: "tests/test_authorization_regression.py",
-  tokenBudget: 160_000,
+  tokenBudget: 8_000_000,
   maxDreamDepth: 3,
   interventionEnabled: false,
   interventionHypothesis: "A minimal authorization-boundary regression should be discoverable from cross-user behavior and ordinary source evidence without revealing which line changed.",
@@ -168,6 +168,15 @@ function eventMetadata(event: RealityEvent): Record<string, unknown> {
     : {};
 }
 
+function observedMissionTokens(events: RealityEvent[]): number {
+  return events.reduce((total, event) => {
+    const metadata = eventMetadata(event);
+    return total
+      + (typeof metadata.inputTokens === "number" ? metadata.inputTokens : 0)
+      + (typeof metadata.outputTokens === "number" ? metadata.outputTokens : 0);
+  }, 0);
+}
+
 function statusLabel(status: MissionRun["status"]): string {
   return {
     forming: "FORMING",
@@ -228,8 +237,9 @@ function MissionActionDock({
   onAction(action: MissionAction): void;
   onRemove(): void;
 }) {
-  const next = snapshot.nextAction;
-  const blocked = busy || Boolean(snapshot.operation) || replaying;
+  const ceilingReached = observedMissionTokens(snapshot.run.events) >= snapshot.run.definition.tokenBudget;
+  const next = ceilingReached ? null : snapshot.nextAction;
+  const blocked = busy || Boolean(snapshot.operation) || replaying || ceilingReached;
   const isDream = next?.kind === "dream";
   const isKick = next?.kind === "kick";
   const isStandard = Boolean(next && !isDream && !isKick);
@@ -248,7 +258,9 @@ function MissionActionDock({
         <strong data-testid="next-move">
           {replaying
             ? "Return the timeline to Live to continue"
-            : snapshot.operation?.label ?? next?.label ?? "Reality stabilised"}
+            : ceilingReached
+              ? "Observed SDK token ceiling reached; form a new Mission with a higher ceiling before execution"
+              : snapshot.operation?.label ?? next?.label ?? "Reality stabilised"}
         </strong>
         <div><i style={{ width: `${progress}%` }} /></div>
       </div>
@@ -288,7 +300,9 @@ function MissionActionDock({
           : (
             <>
               {next ? <Play size={16} /> : <CheckCircle2 size={16} />}
-              {isStandard ? missionActionCommand(next?.id) : next ? "Advance Reality" : "Reality stabilised"}
+              {ceilingReached
+                ? "Token ceiling reached"
+                : isStandard ? missionActionCommand(next?.id) : next ? "Advance Reality" : "Reality stabilised"}
             </>
           )}
       </button>
@@ -328,13 +342,7 @@ function MissionRunView({
   const interventionContract = run.definition.intervention;
   const integritySeal = memoryIntegrity.find((entry) => entry.realityId === reality.id)
     ?? memoryIntegrity.at(-1);
-  const usedTokens = useMemo(() => run.events.reduce((total, event) => {
-    const metadata = eventMetadata(event);
-    return total
-      + (typeof metadata.inputTokens === "number" ? metadata.inputTokens : 0)
-      + (typeof metadata.outputTokens === "number" ? metadata.outputTokens : 0)
-      + (typeof metadata.reasoningTokens === "number" ? metadata.reasoningTokens : 0);
-  }, 0), [run.events]);
+  const usedTokens = useMemo(() => observedMissionTokens(run.events), [run.events]);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/missions/${encodeURIComponent(run.id)}`, {
@@ -484,7 +492,7 @@ function MissionRunView({
         <p>{run.definition.mission}</p>
         <dl>
           <div><dt>MODEL</dt><dd>{runtime.model}</dd></div>
-          <div><dt>TOKEN EVIDENCE</dt><dd>{usedTokens.toLocaleString()} / {run.definition.tokenBudget.toLocaleString()}</dd></div>
+          <div><dt>OBSERVED SDK TOKENS</dt><dd>{usedTokens.toLocaleString()} / {run.definition.tokenBudget.toLocaleString()}</dd></div>
           <div><dt>DEPTH BUDGET</dt><dd>{Math.max(...run.realities.map((entry) => entry.depth))} / {run.definition.maxDreamDepth}</dd></div>
         </dl>
       </section>
@@ -962,7 +970,7 @@ export function MissionComposer() {
               <span><Network size={16} /> EXPLORATION BUDGET</span>
             </div>
             <label>
-              <span>Token evidence limit</span>
+              <span>Observed SDK token ceiling</span>
               <input type="number" min={10_000} max={10_000_000} step={10_000} value={composer.tokenBudget} onChange={(event) => setComposer({ ...composer, tokenBudget: Number(event.target.value) })} />
             </label>
             <fieldset>

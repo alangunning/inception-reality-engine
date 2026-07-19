@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CodexOutputValidationError } from "@inception/orchestrator";
 import { getRuntime } from "@/lib/runtime";
 
 export const runtime = "nodejs";
@@ -7,6 +8,7 @@ export const dynamic = "force-dynamic";
 const MissionActionSchema = z.object({
   action: z.enum([
     "inspect",
+    "intervene",
     "create_dream",
     "kick",
     "synthesise",
@@ -29,8 +31,20 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     const snapshot = await getRuntime().missionOrchestrator.act(id, action);
     return Response.json(snapshot, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    const validation = error instanceof CodexOutputValidationError
+      ? {
+          contract: error.contract,
+          issues: error.issues.slice(0, 10).map((issue) => ({
+            path: issue.path,
+            code: issue.code
+          }))
+        }
+      : undefined;
     return Response.json(
-      { error: error instanceof Error ? error.message : "Mission action failed." },
+      {
+        error: error instanceof Error ? error.message : "Mission action failed.",
+        validation
+      },
       { status: 400 }
     );
   }

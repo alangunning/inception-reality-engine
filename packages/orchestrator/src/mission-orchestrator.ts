@@ -21,6 +21,7 @@ import {
 } from "@inception/domain";
 import {
   CodexOutputValidationError,
+  type CodexObservedSubject,
   type CodexRuntime,
   type CodexRuntimeEvent
 } from "./codex-port";
@@ -85,6 +86,27 @@ function safeFailure(error: unknown): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 240);
+}
+
+function safeValidationFailure(error: unknown): {
+  contract: string;
+  issues: Array<{ path: string; code: string }>;
+} | undefined {
+  if (!(error instanceof CodexOutputValidationError)) return undefined;
+  return {
+    contract: error.contract,
+    issues: error.issues.slice(0, 10).map((issue) => ({
+      path: issue.path.slice(0, 160),
+      code: issue.code.slice(0, 100)
+    }))
+  };
+}
+
+function runtimeTokenEvidence(events: CodexRuntimeEvent[]): number {
+  return events.reduce((total, event) =>
+    total
+    + (event.metadata?.inputTokens ?? 0)
+    + (event.metadata?.outputTokens ?? 0), 0);
 }
 
 function safeRelativePath(candidate: string): boolean {
@@ -190,7 +212,7 @@ export class MissionOrchestrator {
         premise: definition.premise,
         constraints: [
           ...definition.constraints,
-          `Stay within the mission token budget of ${definition.tokenBudget.toLocaleString("en-US")} tokens.`,
+          `Return early enough to stay within the Mission's observed SDK token ceiling of ${definition.tokenBudget.toLocaleString("en-US")} input plus output tokens.`,
           "Do not expose raw model reasoning."
         ],
         wakeContract: definition.wakeContract,
@@ -306,11 +328,19 @@ export class MissionOrchestrator {
             break;
         }
       } catch (error) {
-        run.status = "fractured";
-        await this.emit(run, this.requireReality(run, operation.realityId), "reality.fractured", safeFailure(error), {
-          missionId: run.id,
-          action
-        });
+        const validation = safeValidationFailure(error);
+        run.status = validation ? "exploring" : "fractured";
+        await this.emit(
+          run,
+          this.requireReality(run, operation.realityId),
+          validation ? "validation.rejected" : "reality.fractured",
+          safeFailure(error),
+          {
+            missionId: run.id,
+            action,
+            validation
+          }
+        );
         throw error;
       } finally {
         this.activeOperations.delete(id);
@@ -338,44 +368,110 @@ export class MissionOrchestrator {
     reality: Reality,
     worktrees: WorktreeManagerPort
   ): Promise<void> {
-    const result = await this.codexRuntime.inspect(
-      {
-        ...reality,
-        codexThreadId: reality.codexThreadId?.startsWith("unbound:")
-          ? undefined
-          : reality.codexThreadId
-      },
-      async (event) => this.emitCodexEvent(run, reality, event)
+    // Refresh persisted pre-contract Missions before Codex reads their worktree.
+    await this.materialiseContext(worktrees, reality);
+    const baselineCommit = await worktrees.checkpoint(
+      reality.worktreePath!,
+      `Reality baseline before Codex inspection ${reality.id}`
     );
-    this.validateSubjectReports(reality, result.report);
-    const intervention = run.interventions.find((entry) =>
-      entry.realityId === reality.id && entry.status === "sealed"
-    );
-    if (intervention) {
-      if (!result.report.adversarialDiagnosis) {
-        throw new CodexOutputValidationError("InvestigationReportSchema", [{
-          path: "adversarialDiagnosis",
-          code: "missing_sealed_intervention_diagnosis"
-        }]);
+    const usedBefore = this.observedTokens(run);
+    const remainingTokenEvidence = Math.max(0, run.definition.tokenBudget - usedBefore);
+
+    try {
+      const result = await this.codexRuntime.inspect(
+        {
+          ...reality,
+          codexThreadId: reality.codexThreadId?.startsWith("unbound:")
+            ? undefined
+            : reality.codexThreadId,
+          constitution: {
+            ...reality.constitution,
+            constraints: [
+              ...reality.constitution.constraints,
+              `Return promptly enough to keep this turn within the remaining observed SDK token ceiling of ${remainingTokenEvidence.toLocaleString("en-US")} input plus output tokens.`
+            ]
+          }
+        },
+        async (event) => {
+          const current = event.metadata?.threadId
+            ? await this.bindRealityThread(run, reality.id, event.metadata.threadId)
+            : this.requireReality(run, reality.id);
+          if (event.metadata?.threadId) return;
+          await this.emitCodexEvent(run, current, event);
+        }
+      );
+      const bound = await this.bindRealityThread(run, reality.id, result.threadId);
+      this.assertTurnWithinTokenCeiling(run, usedBefore, result.events);
+      this.validateSubjectReports(bound, result.report, result.observedSubjects ?? []);
+
+      const intervention = run.interventions.find((entry) =>
+        entry.realityId === reality.id && entry.status === "sealed"
+      );
+      if (intervention) {
+        if (!result.report.adversarialDiagnosis) {
+          throw new CodexOutputValidationError("InvestigationReportSchema", [{
+            path: "adversarialDiagnosis",
+            code: "missing_sealed_intervention_diagnosis"
+          }]);
+        }
+        intervention.diagnosis = result.report.adversarialDiagnosis;
       }
-      intervention.diagnosis = result.report.adversarialDiagnosis;
+
+      if (bound.kind === "waking") {
+        await worktrees.restoreCheckpoint(bound.worktreePath!, baselineCommit);
+      }
+      const entity = RealityEntity.hydrate(bound);
+      for (const subject of result.observedSubjects ?? []) {
+        if (entity.snapshot().subjects.some((entry) => entry.id === subject.id)) continue;
+        entity.addSubject({
+          id: subject.id,
+          name: subject.name,
+          role: subject.role,
+          mission: subject.mission,
+          status: "entered",
+          findings: []
+        });
+      }
+      this.applyInvestigation(entity, result.report);
+      entity
+        .advanceTime(12, "Evaluating counterfactual evidence", result.report.summary)
+        .setImplementationState(bound.kind === "waking"
+          ? "Codex inspection complete; implementation baseline preserved"
+          : "Codex inspection complete")
+        .setStatus("exploring", "Uncertainty mapped");
+      const updated = entity.snapshot();
+      this.replaceReality(run, updated);
+      await this.materialiseContext(worktrees, updated);
+      if (bound.kind === "waking") {
+        await worktrees.checkpoint(
+          updated.worktreePath!,
+          `Admit validated waking Reality context ${updated.id}`
+        );
+      }
+      await this.emit(run, updated, "inspection.completed", `Codex inspected ${run.definition.scope} and returned validated evidence.`, {
+        missionId: run.id,
+        evidenceCount: result.report.evidence.length,
+        subjectReportCount: result.report.subjectReports.length,
+        adversarialDiagnosisReturned: Boolean(result.report.adversarialDiagnosis),
+        baselineRestored: bound.kind === "waking",
+        retainedChangedFiles: bound.kind === "waking" ? [] : result.report.changedFiles
+      });
+    } catch (error) {
+      await worktrees.restoreCheckpoint(reality.worktreePath!, baselineCommit);
+      const current = this.requireReality(run, reality.id);
+      const recovered = RealityEntity.hydrate(current)
+        .setStatus("exploring", "Rejected Codex turn rolled back")
+        .snapshot();
+      this.replaceReality(run, recovered);
+      await this.materialiseContext(worktrees, recovered);
+      await this.emit(run, recovered, "reality.recovered", `Rejected inspection changes were removed from ${reality.name}; its isolated baseline and Codex thread were retained.`, {
+        missionId: run.id,
+        baselineCommit,
+        threadId: recovered.codexThreadId,
+        validation: safeValidationFailure(error)
+      });
+      throw error;
     }
-    const entity = RealityEntity.hydrate(reality)
-      .bindRuntime(result.threadId, reality.worktreePath!, reality.branchName!);
-    this.applyInvestigation(entity, result.report);
-    entity
-      .advanceTime(12, "Evaluating counterfactual evidence", result.report.summary)
-      .setImplementationState("Codex inspection complete")
-      .setStatus("exploring", "Uncertainty mapped");
-    const updated = entity.snapshot();
-    this.replaceReality(run, updated);
-    await this.materialiseContext(worktrees, updated);
-    await this.emit(run, updated, "inspection.completed", `Codex inspected ${run.definition.scope} and returned validated evidence.`, {
-      missionId: run.id,
-      evidenceCount: result.report.evidence.length,
-      subjectReportCount: result.report.subjectReports.length,
-      adversarialDiagnosisReturned: Boolean(result.report.adversarialDiagnosis)
-    });
   }
 
   private async intervene(
@@ -907,12 +1003,22 @@ export class MissionOrchestrator {
     }
   }
 
-  private validateSubjectReports(reality: Reality, report: InvestigationReport): void {
+  private validateSubjectReports(
+    reality: Reality,
+    report: InvestigationReport,
+    observedSubjects: CodexObservedSubject[]
+  ): void {
     const active = reality.subjects.filter((subject) =>
       subject.status === "entered" || subject.status === "investigating"
     );
-    const valid = active.length === report.subjectReports.length
-      && active.every((subject) => report.subjectReports.some((entry) =>
+    const expected = [
+      ...active,
+      ...observedSubjects.filter((subject) =>
+        !active.some((entry) => entry.id === subject.id)
+      )
+    ];
+    const valid = expected.length === report.subjectReports.length
+      && expected.every((subject) => report.subjectReports.some((entry) =>
         entry.subjectId === subject.id
         && entry.name === subject.name
         && entry.role === subject.role
@@ -999,8 +1105,7 @@ export class MissionOrchestrator {
     const observedTokens = events.reduce((total, event) =>
       total
       + (event.metadata?.inputTokens ?? 0)
-      + (event.metadata?.outputTokens ?? 0)
-      + (event.metadata?.reasoningTokens ?? 0), 0);
+      + (event.metadata?.outputTokens ?? 0), 0);
     if (observedTokens > contract.tokenBudget) {
       throw new CodexOutputValidationError("AdversarialInterventionReportSchema", [{
         path: "tokenBudget",
@@ -1284,17 +1389,34 @@ export class MissionOrchestrator {
   }
 
   private assertBudget(run: MissionRun): void {
-    const used = run.events.reduce((total, event) => {
+    const used = this.observedTokens(run);
+    if (used >= run.definition.tokenBudget) {
+      throw new Error(`Mission observed SDK token ceiling reached (${used.toLocaleString("en-US")} input plus output tokens).`);
+    }
+  }
+
+  private observedTokens(run: MissionRun): number {
+    return run.events.reduce((total, event) => {
       const metadata = event.payload.metadata;
       if (!metadata || typeof metadata !== "object") return total;
       const values = metadata as Record<string, unknown>;
       return total
         + (typeof values.inputTokens === "number" ? values.inputTokens : 0)
-        + (typeof values.outputTokens === "number" ? values.outputTokens : 0)
-        + (typeof values.reasoningTokens === "number" ? values.reasoningTokens : 0);
+        + (typeof values.outputTokens === "number" ? values.outputTokens : 0);
     }, 0);
-    if (used >= run.definition.tokenBudget) {
-      throw new Error(`Mission token budget reached (${used.toLocaleString("en-US")} tokens observed).`);
+  }
+
+  private assertTurnWithinTokenCeiling(
+    run: MissionRun,
+    usedBefore: number,
+    events: CodexRuntimeEvent[]
+  ): void {
+    const usedAfter = usedBefore + runtimeTokenEvidence(events);
+    if (usedAfter > run.definition.tokenBudget) {
+      throw new CodexOutputValidationError("InvestigationReportSchema", [{
+        path: "usage.totalTokens",
+        code: "mission_token_ceiling_exceeded"
+      }]);
     }
   }
 
@@ -1302,25 +1424,107 @@ export class MissionOrchestrator {
     worktrees: WorktreeManagerPort,
     reality: Reality
   ): Promise<void> {
+    const constraints = reality.constitution.constraints.map((entry) => `- ${entry}`).join("\n");
+    const truths = reality.constitution.parentTruths.map((entry) => `- ${entry}`).join("\n");
+    const laws = (reality.constitution.runtimeLaws ?? []).map((entry) => `- ${entry}`).join("\n");
+    const evidence = reality.evidence.length
+      ? reality.evidence.map((entry) => `- [${entry.kind}] ${entry.title}: ${entry.summary}`).join("\n")
+      : "- No evidence has been admitted.";
+    const subjects = reality.subjects.length
+      ? reality.subjects.map((subject) =>
+        `- ${subject.name} (${subject.role}) / ${subject.status}: ${subject.mission}`
+      ).join("\n")
+      : "- No Subjects are currently chartered.";
     await worktrees.writeFile(
       reality.worktreePath!,
-      ".inception/reality.json",
+      ".inception/reality/REALITY.md",
+      `# ${reality.name}
+
+Reality ID: ${reality.id}
+Parent Reality ID: ${reality.parentId ?? "None"}
+Depth: ${reality.depth}
+Time dilation: ${reality.constitution.timeDilation ?? 1}x
+Codex thread: ${reality.codexThreadId ?? "Unbound"}
+
+## Premise
+
+${reality.premise}
+
+## Mission
+
+${reality.constitution.mission}
+
+## Constraints
+
+${constraints}
+
+## Parent Truths
+
+${truths || "- No inherited parent truths."}
+
+## Runtime Laws
+
+${laws || "- No additional runtime laws."}
+
+## Admitted Evidence
+
+${evidence}
+
+## Subjects
+
+${subjects}
+
+## Wake Contract
+
+${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
+`
+    );
+    await worktrees.writeFile(
+      reality.worktreePath!,
+      ".inception/reality/AGENTS.override.md",
+      `# Reality Agent Contract
+
+- Operate only inside this worktree and this Reality's premise.
+- Parent-owned Reality Anchors are immutable.
+- A waking inspection may investigate and test freely, but the orchestrator will roll its filesystem back before admitting knowledge.
+- Do not create child Dreams. Return one structured Dream proposal to the orchestrator.
+- Label hypothetical or simulated evidence as synthetic.
+- Use Subjects only for bounded, independent investigations and wait for every Subject to return.
+- Return evidence, artefacts, decisions, belief changes, and validated summaries. Never expose hidden reasoning.
+`
+    );
+    await worktrees.writeFile(
+      reality.worktreePath!,
+      ".inception/anchors/manifest.json",
       `${JSON.stringify({
-        id: reality.id,
-        parentId: reality.parentId,
-        depth: reality.depth,
-        premise: reality.premise,
-        constitution: reality.constitution,
-        subjects: reality.subjects,
-        inheritedEvidence: reality.evidence,
-        wakeContract: reality.constitution.wakeContract
+        realityId: reality.id,
+        anchors: reality.anchors.map((anchor) => ({
+          id: anchor.id,
+          ownerRealityId: anchor.ownerRealityId,
+          name: anchor.hidden ? "Hidden parent-owned proof" : anchor.name,
+          immutable: true,
+          hidden: anchor.hidden
+        }))
       }, null, 2)}\n`
     );
-    await worktrees.writeFile(
-      reality.worktreePath!,
-      ".inception/anchors.json",
-      `${JSON.stringify(reality.anchors, null, 2)}\n`
-    );
+  }
+
+  private async bindRealityThread(
+    run: MissionRun,
+    realityId: string,
+    threadId: string
+  ): Promise<Reality> {
+    const current = this.requireReality(run, realityId);
+    if (current.codexThreadId === threadId) return current;
+    const bound = RealityEntity.hydrate(current)
+      .bindRuntime(threadId, current.worktreePath!, current.branchName!)
+      .snapshot();
+    this.replaceReality(run, bound);
+    await this.emit(run, bound, "codex.thread.bound", `Codex thread bound to ${bound.name} and persisted for later turns.`, {
+      missionId: run.id,
+      threadId
+    });
+    return bound;
   }
 
   private async emitCodexEvent(

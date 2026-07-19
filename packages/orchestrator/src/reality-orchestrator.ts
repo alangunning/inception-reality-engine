@@ -16,6 +16,7 @@ import {
 import {
   CodexOutputValidationError,
   type CodexExecutionResult,
+  type CodexObservedSubject,
   type CodexRuntime,
   type CodexRuntimeEvent,
   type CodexSynthesisResult,
@@ -343,6 +344,7 @@ export class RealityOrchestrator {
     }
     const entity = RealityEntity.hydrate(root);
     entity.bindRuntime(runtimeResult.threadId, root.worktreePath!, root.branchName!);
+    this.addObservedSubjects(entity, runtimeResult);
     const applied = this.applyInvestigationReport(entity, runtimeResult.report, false);
     entity
       .setStatus("exploring", "Reality inspecting implementation")
@@ -350,10 +352,10 @@ export class RealityOrchestrator {
       .advanceTime(12, "Testing the initial abuse model", runtimeResult.summary);
     const updated = entity.snapshot();
     await this.repository.saveReality(updated);
-    await this.emit(updated, "codex.thread.bound", "Codex thread bound to the waking Reality worktree.", { threadId: runtimeResult.threadId });
     await this.emit(updated, "inspection.completed", runtimeResult.report.summary, {
       evidenceIds: applied.evidenceIds,
-      changedFiles: runtimeResult.report.changedFiles
+      changedFiles: [],
+      baselineRestored: true
     });
     for (const evidence of updated.evidence.filter((entry) => applied.evidenceIds.includes(entry.id))) {
       await this.emit(updated, "evidence.discovered", `Evidence discovered: ${evidence.title}.`, {
@@ -562,6 +564,7 @@ export class RealityOrchestrator {
     });
     const experienced = RealityEntity.hydrate(nested)
       .bindRuntime(investigation.threadId, nested.worktreePath!, nested.branchName!);
+    this.addObservedSubjects(experienced, investigation);
     const applied = this.applyInvestigationReport(experienced, investigation.report, false);
     let attackPath = investigation.report.evidence.find((entry) =>
       entry.kind === "test" && entry.artefactPath
@@ -1316,6 +1319,10 @@ ${laws || "- No additional runtime laws."}
   }
 
   private async requestInspection(reality: Reality): Promise<CodexExecutionResult> {
+    const baselineCommit = await this.worktrees.checkpoint(
+      reality.worktreePath!,
+      `Reality baseline before Codex inspection ${reality.id}`
+    );
     try {
       const result = await this.codexRuntime.inspect(
         {
@@ -1324,15 +1331,75 @@ ${laws || "- No additional runtime laws."}
             ? undefined
             : reality.codexThreadId
         },
-        async (event) => this.emitCodexEvent(reality, event)
+        async (event) => {
+          const current = event.metadata?.threadId
+            ? await this.bindRealityThread(reality.id, event.metadata.threadId)
+            : await this.repository.getReality(reality.id) ?? reality;
+          if (event.metadata?.threadId) return;
+          await this.emitCodexEvent(current, event);
+        }
       );
-      this.validateSubjectReports(reality, result.report);
+      const bound = await this.bindRealityThread(reality.id, result.threadId);
+      this.validateSubjectReports(bound, result.report, result.observedSubjects ?? []);
+      if (reality.kind === "waking") {
+        await this.worktrees.restoreCheckpoint(reality.worktreePath!, baselineCommit);
+      }
       return result;
     } catch (error) {
+      await this.worktrees.restoreCheckpoint(reality.worktreePath!, baselineCommit);
+      const current = await this.repository.getReality(reality.id) ?? reality;
+      await this.materialiseRealityContext(current);
+      await this.emit(
+        current,
+        "reality.recovered",
+        `Rejected inspection changes were removed from ${reality.name}; its isolated baseline and Codex thread were retained.`,
+        {
+          baselineCommit,
+          threadId: current.codexThreadId,
+          validation: error instanceof CodexOutputValidationError
+            ? {
+                contract: error.contract,
+                issues: error.issues
+              }
+            : undefined
+        }
+      );
       if (error instanceof CodexOutputValidationError) {
-        await this.handleContractRejection(reality, error);
+        await this.handleContractRejection(current, error);
       }
       throw error;
+    }
+  }
+
+  private async bindRealityThread(realityId: string, threadId: string): Promise<Reality> {
+    const current = await this.repository.getReality(realityId);
+    if (!current) throw new Error(`Reality ${realityId} was not found while binding its Codex thread.`);
+    if (current.codexThreadId === threadId) return current;
+    const bound = RealityEntity.hydrate(current)
+      .bindRuntime(threadId, current.worktreePath!, current.branchName!)
+      .snapshot();
+    await this.repository.saveReality(bound);
+    await this.emit(bound, "codex.thread.bound", `Codex thread bound to ${bound.name} and persisted for later turns.`, {
+      threadId
+    });
+    return bound;
+  }
+
+  private addObservedSubjects(
+    entity: RealityEntity,
+    result: CodexExecutionResult
+  ): void {
+    for (const subject of result.observedSubjects ?? []) {
+      const report = result.report.subjectReports.find((entry) => entry.subjectId === subject.id);
+      if (!report || entity.snapshot().subjects.some((entry) => entry.id === subject.id)) continue;
+      entity.addSubject({
+        id: subject.id,
+        name: subject.name,
+        role: subject.role,
+        mission: subject.mission,
+        status: "returned",
+        findings: report.findings
+      });
     }
   }
 
@@ -1385,19 +1452,29 @@ ${laws || "- No additional runtime laws."}
     return { evidenceIds: [...evidenceByTitle.values()] };
   }
 
-  private validateSubjectReports(reality: Reality, report: InvestigationReport): void {
+  private validateSubjectReports(
+    reality: Reality,
+    report: InvestigationReport,
+    observedSubjects: CodexObservedSubject[]
+  ): void {
     const activeSubjects = reality.subjects.filter((subject) =>
       subject.status === "entered" || subject.status === "investigating"
     );
-    if (!activeSubjects.length && report.subjectReports.length === 0) return;
-    const mismatch = activeSubjects.find((subject) => {
+    const expectedSubjects = [
+      ...activeSubjects,
+      ...observedSubjects.filter((subject) =>
+        !activeSubjects.some((entry) => entry.id === subject.id)
+      )
+    ];
+    if (!expectedSubjects.length && report.subjectReports.length === 0) return;
+    const mismatch = expectedSubjects.find((subject) => {
       const returned = report.subjectReports.find((entry) => entry.subjectId === subject.id);
       return !returned || returned.name !== subject.name || returned.role !== subject.role;
     });
     const unexpected = report.subjectReports.find((entry) =>
-      !activeSubjects.some((subject) => subject.id === entry.subjectId)
+      !expectedSubjects.some((subject) => subject.id === entry.subjectId)
     );
-    if (mismatch || unexpected || report.subjectReports.length !== activeSubjects.length) {
+    if (mismatch || unexpected || report.subjectReports.length !== expectedSubjects.length) {
       throw new CodexOutputValidationError("InvestigationReportSchema", [{
         path: "subjectReports",
         code: "subject_identity_mismatch"

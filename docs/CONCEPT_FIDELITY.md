@@ -15,7 +15,9 @@ This document tracks the Reality Engine against the canonical product conversati
 
 - One persisted/resumable Codex SDK thread and one worktree per Reality.
 - Schema-constrained Investigation, Subject, Wake, and Synthesis reports with exact Reality identity.
+- Native opportunistic Subjects are admitted only when their reports bind to completed `spawn_agent` and terminal `wait` thread evidence.
 - Real Codex inspection and synthesis; deterministic mock behavior behind the same ports.
+- Transactional waking inspection restores its isolated Git checkpoint after returning knowledge; rejected turns restore the checkpoint while retaining the resumable Reality thread.
 - Parent filesystem snapshot inheritance, including tracked changes, deletions, and untracked evidence.
 - Wake artefact promotion and complete diffs that include untracked files.
 - Parent-owned immutable anchors plus a complete inherited regression proof.
@@ -25,6 +27,7 @@ This document tracks the Reality Engine against the canonical product conversati
 - A pinned VAmPI authorization-testing preset plus arbitrary trusted local repositories in Mission Composer.
 - Failed proof blocks stabilisation and offers a real Codex repair action.
 - Reality-local constitution, agent contract, and redacted anchor manifest.
+- An observed SDK token ceiling rejects over-ceiling reports and stops later actions; provider billing controls remain the hard spend boundary.
 - Dream impact probability, expected insight, token estimate, cost class, and explicit confirmation.
 - Per-Reality runtime laws and 1x, 12x, and 120x time dilation.
 - Live safe events with timestamps, filtering, search, sorting, failure classification, and archived export.

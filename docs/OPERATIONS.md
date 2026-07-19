@@ -40,7 +40,10 @@ For a Mission that deliberately depends on personal Codex integrations, set `INC
 - Training-target status is local-only; VAmPI is cloned only after **Prepare VAmPI locally** and is never installed or started automatically.
 - Buttons identify Codex-backed actions before usage begins.
 - The operation band reports runtime, elapsed wall time, safe milestones, commands, tools, files, and token evidence.
-- Mission token budgets stop new actions after observed SDK usage reaches the configured limit.
+- The Mission setting defaults to an 8,000,000 observed SDK token ceiling. Codex reports authoritative input/output usage at turn completion; an over-ceiling report is rejected, its worktree transaction is rolled back, and new actions remain stopped.
+- The observed ceiling is not a provider spend cap because the SDK does not expose incremental per-turn token cancellation. Use ChatGPT workspace or OpenAI API project spend controls for billing enforcement.
+- Waking inspection keeps full Codex write/test capability inside the isolated worktree, then restores its checkpoint so knowledge returns before implementation.
+- Rejected inspection turns retain their resumable SDK thread ID, safe validation path/code, and rollback event without persisting raw model output.
 - The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the deterministic canonical judge path remains fully runnable without a model call.
 
 ## Stop and Cleanup

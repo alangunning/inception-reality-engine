@@ -7,6 +7,7 @@ export {
 export type {
   CodexExecutionResult,
   CodexInterventionResult,
+  CodexObservedSubject,
   CodexRuntime,
   CodexRuntimeEvent,
   CodexSynthesisResult,
