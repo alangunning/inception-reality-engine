@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpFromLine,
-  BrainCircuit,
   CheckCircle2,
   ChevronRight,
   CircleDot,
@@ -612,6 +611,7 @@ export function MissionComposer() {
   const [error, setError] = useState<string | null>(null);
   const [targets, setTargets] = useState<TrainingTargetStatus[]>([]);
   const [targetBusy, setTargetBusy] = useState(false);
+  const [composerAdminOpen, setComposerAdminOpen] = useState(false);
 
   const loadIndex = useCallback(async () => {
     const response = await fetch("/api/missions", { cache: "no-store" });
@@ -679,7 +679,7 @@ export function MissionComposer() {
     }
   };
 
-  const openRun = async (id: string) => {
+  const openRun = useCallback(async (id: string) => {
     setBusy(true);
     setError(null);
     try {
@@ -697,7 +697,12 @@ export function MissionComposer() {
     } finally {
       setBusy(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const requestedMission = new URLSearchParams(window.location.search).get("mission");
+    if (requestedMission) void openRun(requestedMission);
+  }, [openRun]);
 
   const formMission = async () => {
     const lines = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -792,7 +797,10 @@ export function MissionComposer() {
           snapshot={snapshot}
           runtime={runtime}
           onReload={setSnapshot}
-          onNewMission={() => setSnapshot(null)}
+          onNewMission={() => {
+            window.history.replaceState(null, "", "/missions/new");
+            setSnapshot(null);
+          }}
           onDeleted={() => {
             setSnapshot(null);
             void loadIndex();
@@ -804,11 +812,32 @@ export function MissionComposer() {
 
   return (
     <div className="mission-shell">
-      <nav className="mission-nav">
-        <a href="/"><ArrowLeft size={15} /> Canonical demo</a>
-        <span><BrainCircuit size={14} /> {runtime?.model.toUpperCase() ?? "CHECKING RUNTIME"}</span>
-      </nav>
-      <main className="mission-composer">
+      <div className="app-shell mission-composer-page">
+        <RealityTopbar
+          codexMode={runtime?.mode ?? "real"}
+          model={runtime?.model ?? "checking runtime"}
+          environment={runtime ? `CODEX SDK ${runtime.sdkVersion}` : "Runtime checking"}
+          realityCount={runs.reduce((total, run) => total + run.realityCount, 0)}
+          actions={(
+            <>
+              <a className="mission-link" href="/" title="Canonical scenario">
+                <ArrowLeft size={13} />
+                <span>CANONICAL SCENARIO</span>
+              </a>
+              <button
+                type="button"
+                className="admin-trigger"
+                data-testid="admin-trigger"
+                onClick={() => setComposerAdminOpen(true)}
+                title="Admin controls"
+                aria-label="Open admin controls"
+              >
+                <Settings size={15} />
+              </button>
+            </>
+          )}
+        />
+        <main className="mission-composer">
         <header className="mission-composer-header">
           <div>
             <span className="eyebrow">MISSION COMPOSER / TRUSTED LOCAL MODE</span>
@@ -1035,7 +1064,13 @@ export function MissionComposer() {
             </div>
           </aside>
         </div>
-      </main>
+        </main>
+        <AdminDrawer
+          open={composerAdminOpen}
+          onClose={() => setComposerAdminOpen(false)}
+          onStateChanged={loadIndex}
+        />
+      </div>
     </div>
   );
 }

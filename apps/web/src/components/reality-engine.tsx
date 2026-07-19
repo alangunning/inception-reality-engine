@@ -126,6 +126,15 @@ interface RunLogSummary {
   failureKinds: Record<string, number>;
 }
 
+interface SavedMissionSummary {
+  id: string;
+  name: string;
+  scope: string;
+  status: string;
+  realityCount: number;
+  updatedAt: string;
+}
+
 export interface RealityPhaseStep {
   label: string;
   complete: boolean;
@@ -1063,8 +1072,9 @@ export function AdminDrawer({
   const [sdkOperations, setSdkOperations] = useState<CodexSdkOperation[]>([]);
   const [currentLog, setCurrentLog] = useState<RunLogSummary | null>(null);
   const [archivedLogs, setArchivedLogs] = useState<RunLogSummary[]>([]);
+  const [savedMissions, setSavedMissions] = useState<SavedMissionSummary[]>([]);
   const [codexMode, setCodexMode] = useState<"mock" | "real">("mock");
-  const [busy, setBusy] = useState<"idle" | "stopping" | "resetting" | "loading-archive">("idle");
+  const [busy, setBusy] = useState<"idle" | "stopping" | "resetting" | "loading-archive" | "managing-mission">("idle");
   const [adminError, setAdminError] = useState<string | null>(null);
 
   const loadProcesses = useCallback(async () => {
@@ -1093,15 +1103,26 @@ export function AdminDrawer({
     setArchivedLogs(body.archives ?? []);
   }, []);
 
+  const loadMissions = useCallback(async () => {
+    const response = await fetch("/api/missions", { cache: "no-store" });
+    const body = await readApiResponse<{
+      runs?: SavedMissionSummary[];
+      error?: string;
+    }>(response, "Could not load saved Missions.");
+    if (!response.ok) throw new Error(body.error ?? "Could not load saved Missions.");
+    setSavedMissions(body.runs ?? []);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     loadProcesses().catch((cause) => setAdminError(cause instanceof Error ? cause.message : String(cause)));
     loadHistory().catch((cause) => setAdminError(cause instanceof Error ? cause.message : String(cause)));
+    loadMissions().catch((cause) => setAdminError(cause instanceof Error ? cause.message : String(cause)));
     const timer = window.setInterval(() => {
       loadProcesses().catch(() => undefined);
     }, 2000);
     return () => window.clearInterval(timer);
-  }, [loadHistory, loadProcesses, open]);
+  }, [loadHistory, loadMissions, loadProcesses, open]);
 
   const stopCodex = async () => {
     const activeCount = Math.max(processes.length, sdkOperations.length);
@@ -1181,6 +1202,84 @@ export function AdminDrawer({
     }
   };
 
+  const resetSavedMission = async (saved: SavedMissionSummary) => {
+    if (!window.confirm(`Reset Mission "${saved.name}"? A clean waking Reality will be formed from the same definition, then the previous Mission worktrees and history will be removed.`)) return;
+    setBusy("managing-mission");
+    setAdminError(null);
+    try {
+      const response = await fetch(`/api/missions/${encodeURIComponent(saved.id)}/reset`, {
+        method: "POST"
+      });
+      const body = await readApiResponse<{
+        run?: { id: string };
+        error?: string;
+      }>(response, "Could not reset the Mission.");
+      if (!response.ok || !body.run) throw new Error(body.error ?? "Could not reset the Mission.");
+      await loadMissions();
+      if (mission?.id === saved.id) {
+        window.location.assign(`/missions/new?mission=${encodeURIComponent(body.run.id)}`);
+        return;
+      }
+      await onStateChanged();
+    } catch (cause) {
+      setAdminError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("idle");
+    }
+  };
+
+  const deleteSavedMission = async (saved: SavedMissionSummary) => {
+    if (!window.confirm(`Delete Mission "${saved.name}" and clean up all of its worktrees and branches?`)) return;
+    setBusy("managing-mission");
+    setAdminError(null);
+    try {
+      const response = await fetch(`/api/missions/${encodeURIComponent(saved.id)}`, {
+        method: "DELETE"
+      });
+      const body = await readApiResponse<{ error?: string }>(
+        response,
+        "Could not delete the Mission."
+      );
+      if (!response.ok) throw new Error(body.error ?? "Could not delete the Mission.");
+      await loadMissions();
+      if (mission?.id === saved.id) {
+        onMissionDeleted?.();
+        onClose();
+        return;
+      }
+      await onStateChanged();
+    } catch (cause) {
+      setAdminError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("idle");
+    }
+  };
+
+  const deleteAllSavedMissions = async () => {
+    if (!window.confirm(`Delete all ${savedMissions.length} saved Mission${savedMissions.length === 1 ? "" : "s"} and clean up every Mission-owned worktree and branch? The canonical scenario is not changed.`)) return;
+    setBusy("managing-mission");
+    setAdminError(null);
+    try {
+      const response = await fetch("/api/missions", { method: "DELETE" });
+      const body = await readApiResponse<{ error?: string }>(
+        response,
+        "Could not delete saved Missions."
+      );
+      if (!response.ok) throw new Error(body.error ?? "Could not delete saved Missions.");
+      setSavedMissions([]);
+      if (mission) {
+        onMissionDeleted?.();
+        onClose();
+        return;
+      }
+      await onStateChanged();
+    } catch (cause) {
+      setAdminError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setBusy("idle");
+    }
+  };
+
   if (!open) return null;
 
   return (
@@ -1232,6 +1331,67 @@ export function AdminDrawer({
             disabled={busy !== "idle" || (!processes.length && !sdkOperations.length)}
           >
             <Power size={15} /> {busy === "stopping" ? "Stopping Codex CLI" : "Stop all Codex CLI"}
+          </button>
+        </section>
+
+        <section className="admin-section" data-testid="saved-mission-admin">
+          <div className="admin-section-title">
+            <span><GitBranch size={16} /> SAVED MISSIONS</span>
+            <b>{savedMissions.length} SAVED</b>
+          </div>
+          <div className="saved-mission-list">
+            {savedMissions.map((saved) => (
+              <article key={saved.id} data-testid="saved-mission-row">
+                <a
+                  className="saved-mission-open"
+                  href={`/missions/new?mission=${encodeURIComponent(saved.id)}`}
+                  title={`Open ${saved.name}`}
+                >
+                  <GitBranch size={13} />
+                  <span>
+                    <strong>{saved.name}</strong>
+                    <small>{saved.status.toUpperCase()} / {saved.realityCount} REALITIES</small>
+                  </span>
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void resetSavedMission(saved)}
+                  disabled={busy !== "idle"}
+                  aria-label={`Reset saved Mission ${saved.name}`}
+                  title="Form a clean replacement from the same Mission definition"
+                >
+                  <RotateCcw size={13} />
+                </button>
+                <a
+                  href={`/api/missions/${encodeURIComponent(saved.id)}?download=1`}
+                  download
+                  aria-label={`Export saved Mission ${saved.name}`}
+                  title="Export safe Mission history"
+                >
+                  <Download size={13} />
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void deleteSavedMission(saved)}
+                  disabled={busy !== "idle"}
+                  aria-label={`Delete saved Mission ${saved.name}`}
+                  title="Delete Mission and clean up its worktrees"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </article>
+            ))}
+            {!savedMissions.length && (
+              <EmptyState icon={<GitBranch size={18} />}>No saved Missions.</EmptyState>
+            )}
+          </div>
+          <button
+            type="button"
+            className="admin-clear-missions"
+            onClick={() => void deleteAllSavedMissions()}
+            disabled={busy !== "idle" || !savedMissions.length}
+          >
+            <Trash2 size={15} /> {busy === "managing-mission" ? "Managing saved Missions" : "Delete all saved Missions"}
           </button>
         </section>
 

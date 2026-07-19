@@ -588,9 +588,11 @@ test("Mission Composer does not show a false real-mode warning while runtime dat
 
   await page.goto("/missions/new");
   await expect(page.getByRole("heading", { name: "Form a waking Reality" })).toBeVisible();
-  await expect(page.locator(".mission-nav")).toContainText("CHECKING RUNTIME");
+  await expect(page.getByTestId("topbar-status")).toContainText("CHECKING RUNTIME");
   await expect(page.getByText("Real mode required")).toHaveCount(0);
-  await expect(page.locator(".mission-nav")).toContainText("GPT-5.6");
+  await expect(page.getByTestId("topbar-status")).toContainText("GPT-5.6");
+  await expect(page.getByTestId("topbar-actions")).toContainText("CANONICAL SCENARIO");
+  await expect(page.getByTestId("topbar-actions").getByRole("button", { name: "Open admin controls" })).toBeVisible();
   await expect(page.getByText("Real mode required")).toHaveCount(0);
 });
 
@@ -602,6 +604,30 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   page.on("pageerror", (error) => pageErrors.push(error.message));
   let missionPosts = 0;
   let targetPosts = 0;
+  let missionResets = 0;
+  await page.route("**/api/admin/codex", (route) => route.fulfill({
+    json: {
+      processes: [],
+      sdkOperations: [],
+      codexMode: "real"
+    }
+  }));
+  await page.route("**/api/admin/history**", (route) => route.fulfill({
+    json: {
+      current: {
+        id: "current",
+        phase: 0,
+        archivedAt: "2026-07-18T14:30:00.000Z",
+        realityCount: 1,
+        eventCount: 1,
+        commandCount: 0,
+        failedCommandCount: 0,
+        recoveredAfterFailure: false,
+        failureKinds: {}
+      },
+      archives: []
+    }
+  }));
   await page.route("**/api/missions/events?**", (route) => route.fulfill({
     status: 200,
     contentType: "text/event-stream",
@@ -613,6 +639,10 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
       runtime: { mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }
     }
   }));
+  await page.route("**/api/missions/mission-1/reset", (route) => {
+    missionResets += 1;
+    return route.fulfill({ json: fixture });
+  });
   await page.route("**/api/missions", async (route) => {
     if (route.request().method() === "POST") {
       missionPosts += 1;
@@ -667,7 +697,24 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await expect(page.getByLabel("Local Git repository")).toHaveValue("");
   await expect(page.getByLabel(/Arm one bounded chaos-engineer intervention/)).not.toBeChecked();
   await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
+  await expect(page.getByTestId("topbar-status")).toContainText("REAL CODEX / GPT-5.6");
+  await expect(page.getByTestId("topbar-actions")).toContainText("CANONICAL SCENARIO");
   expect(targetPosts).toBe(0);
+
+  await page.getByTestId("admin-trigger").click();
+  const savedMissionAdmin = page.getByTestId("saved-mission-admin");
+  await expect(savedMissionAdmin).toContainText("VAmPI Authorization Breach");
+  await expect(savedMissionAdmin.getByRole("link", { name: /^VAmPI Authorization Breach/ }))
+    .toHaveAttribute("href", "/missions/new?mission=mission-1");
+  await expect(savedMissionAdmin.getByRole("button", { name: "Reset saved Mission VAmPI Authorization Breach" })).toBeVisible();
+  await expect(savedMissionAdmin.getByRole("button", { name: "Delete saved Mission VAmPI Authorization Breach" })).toBeVisible();
+  await expect(savedMissionAdmin.getByRole("button", { name: "Delete all saved Missions" })).toBeEnabled();
+  await expect(page).toHaveScreenshot("mission-admin-saved.png");
+  page.once("dialog", (dialog) => dialog.accept());
+  await savedMissionAdmin.getByRole("button", { name: "Reset saved Mission VAmPI Authorization Breach" }).click();
+  await expect.poll(() => missionResets).toBe(1);
+  await page.getByRole("button", { name: "Close admin controls" }).click();
+  await expect(page).toHaveScreenshot("mission-composer.png", { fullPage: true });
 
   await page.locator(".mission-history").getByRole("button", { name: /VAmPI Authorization Breach/ }).click();
   await expect(page.getByTestId("reality-workspace")).toBeVisible();
@@ -679,6 +726,7 @@ test("Mission Composer exposes general nested Reality and native Subject evidenc
   await page.getByTestId("admin-trigger").click();
   await expect(page.getByTestId("admin-drawer")).toContainText("DELETE MISSION");
   await expect(page.getByTestId("admin-drawer")).toContainText("Stop all Codex CLI");
+  await expect(page.getByTestId("admin-drawer")).toContainText("SAVED MISSIONS");
   await expect(page.getByTestId("admin-drawer").locator(".admin-export"))
     .toHaveAttribute("href", "/api/missions/mission-1?download=1");
   await page.getByRole("button", { name: "Close admin controls" }).click();

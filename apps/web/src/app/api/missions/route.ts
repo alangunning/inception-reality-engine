@@ -76,3 +76,17 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 }
+
+export async function DELETE(): Promise<Response> {
+  try {
+    const result = await getRuntime().missionOrchestrator.deleteAll();
+    return Response.json(result, {
+      headers: { "Cache-Control": "no-store" }
+    });
+  } catch (error) {
+    return Response.json(
+      { error: error instanceof Error ? error.message : "Could not delete saved missions." },
+      { status: 409 }
+    );
+  }
+}

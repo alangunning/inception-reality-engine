@@ -15,6 +15,7 @@ class FakeMissionWorktrees implements WorktreeManagerPort {
   changedFiles: string[] = [];
   changedDiff = "";
   restoreCalls = 0;
+  cleanupCalls = 0;
   dirtyWorktrees = new Set<string>();
 
   async discoverRepoRoot(): Promise<string> {
@@ -28,7 +29,8 @@ class FakeMissionWorktrees implements WorktreeManagerPort {
   }
   async remove(): Promise<void> {}
   async cleanupAll(): Promise<number> {
-    return 0;
+    this.cleanupCalls += 1;
+    return 1;
   }
   async isPresent(): Promise<boolean> {
     return true;
@@ -87,6 +89,19 @@ function basicMission() {
     subjects: [],
     tokenBudget: 100_000,
     maxDreamDepth: 2
+  };
+}
+
+function realRuntime(mock = new MockCodexRuntime()): CodexRuntime {
+  return {
+    mode: "real",
+    info: () => ({ mode: "real", model: "gpt-5.6", sdkVersion: "0.144.6" }),
+    activeOperations: () => [],
+    abortAll: () => 0,
+    inspect: (...args) => mock.inspect(...args),
+    intervene: (...args) => mock.intervene(...args),
+    wake: (...args) => mock.wake(...args),
+    synthesise: (reality, reports, onEvent) => mock.synthesise(reality, reports, onEvent)
   };
 }
 
@@ -735,5 +750,45 @@ describe("MissionOrchestrator", () => {
         }
       }
     });
+  });
+
+  it("resets one Mission from its definition and can clean up every saved Mission", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    const original = await orchestrator.create(basicMission());
+
+    const replacement = await orchestrator.reset(original.run.id);
+
+    expect(replacement.run.id).not.toBe(original.run.id);
+    expect(replacement.run.definition).toMatchObject({
+      name: original.run.definition.name,
+      mission: original.run.definition.mission,
+      tokenBudget: original.run.definition.tokenBudget,
+      maxDreamDepth: original.run.definition.maxDreamDepth
+    });
+    expect(replacement.run.realities).toHaveLength(1);
+    expect(replacement.run.events).toHaveLength(1);
+    expect(await repository.getMissionRun(original.run.id)).toBeNull();
+    expect(await repository.listMissionRuns()).toHaveLength(1);
+    expect(worktrees.cleanupCalls).toBe(1);
+
+    await orchestrator.create({
+      ...basicMission(),
+      name: "Second authorization review"
+    });
+    const deleted = await orchestrator.deleteAll();
+
+    expect(deleted).toEqual({
+      deletedMissions: 2,
+      removedWorktrees: 2
+    });
+    expect(await repository.listMissionRuns()).toHaveLength(0);
+    expect(worktrees.cleanupCalls).toBe(3);
   });
 });

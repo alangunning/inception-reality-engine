@@ -363,6 +363,70 @@ export class MissionOrchestrator {
     return removed;
   }
 
+  async reset(id: string): Promise<MissionSnapshot> {
+    if (this.activeOperations.has(id)) {
+      throw new Error("Stop the active Codex operation before resetting this mission.");
+    }
+    const run = await this.requireRun(id);
+    const intervention = run.definition.intervention;
+    const draft = MissionDefinitionDraftSchema.parse({
+      name: run.definition.name,
+      repositoryPath: run.definition.repositoryPath,
+      mission: run.definition.mission,
+      scope: run.definition.scope,
+      premise: run.definition.premise,
+      constraints: run.definition.constraints,
+      parentTruths: run.definition.parentTruths,
+      wakeContract: run.definition.wakeContract,
+      proofs: run.definition.proofs.map(({ id: _id, ...proof }) => proof),
+      subjects: run.definition.subjects.map(({ id: _id, ...subject }) => subject),
+      intervention: intervention ? {
+        enabled: intervention.enabled,
+        subject: {
+          name: intervention.subject.name,
+          role: intervention.subject.role,
+          mission: intervention.subject.mission
+        },
+        hypothesis: intervention.hypothesis,
+        faultClasses: intervention.faultClasses,
+        allowedPaths: intervention.allowedPaths,
+        protectedPaths: intervention.protectedPaths,
+        maxChangedFiles: intervention.maxChangedFiles,
+        maxPatchLines: intervention.maxPatchLines,
+        tokenBudget: intervention.tokenBudget,
+        maxMinutes: intervention.maxMinutes,
+        targetDepth: intervention.targetDepth,
+        revealPolicy: intervention.revealPolicy,
+        requireRollbackCommit: intervention.requireRollbackCommit
+      } : undefined,
+      tokenBudget: run.definition.tokenBudget,
+      maxDreamDepth: run.definition.maxDreamDepth
+    });
+    const replacement = await this.create(draft);
+    await this.delete(id);
+    return replacement;
+  }
+
+  async deleteAll(): Promise<{ deletedMissions: number; removedWorktrees: number }> {
+    if (this.activeOperations.size) {
+      throw new Error("Stop all active Codex operations before deleting saved missions.");
+    }
+    let deletedMissions = 0;
+    let removedWorktrees = 0;
+    while (true) {
+      const runs = await this.repository.listMissionRuns(100);
+      if (!runs.length) break;
+      for (const run of runs) {
+        removedWorktrees += await this.delete(run.id);
+        deletedMissions += 1;
+      }
+    }
+    return {
+      deletedMissions,
+      removedWorktrees
+    };
+  }
+
   private async inspect(
     run: MissionRun,
     reality: Reality,

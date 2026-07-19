@@ -57,7 +57,9 @@ Admin **Stop all Codex CLI**:
 
 Admin **Full reset and cleanup** archives the current safe log, stops Codex, deletes canonical active state, removes canonical-owned worktrees/branches, prunes Git metadata, and forms a clean waking Reality.
 
-Mission deletion removes only that Mission's worktrees and branches. Playwright cleanup uses its own root and prefix. No cleanup path should delete a worktree it does not own.
+The Admin **Saved Missions** section is available from both Mission Composer and an active Mission. It can reopen or export a run, reset one run from the same validated definition, delete one run, or delete all saved Missions. Reset forms the replacement before removing the previous history. Mission reset and deletion remove only Mission-owned worktrees and branches; they never alter the canonical scenario.
+
+Playwright cleanup uses its own root and prefix. No cleanup path should delete a worktree it does not own.
 
 Pinned training targets remain in `.inception/training-targets` as an ignored reusable cache. Removing that directory is safe when no Mission operation is active; it is not part of canonical reset because it contains no running process or admitted Reality state.
 

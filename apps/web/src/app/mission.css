@@ -11,41 +11,10 @@
   min-height: 100vh;
   background: var(--ink);
 }
-.mission-nav {
-  min-height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 max(20px, calc((100vw - 1500px) / 2));
-  color: var(--muted);
-  background: rgba(7, 9, 11, 0.96);
-  border-bottom: 1px solid var(--line);
-  font-size: 0.65rem;
-  font-weight: 750;
-}
-.mission-nav a, .mission-nav span, .mission-nav button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.mission-nav a { color: var(--text-soft); text-decoration: none; }
-.mission-nav a:hover { color: var(--cyan); }
-.mission-nav button {
-  min-height: 30px;
-  padding: 0 9px;
-  color: var(--cyan);
-  border: 1px solid var(--line-strong);
-  border-radius: 4px;
-  background: var(--surface-soft);
-  cursor: pointer;
-  font-size: 0.6rem;
-  font-weight: 800;
-}
-.mission-nav button:hover { color: var(--text); border-color: var(--cyan); }
+.mission-composer-page { padding-bottom: 0; }
 .mission-composer {
-  width: min(1500px, 100%);
-  margin: 0 auto;
-  padding: 32px 24px 110px;
+  width: 100%;
+  padding: 32px 0 110px;
 }
 .mission-composer-header {
   display: grid;
@@ -550,9 +519,6 @@
 }
 
 @media (max-width: 700px) {
-  .mission-composer { padding-right: 14px; padding-left: 14px; }
-  .mission-nav { padding: 0 14px; }
-  .mission-nav > span { display: none; }
   .mission-form { grid-template-columns: 1fr; }
   .mission-form label, .mission-form fieldset, .mission-form > .mission-section-title { grid-column: 1; }
   .mission-target { grid-template-columns: 34px minmax(0, 1fr); }

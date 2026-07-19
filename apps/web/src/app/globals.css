@@ -1345,6 +1345,41 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 }
 .admin-section > button:disabled { opacity: 0.35; cursor: not-allowed; }
 .admin-stop { color: var(--amber); }
+.saved-mission-list { margin: 10px 0 14px; border-top: 1px solid var(--line); }
+.saved-mission-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) repeat(3, 36px);
+  border-bottom: 1px solid var(--line);
+}
+.saved-mission-list a,
+.saved-mission-list button {
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  border: 0;
+  border-left: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+  text-decoration: none;
+}
+.saved-mission-list .saved-mission-open {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 6px 8px 6px 4px;
+  color: var(--text-soft);
+  border-left: 0;
+}
+.saved-mission-open span { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.saved-mission-open strong { overflow: hidden; font-size: 0.61rem; text-overflow: ellipsis; white-space: nowrap; }
+.saved-mission-open small { color: var(--muted); font-size: 0.5rem; }
+.saved-mission-list a:hover,
+.saved-mission-list button:hover:not(:disabled) { color: var(--cyan); }
+.saved-mission-list button:last-child:hover:not(:disabled) { color: var(--red); }
+.saved-mission-list button:disabled { opacity: 0.35; cursor: wait; }
+.admin-clear-missions { color: #ffd1cd; border-color: #713833 !important; background: var(--red-deep) !important; }
 .run-log-summary {
   margin: 11px 0;
   padding: 11px;
