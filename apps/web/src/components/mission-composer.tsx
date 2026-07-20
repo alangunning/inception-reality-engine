@@ -1143,6 +1143,15 @@ function MissionRunView({
         stabilised={visibleEvents.some((event) => event.type === "reality.stabilised")}
       />
 
+      <MissionOutcomePanel
+        run={{ ...run, outcome: projectedOutcome }}
+        collapsed={collapsedDreams}
+        onToggle={() => {
+          setCollapsedDreams((current) => !current);
+          if (!collapsedDreams && root) setSelectedRealityId(root.id);
+        }}
+      />
+
       <section className="mission-context-band" data-testid="mission-context">
         <p>{run.definition.mission}</p>
         <dl>
@@ -1181,15 +1190,6 @@ function MissionRunView({
       )}
 
       {!replaying && <WakeTransition stage={wakeStage} realityName={wakeRealityName} />}
-
-      <MissionOutcomePanel
-        run={{ ...run, outcome: projectedOutcome }}
-        collapsed={collapsedDreams}
-        onToggle={() => {
-          setCollapsedDreams((current) => !current);
-          if (!collapsedDreams && root) setSelectedRealityId(root.id);
-        }}
-      />
 
       <RealityTimeline
         events={run.events}

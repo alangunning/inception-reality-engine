@@ -726,19 +726,19 @@ export function RealityJourneyBand({
     || event.type === "memory.quarantined"
     || event.type === "reflection.created"
   );
+  const hasAnchorProof = events.some((event) =>
+    event.type === "verification.started"
+    || event.type === "verification.passed"
+    || event.type === "verification.failed"
+    || event.type === "anchor.passed"
+    || event.type === "anchor.failed"
+  );
   const journey = [
     {
       label: "Realities",
       detail: `${realities.length} ${realities.length === 1 ? "world" : "worlds"} / ${dreamCount} ${dreamCount === 1 ? "Dream" : "Dreams"}`,
       target: "reality-topology",
       icon: <Network size={15} />,
-      reached: true
-    },
-    {
-      label: "Anchors",
-      detail: `${anchorCount} parent-owned ${anchorCount === 1 ? "requirement" : "requirements"}`,
-      target: "reality-requirements",
-      icon: <LockKeyhole size={15} />,
       reached: true
     },
     {
@@ -763,6 +763,13 @@ export function RealityJourneyBand({
       target: "reality-memories",
       icon: <ArrowUpFromLine size={15} />,
       reached: hasMemory || stabilised
+    },
+    {
+      label: "Anchor Proof",
+      detail: `${anchorCount} parent-owned ${anchorCount === 1 ? "requirement" : "requirements"}`,
+      target: "reality-requirements",
+      icon: <LockKeyhole size={15} />,
+      reached: hasAnchorProof || stabilised
     }
   ];
   const [viewedTarget, setViewedTarget] = useState("reality-topology");
@@ -2803,46 +2810,6 @@ export function RealityWorkspace({
       </section>
 
       <section
-        className="requirements-workspace workspace-band workspace-band-requirements"
-        id="reality-requirements"
-        tabIndex={-1}
-      >
-        <SectionHeading
-          icon={<LockKeyhole size={18} />}
-          eyebrow="REALITY REQUIREMENTS"
-          title="Parent-owned invariants"
-          meta={<span className="count-label">{displayedAnchors.length} anchors</span>}
-        />
-        <div className={`requirements-layout ${requirementsSupplement ? "has-supplement" : "is-anchor-only"}`}>
-          <div className="anchor-list">
-            {displayedAnchors.map((anchor) => (
-              <article className={`anchor-row anchor-${anchor.status}`} key={anchor.anchorId}>
-                <span>{anchor.status === "passed" ? <Check size={15} /> : anchor.status === "failed" ? <X size={15} /> : <LockKeyhole size={14} />}</span>
-                <div>
-                  <h3>{anchor.name}</h3>
-                  <p>{anchor.status === "passed" ? "Immutable requirement survived synthesis." : anchor.status === "failed" ? "Reality implementation violated this Anchor." : "Hidden from child mutation; awaiting synthesis."}</p>
-                  {anchor.command && <small>{anchor.command} / {anchor.durationMs}ms</small>}
-                </div>
-              </article>
-            ))}
-            {regressionResult && (
-              <article className={`anchor-row anchor-${regressionResult.status}`} data-testid="regression-proof">
-                <span>{regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
-                <div>
-                  <h3>Inherited regression suite</h3>
-                  <p>{regressionResult.status === "passed"
-                    ? `${regressionResult.testFiles.length} test artefacts agree with the Reality implementation.`
-                    : "A returned or discovered test still contradicts the Reality implementation."}</p>
-                  <small>{regressionResult.command} / {regressionResult.durationMs}ms</small>
-                </div>
-              </article>
-            )}
-          </div>
-          {requirementsSupplement}
-        </div>
-      </section>
-
-      <section
         className="world-ledger workspace-band workspace-band-investigation"
         id="reality-investigation"
         tabIndex={-1}
@@ -2934,8 +2901,6 @@ export function RealityWorkspace({
         </div>
       </section>
 
-      {reflectionContent}
-
       <section
         className="integrity-workspace workspace-band workspace-band-integrity"
         id="reality-integrity"
@@ -2963,6 +2928,8 @@ export function RealityWorkspace({
       </section>
 
       {memoryAscentContent}
+
+      {reflectionContent}
 
       <section
         className="memory-workspace workspace-band workspace-band-memory"
@@ -3001,20 +2968,43 @@ export function RealityWorkspace({
       </section>
 
       <section
-        className="event-workspace workspace-band workspace-band-events"
-        id="reality-events"
+        className="requirements-workspace workspace-band workspace-band-requirements"
+        id="reality-requirements"
         tabIndex={-1}
       >
-        <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
-        <EventFeed
-          events={events}
-          realities={realities}
-          now={now}
-          hasMore={hasMoreEvents}
-          loadingMore={loadingMoreEvents}
-          onLoadMore={onLoadMoreEvents}
-          totalCount={totalEventCount}
+        <SectionHeading
+          icon={<LockKeyhole size={18} />}
+          eyebrow="ANCHOR PROOF"
+          title="Parent-owned invariants"
+          meta={<span className="count-label">{displayedAnchors.length} anchors</span>}
         />
+        <div className={`requirements-layout ${requirementsSupplement ? "has-supplement" : "is-anchor-only"}`}>
+          <div className="anchor-list">
+            {displayedAnchors.map((anchor) => (
+              <article className={`anchor-row anchor-${anchor.status}`} key={anchor.anchorId}>
+                <span>{anchor.status === "passed" ? <Check size={15} /> : anchor.status === "failed" ? <X size={15} /> : <LockKeyhole size={14} />}</span>
+                <div>
+                  <h3>{anchor.name}</h3>
+                  <p>{anchor.status === "passed" ? "Immutable requirement survived synthesis." : anchor.status === "failed" ? "Reality implementation violated this Anchor." : "Hidden from child mutation; awaiting synthesis."}</p>
+                  {anchor.command && <small>{anchor.command} / {anchor.durationMs}ms</small>}
+                </div>
+              </article>
+            ))}
+            {regressionResult && (
+              <article className={`anchor-row anchor-${regressionResult.status}`} data-testid="regression-proof">
+                <span>{regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
+                <div>
+                  <h3>Inherited regression suite</h3>
+                  <p>{regressionResult.status === "passed"
+                    ? `${regressionResult.testFiles.length} test artefacts agree with the Reality implementation.`
+                    : "A returned or discovered test still contradicts the Reality implementation."}</p>
+                  <small>{regressionResult.command} / {regressionResult.durationMs}ms</small>
+                </div>
+              </article>
+            )}
+          </div>
+          {requirementsSupplement}
+        </div>
       </section>
 
       {finalDiff && (
@@ -3037,6 +3027,23 @@ export function RealityWorkspace({
             : <EmptyState icon={<FileDiff size={19} />}>The implementation is preserved behind the returned knowledge. Reveal it when the proof matters.</EmptyState>}
         </section>
       )}
+
+      <section
+        className="event-workspace workspace-band workspace-band-events"
+        id="reality-events"
+        tabIndex={-1}
+      >
+        <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
+        <EventFeed
+          events={events}
+          realities={realities}
+          now={now}
+          hasMore={hasMoreEvents}
+          loadingMore={loadingMoreEvents}
+          onLoadMore={onLoadMoreEvents}
+          totalCount={totalEventCount}
+        />
+      </section>
     </div>
   );
 }
@@ -3419,16 +3426,6 @@ export function RealityEngine() {
         stabilised={visibleEvents.some((event) => event.type === "reality.stabilised")}
       />
 
-      {!replaying && (
-        <DemoAutoModeBar
-          snapshot={snapshot}
-          busy={loading !== "idle" || Boolean(activeOperation)}
-          onControl={(command) => void controlDemoAutopilot(command)}
-          onApproveInterventionBudget={(tokenBudget) =>
-            void approveDemoInterventionBudget(tokenBudget)}
-        />
-      )}
-
       {loadedArchive && (
         <section className="archive-view-banner" data-testid="archive-view-banner">
           <History size={17} />
@@ -3496,6 +3493,16 @@ export function RealityEngine() {
             </span>
           </div>
         </section>
+      )}
+
+      {!replaying && (
+        <DemoAutoModeBar
+          snapshot={snapshot}
+          busy={loading !== "idle" || Boolean(activeOperation)}
+          onControl={(command) => void controlDemoAutopilot(command)}
+          onApproveInterventionBudget={(tokenBudget) =>
+            void approveDemoInterventionBudget(tokenBudget)}
+        />
       )}
 
       {displayedOperation && (

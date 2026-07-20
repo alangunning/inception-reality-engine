@@ -623,16 +623,16 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   const journeyLinks = page.getByTestId("reality-journey").getByRole("link");
   await expect(journeyLinks).toHaveCount(5);
   await expect(journeyLinks.nth(0)).toHaveAttribute("href", "#reality-topology");
-  await expect(journeyLinks.nth(1)).toHaveAttribute("href", "#reality-requirements");
-  await expect(journeyLinks.nth(2)).toHaveAttribute("href", "#reality-investigation");
-  await expect(journeyLinks.nth(3)).toHaveAttribute("href", "#reality-integrity");
-  await expect(journeyLinks.nth(4)).toHaveAttribute("href", "#reality-memories");
+  await expect(journeyLinks.nth(1)).toHaveAttribute("href", "#reality-investigation");
+  await expect(journeyLinks.nth(2)).toHaveAttribute("href", "#reality-integrity");
+  await expect(journeyLinks.nth(3)).toHaveAttribute("href", "#reality-memories");
+  await expect(journeyLinks.nth(4)).toHaveAttribute("href", "#reality-requirements");
   const chapterOrder = await page.evaluate(() => [
     "reality-topology",
-    "reality-requirements",
     "reality-investigation",
     "reality-integrity",
     "reality-memories",
+    "reality-requirements",
     "reality-events"
   ].map((id) => {
     const element = document.getElementById(id);
@@ -645,10 +645,10 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
     if (!workspace) throw new Error("Reality workspace is missing");
     const chapterIds = [
       "reality-topology",
-      "reality-requirements",
       "reality-investigation",
       "reality-integrity",
       "reality-memories",
+      "reality-requirements",
       "reality-events"
     ];
     const chapters = chapterIds.map((id) => {
@@ -669,7 +669,7 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
   expect(chapterHierarchy.rowGap).toBeGreaterThanOrEqual(20);
   expect(new Set(chapterHierarchy.surfaces).size).toBeGreaterThanOrEqual(4);
   expect(new Set(chapterHierarchy.headings).size).toBeGreaterThanOrEqual(4);
-  await journeyLinks.nth(3).click();
+  await journeyLinks.nth(2).click();
   await expect(page).toHaveURL(/#reality-integrity$/);
   await expect(page.locator("#reality-integrity")).toBeFocused();
   await expect.poll(() => page.locator("#reality-integrity").evaluate((element) => {
@@ -678,7 +678,7 @@ test("initial Reality is idle, explicit, responsive, and usage-safe", async ({ p
     return bounds.top >= stickyChrome && bounds.top < window.innerHeight
       && bounds.bottom > stickyChrome;
   })).toBe(true);
-  await expect(journeyLinks.nth(3)).toHaveAttribute("aria-current", "location");
+  await expect(journeyLinks.nth(2)).toHaveAttribute("aria-current", "location");
   const stickyContext = await page.evaluate(() => {
     const journey = document.querySelector<HTMLElement>('[data-testid="reality-journey"]')?.getBoundingClientRect();
     const timeline = document.querySelector<HTMLElement>('[data-testid="reality-timeline"]')?.getBoundingClientRect();
@@ -1043,6 +1043,31 @@ test("the complete mocked narrative remains visually coherent", async ({ page })
   await expect(page.getByTestId("outcome-summary")).toContainText("pseudonymised expiring keys");
   await expect(page.getByTestId("outcome-summary")).toContainText("timing tests");
   await expect(page.getByTestId("outcome-summary")).toContainText("campaign budget");
+  const completedNarrativeOrder = await page.evaluate(() => {
+    const ids = [
+      "outcome-summary",
+      "demo-autopilot",
+      "reality-timeline",
+      "reality-topology",
+      "reality-investigation",
+      "reality-integrity",
+      "reality-memories",
+      "reality-requirements",
+      "reality-diff",
+      "reality-events"
+    ];
+    const elements = ids.map((id) => {
+      const element = document.querySelector<HTMLElement>(`[data-testid="${id}"]`)
+        ?? document.getElementById(id);
+      if (!element) throw new Error(`Missing completed narrative section ${id}`);
+      return element;
+    });
+    return elements.every((element, index) => {
+      const next = elements[index + 1];
+      return !next || Boolean(element.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+  });
+  expect(completedNarrativeOrder).toBe(true);
   await expect(page.getByTestId("event-feed").getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
   const completedJourney = page.getByTestId("reality-journey");
   await expect(completedJourney).toContainText("4 worlds / 3 Dreams");
@@ -1062,7 +1087,7 @@ test("the complete mocked narrative remains visually coherent", async ({ page })
   await expect(page.locator(".anchor-list .anchor-passed")).toHaveCount(0);
   await expect(page.getByTestId("regression-proof")).toHaveCount(0);
   await expect(page.locator(".diff-workspace")).toHaveCount(0);
-  await expect(page.getByTestId("reality-journey").locator(".is-reached")).toHaveCount(2);
+  await expect(page.getByTestId("reality-journey").locator(".is-reached")).toHaveCount(1);
   await expect(page.getByTestId("simulated-world-time")).toContainText("0m completed experience × 1");
   await expect(page.locator(".definition-list")).toContainText("Reality baseline preserved");
   await finalTimeline.getByRole("button", { name: "Live" }).click();
@@ -1320,11 +1345,11 @@ test("Mission Control exposes general Nested Dream and native Subject evidence",
   await expect(page.getByTestId("reality-mirror")).toContainText("SIBLING COMPARISON");
   const missionChapterOrder = await page.evaluate(() => [
     "reality-topology",
-    "reality-requirements",
     "reality-investigation",
-    "reality-reflection",
     "reality-integrity",
-    "reality-memories"
+    "reality-reflection",
+    "reality-memories",
+    "reality-requirements"
   ].map((id) => {
     const element = document.getElementById(id);
     if (!element) throw new Error(`Missing Mission chapter ${id}`);
@@ -2009,17 +2034,23 @@ test("an Adversarial Subject is visibly contained before its Memory ascends", as
   await expect(page.getByTestId("memory-integrity")).toContainText("Memory verified");
   await expect(page.getByTestId("memory-ascent")).toContainText("Totem Check admitted memory");
   await expect(page.getByTestId("memory-ascent")).toContainText("mutation contained");
-  const integrityBeforeAscent = await page.evaluate(() => {
+  const memoryAdmissionOrder = await page.evaluate(() => {
     const integrity = document.getElementById("reality-integrity");
     const ascent = document.getElementById("reality-memory-ascent");
+    const mirror = document.getElementById("reality-reflection");
     const memories = document.getElementById("reality-memories");
-    if (!integrity || !ascent || !memories) return false;
+    const requirements = document.getElementById("reality-requirements");
+    const events = document.getElementById("reality-events");
+    if (!integrity || !ascent || !mirror || !memories || !requirements || !events) return false;
     return Boolean(
       integrity.compareDocumentPosition(ascent) & Node.DOCUMENT_POSITION_FOLLOWING
-      && ascent.compareDocumentPosition(memories) & Node.DOCUMENT_POSITION_FOLLOWING
+      && ascent.compareDocumentPosition(mirror) & Node.DOCUMENT_POSITION_FOLLOWING
+      && mirror.compareDocumentPosition(memories) & Node.DOCUMENT_POSITION_FOLLOWING
+      && memories.compareDocumentPosition(requirements) & Node.DOCUMENT_POSITION_FOLLOWING
+      && requirements.compareDocumentPosition(events) & Node.DOCUMENT_POSITION_FOLLOWING
     );
   });
-  expect(integrityBeforeAscent).toBe(true);
+  expect(memoryAdmissionOrder).toBe(true);
   await expect(page.getByTestId("event-feed")).toContainText("Adversarial fault contained");
   const replay = page.getByTestId("reality-timeline");
   await replay.locator('input[type="range"]').fill("0");

@@ -113,6 +113,10 @@ Subject charters, sibling strategy, depth, and budgets.
   copyrighted music.
 - Never show credentials, `auth.json`, raw model output, raw Subject messages,
   or hidden reasoning.
+- Use the sticky chapter bar in its causal order: **Realities**, **Investigation**,
+  **Totem Check**, **Memories**, then **Anchor Proof**. The detailed event archive
+  remains the retrospective evidence layer; open individual milestones from the
+  timeline or event stream only for the four required execution-evidence shots.
 
 ### Shot And Narration Script
 
