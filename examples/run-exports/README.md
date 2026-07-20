@@ -41,8 +41,8 @@ unresolved Dream proposals.
 SHA-256:
 
 ```text
-1d177c6991f1127efcc807f62fef97d3a757c636dac91a1552f5e005cc3d3702  vampi-real-mission-history-2026-07-20.json
-a47fc87366332dba3985e8ac60549cc927b39fde67f7fe8c0c434f4b845c4e16  vampi-real-run-log-2026-07-20.json
+59f456722f43c759bad45d8843caf34b5363c4dc4b434140dbce808bd56f6bc1  vampi-real-mission-history-2026-07-20.json
+4a3637c71062881a9ea4d8a8cb215d2414ace8446ce39e26844079c133a557cc  vampi-real-run-log-2026-07-20.json
 ```
 
 ## Password-reset real run
@@ -64,8 +64,9 @@ investigator detected the exact fault, the mutation was contained, and no
 planted artefact returned from that Dream.
 
 The export deliberately excludes credentials, raw model responses, unrestricted
-SDK payloads, and hidden reasoning. It retains Codex thread IDs and absolute
-worktree paths as execution provenance. A future importer must validate the
+SDK payloads, and hidden reasoning. It retains Codex thread IDs as execution
+provenance while replacing repository and home paths with `$REPO_ROOT` and
+`$HOME`. A future importer must validate the
 run archive with `RealityRunArchiveSchema` before persistence, validate the
 mission snapshot's domain collections independently, remap paths to its local
 repository, and treat unavailable thread IDs as historical evidence rather
@@ -100,6 +101,6 @@ refusals, unclassified runtime fractures, or unresolved Dream proposals.
 SHA-256:
 
 ```text
-7773b4f9220405e514c269db77a5428c42c5eb507bd0382d71e9cfe85ca92d11  password-reset-real-stabilised-2026-07-20.json
-ab0dee47aaa2d239ddf22d609299f2605845780a7afafc5b9ad0c0df78b5c4bf  password-reset-real-mission-history-2026-07-20.json
+861c5ed2f15d9d41a56178ed96073826fa08c324de5759c3b1dd9bd6aedf8193  password-reset-real-stabilised-2026-07-20.json
+fc23c76146384c3ae0bafc610b6c5c5280eb5089a6f69218cf89e5213e01b684  password-reset-real-mission-history-2026-07-20.json
 ```

@@ -44,6 +44,7 @@ function expectCredentialRedacted(value: unknown): void {
   expect(credentialScan).not.toMatch(/Bearer [A-Za-z0-9._~+/-]{12,}/);
   expect(serialized).not.toMatch(/(?:OPENAI|CODEX)_API_KEY\s*[=:]\s*\S+/);
   expect(serialized).not.toContain("/.codex/auth.json");
+  expect(serialized).not.toMatch(/\/Users\/[^/"\\]+/);
 
   const forbiddenKeys = new Set([
     "apiKey",

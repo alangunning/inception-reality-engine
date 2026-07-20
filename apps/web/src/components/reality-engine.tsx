@@ -1,6 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode
+} from "react";
 import {
   ArrowDown,
   ArrowRight,
@@ -64,6 +72,7 @@ import {
   replayFinalDiff,
   replayInterventions,
   replayMemoryIntegrity,
+  replayRealities,
   replayRegressionResult
 } from "./replay-projection";
 import {
@@ -79,6 +88,7 @@ export {
   replayInterventions,
   replayMemoryIntegrity,
   replayOutcome,
+  replayRealities,
   replayReflections
 } from "./replay-projection";
 
@@ -410,161 +420,6 @@ function eventFamily(event: RealityEvent): Exclude<EventFamily, "all"> {
   return "reality";
 }
 
-export function replayRealities(realities: Reality[], events: RealityEvent[], timelineIndex: number | null): Reality[] {
-  if (timelineIndex === null || !events.length) return realities;
-  const visibleEvents = events.slice(0, timelineIndex + 1);
-  const cutoff = new Date(visibleEvents.at(-1)?.occurredAt ?? 0).getTime();
-  const created = new Set(
-    visibleEvents
-      .filter((event) => event.type === "reality.created" || event.type === "dream.created")
-      .map((event) => event.realityId)
-  );
-  const subjectIds = new Set(
-    visibleEvents
-      .filter((event) => event.type === "subject.entered" || event.type === "subject.started")
-      .map((event) => {
-        const metadata = event.payload.metadata;
-        return event.payload.subjectId
-          ?? (metadata !== null && typeof metadata === "object" && "subjectId" in metadata
-            ? metadata.subjectId
-            : undefined);
-      })
-      .filter((id): id is string => typeof id === "string")
-  );
-  const surfacedProposals = new Set(
-    visibleEvents
-      .filter((event) => event.type === "uncertainty.discovered")
-      .map((event) => event.payload.proposal)
-      .filter((title): title is string => typeof title === "string")
-  );
-
-  return realities
-    .filter((reality) => created.has(reality.id) || new Date(reality.createdAt).getTime() <= cutoff)
-    .map((reality) => {
-      const realityEvents = visibleEvents.filter((event) => event.realityId === reality.id);
-      const lastEvent = realityEvents.at(-1);
-      const hasMemory = realityEvents.some((event) =>
-        event.type === "memory.returned"
-        || event.type === "memory.verified"
-        || event.type === "memory.quarantined"
-      );
-      const returnedSubjectIds = new Set(
-        realityEvents
-          .filter((event) => event.type === "subject.returned" || event.type === "subject.completed")
-          .map((event) => {
-            const metadata = event.payload.metadata;
-            return event.payload.subjectId
-              ?? (metadata !== null && typeof metadata === "object" && "subjectId" in metadata
-                ? metadata.subjectId
-                : undefined);
-          })
-          .filter((id): id is string => typeof id === "string")
-      );
-      const threadBound = realityEvents.some((event) => {
-        if (event.type === "codex.thread.bound") return true;
-        const metadata = event.payload.metadata;
-        return event.type === "codex.progress"
-          && metadata !== null
-          && typeof metadata === "object"
-          && "threadId" in metadata;
-      });
-      const anchors = reality.anchors.map((anchor) => {
-        const result = realityEvents.slice().reverse().find((event) =>
-          (event.type === "anchor.passed" || event.type === "anchor.failed")
-          && event.payload.anchorId === anchor.id
-        );
-        return {
-          ...anchor,
-          status: result?.type === "anchor.passed"
-            ? "passed" as const
-            : result?.type === "anchor.failed"
-              ? "failed" as const
-              : "pending" as const,
-          output: result ? anchor.output : undefined
-        };
-      });
-      const proposals = reality.proposals
-        .filter((proposal) => surfacedProposals.has(proposal.title))
-        .map((proposal) => {
-          const child = realities.find((candidate) =>
-            candidate.parentId === reality.id
-            && (candidate.name === proposal.title || candidate.premise === proposal.premise)
-          );
-          const childCreated = child && visibleEvents.some((event) =>
-            event.type === "dream.created" && event.realityId === child.id
-          );
-          const childReturned = child && visibleEvents.some((event) =>
-            event.realityId === child.id
-            && (event.type === "memory.returned" || event.type === "memory.quarantined")
-          );
-          const deferred = visibleEvents.some((event) =>
-            event.type === "uncertainty.deferred"
-            && (event.payload.proposalId === proposal.id || event.payload.title === proposal.title)
-          );
-          return {
-            ...proposal,
-            status: deferred
-              ? "deferred" as const
-              : childReturned
-                ? "resolved" as const
-                : childCreated
-                  ? "dreaming" as const
-                  : "open" as const
-          };
-        });
-      const implementationState = realityEvents.some((event) => event.type === "synthesis.completed")
-        ? reality.worldState.implementationState
-        : realityEvents.some((event) => event.type === "intervention.contained")
-          ? "Adversarial intervention contained"
-          : realityEvents.some((event) => event.type === "memory.returned")
-            ? "Validated memory returned"
-            : realityEvents.some((event) => event.type === "intervention.sealed")
-              ? "Adversarial intervention sealed"
-              : realityEvents.some((event) => event.type === "inspection.completed")
-                ? "Codex inspection complete"
-                : realityEvents.some((event) => event.type === "codex.progress")
-                  ? "Codex inspection in progress"
-                  : reality.kind === "waking"
-                    ? "Reality baseline preserved"
-                    : "Parent baseline isolated";
-      const status: Reality["status"] = realityEvents.some((event) => event.type === "reality.stabilised")
-        ? "stabilised"
-        : hasMemory
-          ? "kicked"
-          : realityEvents.some((event) => event.type === "kick.triggered")
-            ? "waking"
-            : reality.kind === "dream" || realityEvents.some((event) => event.type === "inspection.completed")
-              ? "exploring"
-              : "forming";
-      return {
-        ...reality,
-        status,
-        worldState: {
-          ...reality.worldState,
-          simulatedMinutes: lastEvent?.dreamTime ?? 0,
-          currentFocus: lastEvent?.summary ?? "Establishing the world",
-          summary: lastEvent?.summary ?? reality.premise,
-          status: statusLabel(status),
-          implementationState
-        },
-        evidence: reality.evidence.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
-        beliefs: reality.beliefs.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
-        proposals,
-        subjects: reality.subjects
-          .filter((subject) => subjectIds.has(subject.id))
-          .map((subject) => ({
-            ...subject,
-            status: returnedSubjectIds.has(subject.id) ? "returned" as const : "entered" as const
-          })),
-        anchors,
-        wakeReport: realityEvents.some((event) => event.type === "memory.returned")
-          ? reality.wakeReport
-          : undefined,
-        codexThreadId: threadBound ? reality.codexThreadId : undefined
-      };
-    });
-}
-
 function replayPhase(events: RealityEvent[], realities: Reality[]): number {
   let phase = 0;
   for (const event of events) {
@@ -880,6 +735,13 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
   onSelect: (id: string) => void;
 }) {
   const [collapsedBranchIds, setCollapsedBranchIds] = useState<Set<string>>(() => new Set());
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const panState = useRef<{
+    pointerId: number;
+    clientX: number;
+    scrollLeft: number;
+  } | null>(null);
+  const [panning, setPanning] = useState(false);
   const realityIds = useMemo(() => new Set(realities.map((reality) => reality.id)), [realities]);
   useEffect(() => {
     setCollapsedBranchIds((current) => {
@@ -902,11 +764,52 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
   const collapsed = visibleRealities.length === 1 && visibleRealities[0]?.status === "stabilised";
   const layout = useMemo(() => layoutRealityTree(visibleRealities), [visibleRealities]);
   const viewportHeight = Math.min(560, layout.height);
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const position = selectedId ? layout.positions.get(selectedId) : undefined;
+    if (!viewport || !position) return;
+    const left = Math.max(0, Math.min(
+      viewport.scrollWidth - viewport.clientWidth,
+      position.x - viewport.clientWidth / 2
+    ));
+    viewport.scrollTo({ left, behavior: "smooth" });
+  }, [layout, selectedId]);
+  const beginPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || (event.target as Element).closest("button, a, input")) return;
+    panState.current = {
+      pointerId: event.pointerId,
+      clientX: event.clientX,
+      scrollLeft: event.currentTarget.scrollLeft
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setPanning(true);
+  };
+  const movePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const state = panState.current;
+    if (!state || state.pointerId !== event.pointerId) return;
+    event.currentTarget.scrollLeft = state.scrollLeft - (event.clientX - state.clientX);
+    event.preventDefault();
+  };
+  const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (panState.current?.pointerId !== event.pointerId) return;
+    panState.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setPanning(false);
+  };
   return (
     <div
-      className={`reality-map ${collapsed ? "is-collapsed" : ""}`}
+      ref={viewportRef}
+      className={`reality-map ${collapsed ? "is-collapsed" : ""} ${panning ? "is-panning" : ""}`}
       data-testid="reality-graph"
       style={{ height: viewportHeight }}
+      onPointerDown={beginPan}
+      onPointerMove={movePan}
+      onPointerUp={endPan}
+      onPointerCancel={endPan}
+      role="region"
+      aria-label="Reality topology. Scroll horizontally or drag the background to pan."
     >
       <div
         className="reality-graph-canvas"
@@ -2240,14 +2143,25 @@ function adaptiveReplayDelay(event: RealityEvent | undefined): number {
   return 700;
 }
 
-export function RealityTimeline({ events, realities, index, now, onChange }: {
+export function RealityTimeline({
+  events,
+  realities,
+  index,
+  now,
+  replayIncomplete = false,
+  onPrepareReplay,
+  onChange
+}: {
   events: RealityEvent[];
   realities: Reality[];
   index: number | null;
   now: number;
+  replayIncomplete?: boolean;
+  onPrepareReplay?: () => Promise<RealityEvent[]>;
   onChange: (index: number | null) => void;
 }) {
   const [playing, setPlaying] = useState(false);
+  const [preparing, setPreparing] = useState(false);
   const [inspectedEventId, setInspectedEventId] = useState<string | null>(null);
   const milestoneIndexes = events.reduce<number[]>((indexes, event, eventIndex) => {
     if (isTimelineMilestone(event)) indexes.push(eventIndex);
@@ -2280,16 +2194,35 @@ export function RealityTimeline({ events, realities, index, now, onChange }: {
     return () => window.clearTimeout(timer);
   }, [maximum, onChange, playing, position, selected]);
 
-  const togglePlayback = () => {
+  const prepareReplay = async (): Promise<RealityEvent[]> => {
+    if (!replayIncomplete || !onPrepareReplay) return events;
+    setPreparing(true);
+    try {
+      return await onPrepareReplay();
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  const togglePlayback = async () => {
     if (playing) {
       setPlaying(false);
       return;
     }
     setInspectedEventId(null);
-    if (index === null || position >= maximum) {
-      onChange(milestoneIndexes[0] ?? 0);
+    try {
+      const replayEvents = await prepareReplay();
+      const replayMilestones = replayEvents.reduce<number[]>((indexes, event, eventIndex) => {
+        if (isTimelineMilestone(event)) indexes.push(eventIndex);
+        return indexes;
+      }, []);
+      if (index === null || position >= maximum || replayIncomplete) {
+        onChange(replayMilestones[0] ?? 0);
+      }
+      setPlaying(true);
+    } catch {
+      setPlaying(false);
     }
-    setPlaying(true);
   };
 
   return (
@@ -2319,11 +2252,24 @@ export function RealityTimeline({ events, realities, index, now, onChange }: {
         min={0}
         max={maximum}
         value={position}
-        disabled={milestoneIndexes.length < 2}
+        disabled={milestoneIndexes.length < 2 || preparing}
         onChange={(event) => {
           setPlaying(false);
           setInspectedEventId(null);
-          onChange(milestoneIndexes[Number(event.target.value)] ?? 0);
+          const requestedPosition = Number(event.target.value);
+          if (!replayIncomplete) {
+            onChange(milestoneIndexes[requestedPosition] ?? 0);
+            return;
+          }
+          void prepareReplay().then((replayEvents) => {
+            const replayMilestones = replayEvents.reduce<number[]>((indexes, entry, eventIndex) => {
+              if (isTimelineMilestone(entry)) indexes.push(eventIndex);
+              return indexes;
+            }, []);
+            const ratio = maximum > 0 ? requestedPosition / maximum : 0;
+            const replayPosition = Math.round(ratio * Math.max(0, replayMilestones.length - 1));
+            onChange(replayMilestones[replayPosition] ?? 0);
+          }).catch(() => undefined);
         }}
         aria-label="Replay Reality timeline"
       />
@@ -2333,12 +2279,16 @@ export function RealityTimeline({ events, realities, index, now, onChange }: {
       <button
         type="button"
         className="timeline-play"
-        onClick={togglePlayback}
-        disabled={milestoneIndexes.length < 2}
-        aria-label={playing ? "Pause adaptive timeline replay" : "Play adaptive timeline replay"}
+        onClick={() => void togglePlayback()}
+        disabled={milestoneIndexes.length < 2 || preparing}
+        aria-label={preparing
+          ? "Preparing complete timeline replay"
+          : playing
+            ? "Pause adaptive timeline replay"
+            : "Play adaptive timeline replay"}
       >
         {playing ? <Pause size={13} /> : <Play size={13} />}
-        {playing ? "Pause" : "Play"}
+        {preparing ? "Preparing" : playing ? "Pause" : "Play"}
       </button>
       <button type="button" onClick={() => {
         setPlaying(false);
@@ -2692,8 +2642,6 @@ export function RealityWorkspace({
   const finalBelief = root?.beliefs.at(-1);
   const dreamCount = realities.filter((reality) => reality.depth > 0).length;
   const hiddenRealityCount = realities.length - graphRealities.length;
-  const topologyNeedsWideLayout = graphRealities.length >= 7
-    || graphRealities.some((reality) => reality.depth >= 3);
   const childCounts = new Map<string, number>();
   for (const reality of realities) {
     if (!reality.parentId) continue;
@@ -2735,7 +2683,7 @@ export function RealityWorkspace({
   return (
     <div className="reality-workspace" data-testid="reality-workspace">
       <section
-        className={`topology-workspace workspace-band workspace-band-topology ${topologyNeedsWideLayout ? "is-expanded-topology" : ""}`}
+        className="topology-workspace workspace-band workspace-band-topology"
         id="reality-topology"
         tabIndex={-1}
       >

@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import {
   DEMO_VIDEO_SCENARIOS,
   exportedEvents,
-  matchingEvent
+  matchingEvent,
+  subtitleEntries
 } from "./demo-video-cues.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,60 +40,8 @@ ${cue.text}`).join("\n\n")}
 `;
 }
 
-function splitSubtitleText(text) {
-  const sentences = text.split(/(?<=[!?])\s+|(?<=\.)\s+(?=[A-Z])/);
-  return sentences.flatMap((sentence) => {
-    const words = sentence.trim().split(/\s+/);
-    const chunkCount = Math.max(1, Math.ceil(sentence.length / 70));
-    const chunkSize = Math.ceil(words.length / chunkCount);
-    return Array.from({ length: chunkCount }, (_, index) =>
-      words.slice(index * chunkSize, (index + 1) * chunkSize).join(" ")
-    ).filter(Boolean);
-  });
-}
-
-function wrapSubtitle(text, width = 42) {
-  const words = text.split(/\s+/);
-  const lines = [];
-  let current = "";
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (candidate.length > width && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.join("\n");
-}
-
 function subtitles(scenario) {
-  const entries = [];
-  for (const cue of scenario.voiceCues) {
-    const segments = splitSubtitleText(cue.text);
-    const weights = segments.map((segment) => segment.split(/\s+/).length);
-    const totalWeight = weights.reduce((total, weight) => total + weight, 0);
-    let elapsedWeight = 0;
-    for (const [index, segment] of segments.entries()) {
-      const startMs = cue.startMs + Math.round(
-        ((cue.endMs - cue.startMs) * elapsedWeight) / totalWeight
-      );
-      elapsedWeight += weights[index];
-      const endMs = index === segments.length - 1
-        ? cue.endMs
-        : cue.startMs + Math.round(
-            ((cue.endMs - cue.startMs) * elapsedWeight) / totalWeight
-          );
-      const wrapped = wrapSubtitle(segment);
-      const lines = wrapped.split("\n");
-      if (lines.length > 2 || lines.some((line) => line.length > 42)) {
-        throw new Error(`Subtitle segment exceeds the two-line safe area: ${segment}`);
-      }
-      entries.push({ startMs, endMs, text: wrapped });
-    }
-  }
+  const entries = subtitleEntries(scenario);
   return entries.map((entry, index) => `${index + 1}
 ${timestamp(entry.startMs)} --> ${timestamp(entry.endMs)}
 ${entry.text}

@@ -1030,6 +1030,49 @@ function MissionRunView({
     }
   };
 
+  const loadCompleteReplayHistory = async (): Promise<RealityEvent[]> => {
+    if (!hasMoreEvents) return run.events;
+    const earliest = run.events[0];
+    if (!earliest) return run.events;
+    setLoadingMoreEvents(true);
+    setError(null);
+    try {
+      const merged = new Map(run.events.map((event) => [event.id, event]));
+      let before: string | null = `${earliest.occurredAt}|${earliest.id}`;
+      for (let page = 0; before && page < 200; page += 1) {
+        const response: Response = await fetch(
+          `/api/missions/${encodeURIComponent(run.id)}/events?limit=500&before=${encodeURIComponent(before)}`,
+          { cache: "no-store" }
+        );
+        const body: {
+          events?: RealityEvent[];
+          nextCursor?: string | null;
+          error?: string;
+        } = await readJson(response, "Complete Reality history could not be prepared for replay.");
+        if (!response.ok) {
+          throw new Error(body.error ?? "Complete Reality history could not be prepared for replay.");
+        }
+        for (const event of body.events ?? []) merged.set(event.id, event);
+        before = body.nextCursor ?? null;
+      }
+      if (before) throw new Error("Reality history exceeded the bounded replay pagination limit.");
+      const complete = [...merged.values()].sort((left, right) =>
+        left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id)
+      );
+      if (complete.length !== totalEvents) {
+        throw new Error(`Replay loaded ${complete.length} of ${totalEvents} persisted events.`);
+      }
+      onAppendEvents(complete);
+      setHasMoreEvents(false);
+      return complete;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      throw cause;
+    } finally {
+      setLoadingMoreEvents(false);
+    }
+  };
+
   const replayedRealities = useMemo(
     () => replayRealities(run.realities, run.events, timelineIndex),
     [run.events, run.realities, timelineIndex]
@@ -1196,6 +1239,8 @@ function MissionRunView({
         realities={run.realities}
         index={timelineIndex}
         now={now}
+        replayIncomplete={hasMoreEvents}
+        onPrepareReplay={loadCompleteReplayHistory}
         onChange={(index) => {
           setTimelineIndex(index);
           if (index !== null) {

@@ -147,12 +147,14 @@ includes sentence-level SRT subtitles. Both end at `02:58`. Their exact shared
 timing source also drives an optional Playwright actor:
 
 ```bash
-npm run demo:video -- --scenario vampi
-npm run demo:video -- --scenario password-reset
+npm run demo:video -- --scenario vampi --record-dir artifacts/vampi-video
+npm run demo:video -- --scenario password-reset --record-dir artifacts/password-reset-video
 ```
 
-See [Demo Video Packages](./demo/README.md) for rehearsal, silent video capture,
-fast timing validation, and acceptance criteria.
+The recorder renders captions and browser actions from one cue clock, then
+produces a frame-trimmed H.264 master, SRT sidecar, and action-drift report. See
+[Demo Video Packages](./demo/README.md) for optional narration muxing, fast
+timing validation, and acceptance criteria.
 
 ### Required Evidence Shots
 

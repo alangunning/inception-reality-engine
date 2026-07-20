@@ -9,6 +9,182 @@ import type {
   RegressionResult
 } from "@inception/domain";
 
+function replayStatusLabel(status: Reality["status"]): string {
+  const labels: Record<Reality["status"], string> = {
+    forming: "Creating",
+    exploring: "Exploring",
+    waking: "Returning memory",
+    kicked: "Memory returned",
+    stabilised: "Reality stabilised"
+  };
+  return labels[status];
+}
+
+function eventSubjectId(event: RealityEvent): string | undefined {
+  if (typeof event.payload.subjectId === "string") return event.payload.subjectId;
+  const metadata = event.payload.metadata;
+  return metadata !== null
+    && typeof metadata === "object"
+    && "subjectId" in metadata
+    && typeof metadata.subjectId === "string"
+    ? metadata.subjectId
+    : undefined;
+}
+
+export function replayRealities(
+  realities: Reality[],
+  events: RealityEvent[],
+  timelineIndex: number | null
+): Reality[] {
+  if (timelineIndex === null || !events.length) return realities;
+  const visibleEvents = events.slice(0, timelineIndex + 1);
+  const cutoff = new Date(visibleEvents.at(-1)?.occurredAt ?? 0).getTime();
+  const trackedCreationIds = new Set(
+    events
+      .filter((event) => event.type === "reality.created" || event.type === "dream.created")
+      .map((event) => event.realityId)
+  );
+  const visibleCreationIds = new Set(
+    visibleEvents
+      .filter((event) => event.type === "reality.created" || event.type === "dream.created")
+      .map((event) => event.realityId)
+  );
+  const subjectIds = new Set(
+    visibleEvents
+      .filter((event) => event.type === "subject.entered" || event.type === "subject.started")
+      .map(eventSubjectId)
+      .filter((id): id is string => typeof id === "string")
+  );
+  const surfacedProposals = new Set(
+    visibleEvents
+      .filter((event) => event.type === "uncertainty.discovered")
+      .map((event) => event.payload.proposal)
+      .filter((title): title is string => typeof title === "string")
+  );
+
+  return realities
+    .filter((reality) => visibleCreationIds.has(reality.id)
+      || (!trackedCreationIds.has(reality.id)
+        && new Date(reality.createdAt).getTime() <= cutoff))
+    .map((reality) => {
+      const realityEvents = visibleEvents.filter((event) => event.realityId === reality.id);
+      const lastEvent = realityEvents.at(-1);
+      const hasMemory = realityEvents.some((event) =>
+        event.type === "memory.returned"
+        || event.type === "memory.verified"
+        || event.type === "memory.quarantined"
+      );
+      const returnedSubjectIds = new Set(
+        realityEvents
+          .filter((event) => event.type === "subject.returned" || event.type === "subject.completed")
+          .map(eventSubjectId)
+          .filter((id): id is string => typeof id === "string")
+      );
+      const threadBound = realityEvents.some((event) => {
+        if (event.type === "codex.thread.bound") return true;
+        const metadata = event.payload.metadata;
+        return event.type === "codex.progress"
+          && metadata !== null
+          && typeof metadata === "object"
+          && "threadId" in metadata;
+      });
+      const anchors = reality.anchors.map((anchor) => {
+        const result = realityEvents.slice().reverse().find((event) =>
+          (event.type === "anchor.passed" || event.type === "anchor.failed")
+          && event.payload.anchorId === anchor.id
+        );
+        return {
+          ...anchor,
+          status: result?.type === "anchor.passed"
+            ? "passed" as const
+            : result?.type === "anchor.failed"
+              ? "failed" as const
+              : "pending" as const,
+          output: result ? anchor.output : undefined
+        };
+      });
+      const proposals = reality.proposals
+        .filter((proposal) => surfacedProposals.has(proposal.title))
+        .map((proposal) => {
+          const child = realities.find((candidate) =>
+            candidate.parentId === reality.id
+            && (candidate.name === proposal.title || candidate.premise === proposal.premise)
+          );
+          const childCreated = child && visibleEvents.some((event) =>
+            event.type === "dream.created" && event.realityId === child.id
+          );
+          const childReturned = child && visibleEvents.some((event) =>
+            event.realityId === child.id
+            && (event.type === "memory.returned" || event.type === "memory.quarantined")
+          );
+          const deferred = visibleEvents.some((event) =>
+            event.type === "uncertainty.deferred"
+            && (event.payload.proposalId === proposal.id || event.payload.title === proposal.title)
+          );
+          return {
+            ...proposal,
+            status: deferred
+              ? "deferred" as const
+              : childReturned
+                ? "resolved" as const
+                : childCreated
+                  ? "dreaming" as const
+                  : "open" as const
+          };
+        });
+      const implementationState = realityEvents.some((event) => event.type === "synthesis.completed")
+        ? reality.worldState.implementationState
+        : realityEvents.some((event) => event.type === "intervention.contained")
+          ? "Adversarial intervention contained"
+          : realityEvents.some((event) => event.type === "memory.returned")
+            ? "Validated memory returned"
+            : realityEvents.some((event) => event.type === "intervention.sealed")
+              ? "Adversarial intervention sealed"
+              : realityEvents.some((event) => event.type === "inspection.completed")
+                ? "Codex inspection complete"
+                : realityEvents.some((event) => event.type === "codex.progress")
+                  ? "Codex inspection in progress"
+                  : reality.kind === "waking"
+                    ? "Reality baseline preserved"
+                    : "Parent baseline isolated";
+      const status: Reality["status"] = realityEvents.some((event) => event.type === "reality.stabilised")
+        ? "stabilised"
+        : hasMemory
+          ? "kicked"
+          : realityEvents.some((event) => event.type === "kick.triggered")
+            ? "waking"
+            : reality.kind === "dream" || realityEvents.some((event) => event.type === "inspection.completed")
+              ? "exploring"
+              : "forming";
+      return {
+        ...reality,
+        status,
+        worldState: {
+          ...reality.worldState,
+          simulatedMinutes: lastEvent?.dreamTime ?? 0,
+          currentFocus: lastEvent?.summary ?? "Establishing the world",
+          summary: lastEvent?.summary ?? reality.premise,
+          status: replayStatusLabel(status),
+          implementationState
+        },
+        evidence: reality.evidence.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
+        beliefs: reality.beliefs.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
+        proposals,
+        subjects: reality.subjects
+          .filter((subject) => subjectIds.has(subject.id))
+          .map((subject) => ({
+            ...subject,
+            status: returnedSubjectIds.has(subject.id) ? "returned" as const : "entered" as const
+          })),
+        anchors,
+        wakeReport: realityEvents.some((event) => event.type === "memory.returned")
+          ? reality.wakeReport
+          : undefined,
+        codexThreadId: threadBound ? reality.codexThreadId : undefined
+      };
+    });
+}
+
 function eventMatchesIntervention(
   event: RealityEvent,
   intervention: AdversarialInterventionLedger

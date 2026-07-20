@@ -22,6 +22,8 @@
     "demo:video": "node scripts/run-demo-video.mjs",
     "demo:video:assets": "node scripts/generate-demo-video-assets.mjs",
     "demo:video:check": "node scripts/generate-demo-video-assets.mjs --check",
+    "demo:exports": "node scripts/export-demo-runs.mjs",
+    "demo:exports:check": "node scripts/export-demo-runs.mjs --check",
     "typecheck": "npm run typegen -w @inception/web && tsc -p tsconfig.json --noEmit",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",

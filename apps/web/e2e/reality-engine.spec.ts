@@ -1506,7 +1506,7 @@ test("General Missions use the same explicit Dream proposal gate as the Demo Mis
   await expect(gate).toHaveCount(0);
 });
 
-test("dense depth-three topology claims the full band and keeps the inspector below it", async ({ page }, testInfo) => {
+test("dense depth-three topology pans beside a fixed world inspector", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "Desktop verifies the dense topology breakpoint.");
   const fixture = missionSnapshotFixture();
   const realities = fixture.run.realities as Array<Record<string, unknown>>;
@@ -1585,7 +1585,7 @@ test("dense depth-three topology claims the full band and keeps the inspector be
 
   await page.goto("/missions/mission-1");
   const topology = page.locator(".topology-workspace");
-  await expect(topology).toHaveClass(/is-expanded-topology/);
+  await expect(topology).not.toHaveClass(/is-expanded-topology/);
   await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(7);
   const geometry = await topology.evaluate((section) => {
     const map = section.querySelector<HTMLElement>(".map-section")!;
@@ -1593,14 +1593,21 @@ test("dense depth-three topology claims the full band and keeps the inspector be
     const inspector = section.querySelector<HTMLElement>(".world-inspector")!;
     const sectionRect = section.getBoundingClientRect();
     const mapRect = map.getBoundingClientRect();
+    const graphRect = graph.getBoundingClientRect();
     const inspectorRect = inspector.getBoundingClientRect();
     const inspectorIntersections = [...graph.querySelectorAll<HTMLElement>(".reality-node")]
       .filter((node) => {
         const nodeRect = node.getBoundingClientRect();
-        return nodeRect.right > inspectorRect.left
-          && nodeRect.left < inspectorRect.right
-          && nodeRect.bottom > inspectorRect.top
-          && nodeRect.top < inspectorRect.bottom;
+        const visibleLeft = Math.max(nodeRect.left, graphRect.left);
+        const visibleRight = Math.min(nodeRect.right, graphRect.right);
+        const visibleTop = Math.max(nodeRect.top, graphRect.top);
+        const visibleBottom = Math.min(nodeRect.bottom, graphRect.bottom);
+        return visibleRight > visibleLeft
+          && visibleBottom > visibleTop
+          && visibleRight > inspectorRect.left
+          && visibleLeft < inspectorRect.right
+          && visibleBottom > inspectorRect.top
+          && visibleTop < inspectorRect.bottom;
       }).length;
     const graphItems = [...graph.querySelectorAll<HTMLElement>(
       ".reality-node-main, .graph-subject"
@@ -1661,7 +1668,9 @@ test("dense depth-three topology claims the full band and keeps the inspector be
     return {
       sectionWidth: sectionRect.width,
       mapWidth: mapRect.width,
+      mapRight: mapRect.right,
       mapBottom: mapRect.bottom,
+      inspectorLeft: inspectorRect.left,
       inspectorTop: inspectorRect.top,
       graphClientWidth: graph.clientWidth,
       graphScrollWidth: graph.scrollWidth,
@@ -1676,9 +1685,10 @@ test("dense depth-three topology claims the full band and keeps the inspector be
       subjectOwnershipErrors
     };
   });
-  expect(geometry.mapWidth).toBeGreaterThanOrEqual(geometry.sectionWidth - 2);
-  expect(geometry.inspectorTop).toBeGreaterThanOrEqual(geometry.mapBottom - 1);
-  expect(geometry.graphClientWidth).toBeGreaterThanOrEqual(geometry.graphScrollWidth);
+  expect(geometry.mapWidth).toBeLessThan(geometry.sectionWidth);
+  expect(Math.abs(geometry.inspectorLeft - geometry.mapRight)).toBeLessThan(2);
+  expect(geometry.inspectorTop).toBeLessThan(geometry.mapBottom);
+  expect(geometry.graphClientWidth).toBeLessThan(geometry.graphScrollWidth);
   expect(geometry.inspectorIntersections).toBe(0);
   expect(geometry.graphItemIntersections).toBe(0);
   expect(Math.abs(geometry.tabsRight - geometry.inspectorBodyRight)).toBeLessThan(2);
@@ -1687,6 +1697,14 @@ test("dense depth-three topology claims the full band and keeps the inspector be
   expect(geometry.edgeEndpointErrors.length).toBe(6);
   expect(geometry.edgeEndpointErrors.every((error) => error.start < 2 && error.end < 2)).toBe(true);
   expect(geometry.subjectOwnershipErrors).toBe(0);
+  const graph = page.getByTestId("reality-graph");
+  const graphBox = await graph.boundingBox();
+  expect(graphBox).not.toBeNull();
+  await page.mouse.move(graphBox!.x + graphBox!.width - 30, graphBox!.y + 24);
+  await page.mouse.down();
+  await page.mouse.move(graphBox!.x + 80, graphBox!.y + 24, { steps: 8 });
+  await page.mouse.up();
+  expect(await graph.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   await expect(topology).toHaveScreenshot("dense-topology.png", {
     animations: "disabled"
   });
@@ -2001,7 +2019,7 @@ test("an Adversarial Subject is visibly contained before its Memory ascends", as
     },
     occurredAt: containedAt
   });
-  fixture.run.eventCount += 1;
+  fixture.run.eventCount = fixture.run.events.length;
 
   await page.route("**/api/missions/events?**", (route) => route.fulfill({
     status: 200,

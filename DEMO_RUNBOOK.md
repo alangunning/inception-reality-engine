@@ -81,6 +81,18 @@ Before any reset, download **Export current run** from Admin. The repository
 keeps a credential-redacted reference export at
 [examples/run-exports/password-reset-real-stabilised-2026-07-20.json](./examples/run-exports/password-reset-real-stabilised-2026-07-20.json).
 
+For the preserved reference runs already loaded locally, regenerate all four
+sanitized fixtures and verify that they match the live state with:
+
+```bash
+npm run demo:exports
+npm run demo:exports:check
+```
+
+The exporter refuses incomplete or fractured runs, replaces repository and home
+paths with `$REPO_ROOT` and `$HOME`, redacts bearer-like values, and never resets
+the database or worktrees.
+
 The local Prisma database and `.inception/worktrees` are ignored runtime state.
 A fresh clone starts clean. Do not commit authentication, `.env`, the runtime
 database, or `.inception/codex-home`.
@@ -108,9 +120,16 @@ The optional synchronized Playwright actor performs the exact scrolls and
 interactions without starting Codex or mutating the run:
 
 ```bash
-npm run demo:video -- --scenario vampi
-npm run demo:video -- --scenario password-reset
+npm run demo:video -- --scenario vampi --record-dir artifacts/vampi-video
+npm run demo:video -- --scenario password-reset --record-dir artifacts/password-reset-video
 ```
+
+Each command produces a captioned H.264 master, matching SRT sidecar, and JSON
+timing report from one shared cue clock. For the submission narration, record a
+178-second track from the package's `VOICE_TRANSCRIPT.md`, then rerun with
+`--audio narration.wav`; the runner rejects a mismatched duration instead of
+silently desynchronizing it. An accelerated `--speed 5` capture is appropriate
+for QA only, not the submitted cut.
 
 Never show credentials, raw model output, raw Subject messages, or hidden
 reasoning. Validate the generated narration and subtitles with

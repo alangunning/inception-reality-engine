@@ -150,6 +150,7 @@ export const DEMO_VIDEO_SCENARIOS = {
     actions: [
       { atMs: 0, label: "Open on the completed VAmPI outcome", kind: "scroll-top" },
       { atMs: 17_000, label: "Show all fifteen Reality nodes", kind: "scroll", selector: "#reality-topology" },
+      { atMs: 22_000, label: "Pan across the complete Reality topology", kind: "pan-graph", position: "end" },
       { atMs: 28_000, label: "Rewind the graph to ROOT", kind: "timeline-event", match: { type: "reality.created" }, scrollTo: "#reality-topology" },
       { atMs: 38_000, label: "Open the real GPT-5.6 execution evidence", kind: "timeline-event", match: { type: "codex.progress", metadataStage: "model" } },
       { atMs: 40_000, label: "Inspect the selected model milestone", kind: "inspect-timeline" },
@@ -159,7 +160,8 @@ export const DEMO_VIDEO_SCENARIOS = {
       { atMs: 78_000, label: "Show Mal as a native Subject", kind: "timeline-event", match: { type: "subject.started", summaryIncludes: "Mal" }, scrollTo: "#reality-topology" },
       { atMs: 81_000, label: "Inspect Mal's native Subject thread", kind: "inspect-timeline" },
       { atMs: 94_000, label: "Close Subject evidence", kind: "close-event" },
-      { atMs: 96_000, label: "Expand replay to the complete depth-three graph", kind: "timeline-event", match: { type: "dream.created", summaryIncludes: "Fail-closed identity and role matrix" }, scrollTo: "#reality-topology" },
+      { atMs: 96_000, label: "Expand replay to the complete depth-three graph and its Subjects", kind: "timeline-event", match: { type: "subject.started", summaryIncludes: "Eames", occurrence: "last" }, scrollTo: "#reality-topology" },
+      { atMs: 98_000, label: "Pan to the Level 3 Dreams and their Subjects", kind: "pan-graph", position: "end" },
       { atMs: 103_000, label: "Show the planted fault contained", kind: "timeline-event", match: { type: "intervention.contained" }, scrollTo: "#reality-integrity" },
       { atMs: 124_000, label: "Show late-stage Memory ascent", kind: "timeline-event", match: { type: "memory.returned", summaryIncludes: "Encode owned-book lookup" }, scrollTo: "#reality-memory-ascent" },
       { atMs: 133_000, label: "Show the final sibling Reality Mirror", kind: "timeline-event", match: { type: "reflection.created", occurrence: "last" }, scrollTo: "#reality-reflection" },
@@ -172,6 +174,63 @@ export const DEMO_VIDEO_SCENARIOS = {
     ]
   }
 };
+
+export function splitSubtitleText(text) {
+  const sentences = text.split(/(?<=[!?])\s+|(?<=\.)\s+(?=[A-Z])/);
+  return sentences.flatMap((sentence) => {
+    const words = sentence.trim().split(/\s+/);
+    const chunkCount = Math.max(1, Math.ceil(sentence.length / 70));
+    const chunkSize = Math.ceil(words.length / chunkCount);
+    return Array.from({ length: chunkCount }, (_, index) =>
+      words.slice(index * chunkSize, (index + 1) * chunkSize).join(" ")
+    ).filter(Boolean);
+  });
+}
+
+export function wrapSubtitle(text, width = 42) {
+  const words = text.split(/\s+/);
+  const lines = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (candidate.length > width && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.join("\n");
+}
+
+export function subtitleEntries(scenario) {
+  const entries = [];
+  for (const cue of scenario.voiceCues) {
+    const segments = splitSubtitleText(cue.text);
+    const weights = segments.map((segment) => segment.split(/\s+/).length);
+    const totalWeight = weights.reduce((total, weight) => total + weight, 0);
+    let elapsedWeight = 0;
+    for (const [index, segment] of segments.entries()) {
+      const startMs = cue.startMs + Math.round(
+        ((cue.endMs - cue.startMs) * elapsedWeight) / totalWeight
+      );
+      elapsedWeight += weights[index];
+      const endMs = index === segments.length - 1
+        ? cue.endMs
+        : cue.startMs + Math.round(
+            ((cue.endMs - cue.startMs) * elapsedWeight) / totalWeight
+          );
+      const wrapped = wrapSubtitle(segment);
+      const lines = wrapped.split("\n");
+      if (lines.length > 2 || lines.some((line) => line.length > 42)) {
+        throw new Error(`Subtitle segment exceeds the two-line safe area: ${segment}`);
+      }
+      entries.push({ startMs, endMs, text: wrapped });
+    }
+  }
+  return entries;
+}
 
 export function eventMetadata(event) {
   const payloadMetadata = event?.payload?.metadata;

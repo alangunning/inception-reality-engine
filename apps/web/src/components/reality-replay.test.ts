@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import type {
   AdversarialInterventionLedger,
@@ -17,6 +19,7 @@ import {
   replayInterventions,
   replayMemoryIntegrity,
   replayOutcome,
+  replayRealities,
   replayReflections,
   replayRegressionResult
 } from "./replay-projection";
@@ -40,6 +43,57 @@ const event = (
 });
 
 describe("Reality timeline projection", () => {
+  it("replays the preserved VAmPI topology and Subjects only after their causal events", () => {
+    const fixturePath = fileURLToPath(new URL(
+      "../../../../examples/run-exports/vampi-real-mission-history-2026-07-20.json",
+      import.meta.url
+    ));
+    const history = JSON.parse(readFileSync(fixturePath, "utf8")) as {
+      snapshot: { run: { realities: Reality[]; events: RealityEvent[] } };
+    };
+    const { realities, events } = history.snapshot.run;
+    const rootEventIndex = events.findIndex((entry) => entry.type === "reality.created");
+    expect(rootEventIndex).toBeGreaterThanOrEqual(0);
+    expect(replayRealities(realities, events, rootEventIndex)).toHaveLength(1);
+
+    const createdIds = new Set<string>();
+    for (const [eventIndex, entry] of events.entries()) {
+      if (entry.type !== "reality.created" && entry.type !== "dream.created") continue;
+      createdIds.add(entry.realityId);
+      expect(replayRealities(realities, events, eventIndex).map((reality) => reality.id))
+        .toEqual(realities.filter((reality) => createdIds.has(reality.id)).map((reality) => reality.id));
+    }
+
+    for (const reality of realities.filter((entry) => entry.depth === 3)) {
+      const createdAt = events.findIndex((entry) =>
+        entry.type === "dream.created" && entry.realityId === reality.id
+      );
+      expect(replayRealities(realities, events, createdAt)
+        .find((entry) => entry.id === reality.id)?.subjects).toHaveLength(0);
+
+      const firstStarts = reality.subjects.map((subject) => events.findIndex((entry) => {
+        const metadata = entry.payload.metadata;
+        const subjectId = entry.payload.subjectId
+          ?? (metadata && typeof metadata === "object" && "subjectId" in metadata
+            ? metadata.subjectId
+            : undefined);
+        return (entry.type === "subject.started" || entry.type === "subject.entered")
+          && subjectId === subject.id;
+      }));
+      expect(firstStarts.every((index) => index > createdAt)).toBe(true);
+      const afterAllSubjectsEntered = replayRealities(
+        realities,
+        events,
+        Math.max(...firstStarts)
+      ).find((entry) => entry.id === reality.id);
+      expect(afterAllSubjectsEntered?.subjects.map((subject) => subject.id))
+        .toEqual(reality.subjects.map((subject) => subject.id));
+    }
+
+    expect(replayRealities(realities, events, events.length - 1)
+      .reduce((total, reality) => total + reality.subjects.length, 0)).toBe(44);
+  });
+
   it("counts only planted artefacts returned by the intervention Reality", () => {
     const intervention = {
       id: "ledger",
