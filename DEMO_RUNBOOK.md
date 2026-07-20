@@ -5,8 +5,10 @@
 **Authoritative script:** [OpenAI Build Week Submission](./docs/SUBMISSION.md#three-minute-video)
 
 Use this runbook to produce one trustworthy real Codex run, preserve it, and
-record the three-minute submission through adaptive replay. Docker is not part
-of the judge or recording path.
+record the three-minute submission through timeline replay. Docker is not part
+of the judge or recording path. The final video should use one of the two
+[synchronized demo packages](./docs/demo/): VAmPI for maximum technical depth,
+or password reset for the clearest measured impact story.
 
 ## 1. Preflight
 
@@ -26,8 +28,9 @@ Start full-power real mode:
 npm run judge:demo
 ```
 
-Open `http://localhost:3000/missions/password-reset`. Confirm the header shows
-`REAL CODEX`, `gpt-5.6-sol`, and the intended authentication source. Loading,
+Open `http://localhost:3000/missions`. Choose the preserved VAmPI run or the
+immutable password-reset Demo Mission. Confirm the run header shows `REAL
+CODEX`, `gpt-5.6-sol`, and the intended authentication source. Loading,
 refreshing, opening Admin, and moving the replay timeline must not start Codex.
 
 ## 2. Produce The Real Run
@@ -82,21 +85,36 @@ The local Prisma database and `.inception/worktrees` are ignored runtime state.
 A fresh clone starts clean. Do not commit authentication, `.env`, the runtime
 database, or `.inception/codex-home`.
 
+The repository also keeps the credential-redacted VAmPI snapshot and complete
+event log in [`examples/run-exports`](./examples/run-exports/). Never replace a
+known-good preserved run immediately before recording.
+
 ## 5. Record Through Replay
 
 1. Open the completed run and return the timeline to **Live**.
 2. Start the capture on the stabilised outcome and complete graph.
-3. Select **Play adaptive timeline replay**. It uses high-signal holds rather
-   than moving through every event at constant speed.
-4. During the scripted holds, open one model event, one persisted
-   Reality-thread event, one native Subject event, and the intervention reveal.
-5. Show the two depth-two sibling Dreams, Memory ascent, Totem seals, four
-   passing Anchors, measured outcome, and final diff.
-6. Cut briefly to Mission Control, then return to the stabilised graph.
+3. Follow either the
+   [VAmPI actor script](./docs/demo/vampi/ACTOR_SCRIPT.md) or the
+   [password-reset actor script](./docs/demo/password-reset/ACTOR_SCRIPT.md).
+4. Keep the matching voice-only transcript and SRT file separate from actor
+   directions when generating narration.
+5. During the scripted holds, visibly prove one model event, one persisted
+   Reality thread, one native Subject event, and intervention containment.
+6. Show Memory admission, parent-owned proof, measured outcome, and final diff
+   in the causal order specified by the chosen package.
+7. Cut briefly to Mission Control, then return to the stabilised outcome.
 
-Follow the exact 2:58 narration and shots in
-[docs/SUBMISSION.md](./docs/SUBMISSION.md#shot-and-narration-script). Never show
-credentials, raw model output, raw Subject messages, or hidden reasoning.
+The optional synchronized Playwright actor performs the exact scrolls and
+interactions without starting Codex or mutating the run:
+
+```bash
+npm run demo:video -- --scenario vampi
+npm run demo:video -- --scenario password-reset
+```
+
+Never show credentials, raw model output, raw Subject messages, or hidden
+reasoning. Validate the generated narration and subtitles with
+`npm run demo:video:check` before the final edit.
 
 ## 6. Recovery
 

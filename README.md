@@ -116,7 +116,8 @@ Playwright uses production rendering, dedicated SQLite/worktree state, and deter
 
 ## Documentation
 
-- [Submission package](./docs/SUBMISSION.md): Devpost description, exact video narration, evidence shots, judge path, and final checklist.
+- [Submission package](./docs/SUBMISSION.md): Devpost description, evidence shots, judge path, and final checklist.
+- [Demo video packages](./docs/demo/): separate actor scripts, voice-only transcripts, exact SRT captions, and synchronized Playwright cues for both preserved real runs.
 - [Product brief](./docs/PRODUCT.md): audience, problem, mental model, value, and product experience.
 - [Product terminology](./docs/TERMINOLOGY.md): canonical UX, event, diagram, and narration language.
 - [Demo runbook](./DEMO_RUNBOOK.md): clean-run preparation, live evaluation, recording setup, and recovery.

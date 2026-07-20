@@ -52,50 +52,63 @@ counterfactual runtime for coding agents.
 
 ## Project Description
 
-In Inception, an idea planted deep inside nested dreams can survive each return
-toward reality and change it. Coding agents have an analogous failure
-mode: an unsupported assumption or regression introduced deep in an agent
-workflow can influence every later plan, test, and implementation. The same
-agent context often creates the change and judges whether it is correct.
+Software agents usually investigate, edit, and validate inside one shared
+context. That creates a dangerous feedback loop: an unsupported assumption or
+regression introduced deep in an agent workflow can influence every later
+plan, test, and implementation, while the same context judges whether its own
+change is correct. Teams need the exploratory power of Codex without allowing
+one persuasive branch of work to silently become truth.
 
-I built Reality Engine to turn that metaphor into a working safety architecture
-for coding agents. Reality is the protected root repository, marked ROOT in the
-graph. A Dream is an isolated counterfactual with its own premise, persistent
-Codex SDK thread, and Git worktree. A Nested Dream explores uncertainty
-discovered one level deeper. A Subject is a bounded native Codex subagent injected into that
-world. Subjects can inspect, edit, run commands, and test at full power without
-contaminating any Reality above them.
+I built **Inception: Reality Engine**, a counterfactual runtime that lets Codex
+dream before it changes a protected repository. The product turns the familiar
+film concepts into enforceable software boundaries. **Reality** is the root
+repository and its parent-owned requirements. Every **Dream** is an isolated
+child Reality with its own premise, persistent Codex SDK thread, Git worktree,
+history, and evidence. A **Nested Dream** explores uncertainty discovered inside
+another Dream. Bounded **Subjects** are native Codex subagents that can inspect,
+edit, run commands, and test at full power only inside their assigned world.
 
-A Kick stops one Dream and proposes structured Memory to its parent: beliefs,
-evidence, invariants, safe artefacts, and remaining uncertainty. The Totem
-Check adapts the film's trust concept into an automatic integrity gate. It
-binds that Memory to its exact Git source, evidence, descendant lineage, and
-immutable parent-owned Anchors. Unsupported or planted Memory is quarantined;
-verified Memory may return upward. A Reality Mirror compares sibling Dreams,
-admits shared truth, and preserves disagreement.
+A **Kick** stops one Dream and returns a Zod-validated Wake Report containing
+belief changes, evidence, invariants, artefacts, and remaining uncertainty. The
+parent-owned **Totem Check** binds that Memory to the exact Git source state,
+evidence lineage, descendant seals, immutable **Reality Anchors**, and any
+sealed adversarial intervention. Unsupported Memory is quarantined. A
+**Reality Mirror** compares sibling Dreams, admits shared invariants, and keeps
+disagreement visible. Only verified Memory can ascend level by level; only
+proof-backed synthesis can alter Reality.
 
-The password-reset Demo Mission shows the complete flow. Codex discovers that
-per-IP limiting still permits distributed abuse and account enumeration. Two
-Nested Dreams test competing failure modes. Then Mal, an Adversarial Subject,
-performs a deliberate inception attempt: it plants one bounded
-regression deep in a child Dream while investigator Subjects remain unaware
-of what changed. At the Kick, the Totem Check compares their independent
-diagnosis with the actual Git mutation. It rolls back the planted code, excludes every
-injected file, and allows only the independent regression test to return upward.
+The focused password-reset Demo Mission proves both directions of that gate in
+four real Codex Realities. Codex finds that per-IP limiting still permits
+rotating-source abuse and account enumeration. Two sibling Nested Dreams test
+transactional-store failure and campaign spread. Mal, a bounded Adversarial
+Subject, plants one two-line off-by-one regression while an independent
+investigator is not told what changed. The Totem Check identifies the exact
+fault, restores the baseline, and prevents the injected code from ascending,
+while three evidence-backed Wake Reports and safe regression artefacts return.
+Before synthesis, rotating sources deliver `12/12` reset attempts; afterward,
+an atomic shared identifier budget delivers `3/12`, known and unknown accounts
+receive the same public payload, nine regression tests pass, and all four
+parent-owned Anchors survive.
 
-This proves both directions of the concept: poisoned Memory cannot influence
-Reality, while useful discoveries and tested improvements can return through
-every Dream level. GPT-5.6 then synthesises only verified Memories into
-Reality's worktree. Before synthesis, rotating sources deliver 12 of 12 resets;
-afterward, only 3 of 12 are delivered across two service instances sharing one
-identifier budget. Known and unknown accounts receive the same public response
-payload, the planted mutation is contained, and all four immutable Anchors
-pass.
+The generalized VAmPI Mission proves this is not a hardcoded security scene. A
+preserved real run explores an authorized local educational repository through
+**15 isolated Realities, 14 Dreams, depth three, 44 native Subject returns, 115
+evidence records, 14 verified Memories, and seven sibling Reality Mirrors**.
+One sealed authorization fault is independently detected and contained. The
+final synthesis removes an unscoped secret lookup, enforces owner-qualified
+book access, fails closed on missing identities, preserves administrator-only
+deletion, and adds 12 service-free authorization tests. The final Reality
+records seven changed files; its judge-facing diff contains four product and
+test files after excluding engine-owned controls. The immutable proof passes
+before Reality stabilises.
 
-Reality Engine uses `@openai/codex-sdk`, native Codex Subjects, Git worktrees,
-structured Memory, and proof-gated synthesis. Mission Control applies the same
-engine to any trusted local repository with configurable premises, proofs,
-Subject charters, sibling strategy, depth, and budgets.
+Reality Engine is built with TypeScript, Next.js, `@openai/codex-sdk`, SQLite
+with Prisma, Git worktrees, Server-Sent Events, Zod, Vitest, and Playwright.
+Mission Control applies the runtime to trusted repositories with configurable
+premises, Anchors, Subject charters, sibling strategy, Dream depth, dependency
+bootstrap, and budgets. It runs deterministically without credentials for a
+rehearsable recording, while real mode uses the judge's own Codex CLI login or
+OpenAI API key and never starts usage until an explicit action.
 
 ## Three-Minute Video
 
@@ -103,8 +116,9 @@ Subject charters, sibling strategy, depth, and budgets.
 
 - Publish a public YouTube video shorter than three minutes.
 - Target a final duration of 2:50 to 2:58, leaving a safety margin.
-- Record a clean, completed real Codex password-reset run through adaptive
-  timeline replay. Do not wait for live Codex during the recording.
+- Record one clean, completed real Codex run through timeline replay. Use the
+  VAmPI cut for maximum technical depth or password reset for the clearest
+  impact story. Do not wait for live Codex during the recording.
 - Do not use a run with visible validation, quota, or budget-retry detours as
   the primary take.
 - Show one real GPT-5.6 model event, one persisted Reality-thread event, one
@@ -118,35 +132,40 @@ Subject charters, sibling strategy, depth, and budgets.
   remains the retrospective evidence layer; open individual milestones from the
   timeline or event stream only for the four required execution-evidence shots.
 
-### Shot And Narration Script
+### Script Packages
 
-The script defines the Inception concepts before using the product vocabulary.
-Rehearse at 135 to 140 words per minute and preserve the remaining time for UI
-dwell, cuts, and short pauses around the measured outcome.
+The video must commit to one complete story. The
+[VAmPI generalized Mission package](./demo/vampi/ACTOR_SCRIPT.md) is the
+recommended competition cut because it most strongly proves technical depth,
+counterfactual breadth, native Subject use, and generality. Use the
+[password-reset package](./demo/password-reset/ACTOR_SCRIPT.md) when its cleaner
+measured before/after story will survive recording and compression more
+reliably. Do not combine both full narratives inside three minutes.
 
-| Time | Screen | Narration |
-| --- | --- | --- |
-| 0:00-0:22 | Open on the stabilised outcome and complete Reality graph. | "In the film Inception, an idea planted deep inside nested dreams can survive the return to reality and change it. Coding agents have the same failure mode: a bad assumption introduced deep in an agent workflow can infect later code, tests, and decisions. Reality Engine makes that risk visible and controllable." |
-| 0:22-0:43 | Rewind to the single ROOT node, then reveal the first child edge. | "Reality is the protected repository, marked ROOT in the graph. A Dream is an isolated Codex thread and Git worktree. A Nested Dream explores uncertainty discovered one level down. A Subject is a bounded Codex subagent injected into that world." |
-| 0:43-1:00 | Open the GPT-5.6 model event, persisted thread event, and real runtime badge. | "I built Reality Engine with Codex and GPT-5.6. Codex accelerated the architecture, SDK integration, debugging, and tests. At runtime, the Codex SDK powers this completed real run with persistent GPT-5.6 Reality threads." |
-| 1:00-1:20 | Play the password-reset audit in Reality and first Dream creation. | "The starting belief is that per-IP rate limiting prevents password-reset abuse. Codex discovers that rotating sources can still target one account. Instead of changing Reality, the engine creates a Dream where that assumption can be experienced safely." |
-| 1:20-1:41 | Expand the graph and open one native Subject event. | "Attacker, investigator, and test-engineer Subjects enter as native Codex child threads. Their evidence creates two deeper Dreams: one tests transactional-store contention and crash recovery; the other tests a campaign spread across independent identifiers." |
-| 1:41-2:07 | Show Mal entering, the independent investigator, Totem Check, and containment result. | "The deliberate inception attempt happens here. Mal plants one bounded regression deep in a child Dream, while the investigators are not told what changed. A Kick stops that Dream and asks it to return Memory. The Totem Check compares that Memory with the actual Git mutation, evidence, source, and immutable requirements." |
-| 2:07-2:27 | Show rollback, Memory ascent, and the Reality Mirror. | "The planted code is rolled back and zero injected files return upward. But the independently discovered regression test is safe, so that useful Memory survives the Kick. The Reality Mirror compares sibling Dreams, keeps shared truth, and preserves disagreement." |
-| 2:27-2:47 | Show synthesis, four passing Anchors, outcome metrics, and final diff. | "Only verified Memory reaches Reality. Four parent-owned Anchors then prove the Dreams did not overwrite Reality's requirements. Before, rotating sources delivered twelve resets out of twelve. After, only three are delivered across independent local processes sharing SQLite, and known and unknown accounts return the same public payload." |
-| 2:47-2:58 | Cut to Mission Control, then return to the stabilised graph. | "Mission Control applies this engine to any trusted repository. Good discoveries return as code; planted changes are contained before becoming Reality." |
+Each package separates silent actor directions from spoken narration and
+includes sentence-level SRT subtitles. Both end at `02:58`. Their exact shared
+timing source also drives an optional Playwright actor:
+
+```bash
+npm run demo:video -- --scenario vampi
+npm run demo:video -- --scenario password-reset
+```
+
+See [Demo Video Packages](./demo/README.md) for rehearsal, silent video capture,
+fast timing validation, and acceptance criteria.
 
 ### Required Evidence Shots
 
 1. `gpt-5.6-sol`, SDK version, and real runtime badge.
 2. One persisted Reality thread and its isolated worktree.
 3. One native Subject child thread with terminal completion evidence.
-4. Two sibling depth-two Dreams attached to their parent.
-5. Totem Check and `1` planted change contained.
-6. `0` injected files entered Reality.
-7. Three verified Memories returning through their exact graph edges.
-8. Four passing parent-owned Anchors, including the cross-instance budget.
-9. The `12/12` before and `3/12` after outcome.
+4. Nested and sibling Dreams attached to their actual parent nodes.
+5. Totem Check and one planted change contained.
+6. Zero injected files or paths entered Reality.
+7. Verified Memory returning through exact parent-child lineage.
+8. Passing parent-owned Anchor proof after synthesis.
+9. A measured outcome: password reset's `12/12` to `3/12`, or VAmPI's 12
+   authorization tests and four-file judge-facing correction.
 10. Final Reality Git diff and Mission Control generality.
 
 ## YouTube Package

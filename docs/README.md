@@ -7,6 +7,7 @@
 | Document | Judge question answered |
 | --- | --- |
 | [Submission package](./SUBMISSION.md) | What description, video narration, evidence, URLs, and final checks should be submitted? |
+| [Demo video packages](./demo/) | Which real run should be recorded, what is spoken, where does the actor move, and which SRT captions and Playwright cues match? |
 | [Product brief](./PRODUCT.md) | Why does this matter, who is it for, and how should the Dream metaphor be understood? |
 | [Product terminology](./TERMINOLOGY.md) | Which canonical terms must the UX, events, diagrams, and narration use? |
 | [Demo runbook](../DEMO_RUNBOOK.md) | How is a clean real run prepared, accepted, preserved, recorded, and recovered? |
