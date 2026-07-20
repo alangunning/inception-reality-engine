@@ -2611,7 +2611,11 @@ ${laws || "- No additional runtime laws."}
       ? "Wake Report"
       : error.contract === "InvestigationReportSchema"
         ? "Investigation Report"
-        : "Synthesis Report";
+        : error.contract === "AdversarialInterventionReportSchema"
+          ? "Adversarial Intervention Report"
+          : error.contract === "CodexCommandPolicy"
+            ? "Codex Command Policy"
+            : "Synthesis Report";
     await this.emit(
       reality,
       "validation.rejected",
@@ -2821,6 +2825,10 @@ ${laws || "- No additional runtime laws."}
   private async pauseDemoAutopilot(reason: string): Promise<void> {
     const session = await this.requireSession();
     const current = this.demoAutopilotControl ?? session.autopilot;
+    if (current.mode === "paused" && current.pauseReason === reason) {
+      this.demoAutopilotControl = current;
+      return;
+    }
     const timestamp = new Date().toISOString();
     const paused: DemoAutopilotState = {
       ...current,

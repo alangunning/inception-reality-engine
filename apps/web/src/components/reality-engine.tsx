@@ -88,7 +88,7 @@ export type PresentedRealityOperation = Pick<
   ActiveRealityOperation,
   "id" | "label" | "executor" | "realityId" | "startedAt"
 >;
-type EventFamily = "all" | "codex" | "dream" | "subject" | "evidence" | "memory" | "anchor" | "reality";
+type EventFamily = "all" | "codex" | "dream" | "subject" | "evidence" | "memory" | "anchor" | "environment" | "reality";
 type EventSort = "newest" | "oldest";
 type PresentedDemoSnapshot = DemoSnapshot & {
   runtime: {
@@ -101,7 +101,7 @@ type PresentedDemoSnapshot = DemoSnapshot & {
 };
 
 interface SafeEventMetadata {
-  stage?: "thread" | "turn" | "command" | "file" | "tool" | "search" | "plan" | "subject" | "model";
+  stage?: "thread" | "turn" | "command" | "file" | "tool" | "search" | "plan" | "subject" | "model" | "environment";
   status?: "started" | "updated" | "completed" | "failed";
   detail?: string;
   command?: string;
@@ -236,7 +236,15 @@ function layoutRealityTree(realities: Reality[]): RealityGraphLayout {
     );
   const positions = new Map<string, { x: number; y: number }>();
   const visiting = new Set<string>();
-  const rowGap = realities.some((reality) => reality.subjects.length > 0) ? 220 : 164;
+  const maximumVisibleSubjects = Math.max(
+    0,
+    ...realities.map((reality) => Math.min(reality.subjects.length, 4))
+  );
+  const rowGap = maximumVisibleSubjects > 2
+    ? 256
+    : maximumVisibleSubjects > 0
+      ? 218
+      : 164;
   let leafIndex = 0;
   const place = (reality: Reality): number => {
     const existing = positions.get(reality.id);
@@ -398,6 +406,7 @@ function eventFamily(event: RealityEvent): Exclude<EventFamily, "all"> {
   if (prefix === "evidence" || prefix === "belief" || prefix === "uncertainty") return "evidence";
   if (prefix === "kick" || prefix === "wake" || prefix === "memory" || prefix === "artefact" || prefix === "synthesis" || prefix === "reflection" || prefix === "intervention") return "memory";
   if (prefix === "anchor" || prefix === "validation" || prefix === "verification") return "anchor";
+  if (prefix === "environment") return "environment";
   return "reality";
 }
 
@@ -909,6 +918,8 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
         ))}
         <svg
           className="map-links"
+          width={layout.width}
+          height={layout.height}
           viewBox={`0 0 ${layout.width} ${layout.height}`}
           aria-hidden="true"
         >
@@ -921,7 +932,11 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
             const forwardPath = `M ${from.x + 109} ${from.y} C ${from.x + 190} ${from.y}, ${to.x - 190} ${to.y}, ${to.x - 109} ${to.y}`;
             const returnPath = `M ${to.x - 109} ${to.y} C ${to.x - 190} ${to.y}, ${from.x + 190} ${from.y}, ${from.x + 109} ${from.y}`;
             return (
-              <g key={`${parent.id}-${reality.id}`}>
+              <g
+                data-parent-reality-id={parent.id}
+                data-child-reality-id={reality.id}
+                key={`${parent.id}-${reality.id}`}
+              >
                 <path
                   className={`map-path ${returned ? "path-returned" : ""}`}
                   d={forwardPath}
@@ -948,6 +963,7 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
           return (
             <div
               className={`reality-node depth-node-${reality.depth} ${selected ? "is-selected" : ""} ${locus ? "is-locus" : ""} ${pulseId === reality.id ? "is-waking" : ""} ${operation?.realityId === reality.id ? "is-operating" : ""}`}
+              data-reality-id={reality.id}
               style={{ left: position.x, top: position.y }}
               key={reality.id}
             >
@@ -999,7 +1015,11 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
                 </button>
               )}
               {reality.subjects.length > 0 && (
-                <div className="graph-subjects" aria-label={`Subjects in ${realityDisplayName(reality)}`}>
+                <div
+                  className="graph-subjects"
+                  data-owner-reality-id={reality.id}
+                  aria-label={`Subjects in ${realityDisplayName(reality)}`}
+                >
                   {reality.subjects.slice(0, 4).map((subject) => (
                     <button
                       type="button"
@@ -1481,6 +1501,7 @@ export function EventFeed({
           <option value="evidence">Evidence</option>
           <option value="memory">Memories</option>
           <option value="anchor">Anchors</option>
+          <option value="environment">Environments</option>
           <option value="reality">Reality</option>
         </select>
         <div className="event-sort" role="group" aria-label="Sort Reality events">
@@ -2664,6 +2685,8 @@ export function RealityWorkspace({
   const finalBelief = root?.beliefs.at(-1);
   const dreamCount = realities.filter((reality) => reality.depth > 0).length;
   const hiddenRealityCount = realities.length - graphRealities.length;
+  const topologyNeedsWideLayout = graphRealities.length >= 7
+    || graphRealities.some((reality) => reality.depth >= 3);
   const childCounts = new Map<string, number>();
   for (const reality of realities) {
     if (!reality.parentId) continue;
@@ -2679,6 +2702,11 @@ export function RealityWorkspace({
   );
   const activeProposal = proposals.find((proposal) =>
     proposal.status === "open"
+    && proposal.ownerId === activeRealityId
+    && realities.some((reality) =>
+      reality.id === proposal.ownerId
+      && (reality.status === "forming" || reality.status === "exploring")
+    )
     && !realities.some((reality) =>
       reality.name === proposal.title || reality.premise === proposal.premise
     )
@@ -2700,7 +2728,7 @@ export function RealityWorkspace({
   return (
     <div className="reality-workspace" data-testid="reality-workspace">
       <section
-        className="topology-workspace workspace-band workspace-band-topology"
+        className={`topology-workspace workspace-band workspace-band-topology ${topologyNeedsWideLayout ? "is-expanded-topology" : ""}`}
         id="reality-topology"
         tabIndex={-1}
       >

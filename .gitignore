@@ -13,6 +13,7 @@ prisma/playwright.db-journal
 prisma/playwright.db-shm
 prisma/playwright.db-wal
 .inception
+artifacts
 coverage
 playwright-report
 test-results

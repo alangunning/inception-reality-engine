@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { Codex, type Thread, type ThreadOptions } from "@openai/codex-sdk";
 import {
@@ -77,7 +78,7 @@ export function codexThreadOptions(reality: Reality): ThreadOptions {
     model: configuredCodexModel(),
     modelReasoningEffort: "high",
     workingDirectory: reality.worktreePath,
-    sandboxMode: "danger-full-access",
+    sandboxMode: "workspace-write",
     approvalPolicy: "never",
     networkAccessEnabled: true,
     webSearchMode: "live"
@@ -231,6 +232,61 @@ function classifyCommandFailure(command: string | undefined, output: unknown): C
   };
 }
 
+function isReadOnlySearchNoMatch(
+  command: unknown,
+  output: unknown,
+  exitCode: number | undefined
+): boolean {
+  if (exitCode !== 1 || typeof command !== "string" || !/(?:^|[;&|(\s])rg(?:\s|$)/.test(command)) {
+    return false;
+  }
+  if (
+    /\b(?:npm|npx|pnpm|yarn|python|pytest|vitest|jest|rm|mv|cp|git\s+(?:add|apply|checkout|commit|reset|restore|clean)|sed\s+-i|perl\s+-i|tee|curl|wget)\b/i.test(
+      command
+    )
+    || /(?:^|[^<])>(?!>)/.test(command)
+  ) {
+    return false;
+  }
+  const text = typeof output === "string" ? output.trim() : "";
+  return text.length === 0 || /(?:no matches found|no files were searched)/i.test(text);
+}
+
+export function isCrossRealityGitInspection(command: string): boolean {
+  return [
+    /\bgit\s+log\b[^;&|\n]*\s--all(?:\s|$)/i,
+    /\bgit\s+rev-list\b[^;&|\n]*\s--all(?:\s|$)/i,
+    /\bgit\s+branch\b[^;&|\n]*(?:\s--all|\s-a)(?:\s|$)/i,
+    /\bgit\s+(?:reflog|show-ref|for-each-ref|fsck)\b/i,
+    /\bgit\s+worktree\s+list\b/i
+  ].some((pattern) => pattern.test(command));
+}
+
+export function isOutsideRealityFilesystemInspection(
+  command: string,
+  worktreePath: string,
+  homeDirectory = os.homedir()
+): boolean {
+  const withoutRealityPath = command.split(path.resolve(worktreePath)).join("[REALITY]");
+  return (
+    withoutRealityPath.includes(path.resolve(homeDirectory))
+    || /(?:^|[\s'"])(?:~(?:\/|\s|$)|\$(?:HOME|\{HOME\})(?:\/|\s|$))/.test(
+      withoutRealityPath
+    )
+    || /\bfind\s+\/(?:\s|$)/.test(withoutRealityPath)
+  );
+}
+
+export function rawCodexCommand(rawEvent: unknown): string | undefined {
+  if (!rawEvent || typeof rawEvent !== "object") return undefined;
+  const item = (rawEvent as { item?: unknown }).item;
+  if (!item || typeof item !== "object") return undefined;
+  const candidate = item as { type?: unknown; command?: unknown };
+  return candidate.type === "command_execution" && typeof candidate.command === "string"
+    ? candidate.command
+    : undefined;
+}
+
 function itemStatus(eventType: string | undefined, itemStatusValue: string | undefined): "started" | "updated" | "completed" | "failed" | undefined {
   if (eventType === "item.started") return "started";
   if (eventType === "item.updated") return "updated";
@@ -293,7 +349,7 @@ export class SubjectCollaborationTrace {
         summary: `Subject entered Codex thread: ${subject.name}.`,
         metadata: {
           stage: "subject",
-          status: "completed",
+          status: "started",
           subjectId: subject.id,
           subjectName: subject.name,
           subjectRole: subject.role,
@@ -430,6 +486,27 @@ Do not reuse a Subject or subjectReports entry from an earlier rejected turn. Ev
 Subjects inherit this Reality's worktree, constitution, model, and immutable anchors. They must return concise evidence and artefacts only, and must not spawn further subagents.`;
 }
 
+export function buildSynthesisPrompt(
+  reality: Reality,
+  reports: WakeReport[],
+  repairContext?: string
+): string {
+  const requiredMemoryIds = reports.map((report) => report.realityId);
+  return `${buildDreamPrompt(reality)}
+
+RETURNED MEMORIES
+${JSON.stringify(reports, null, 2)}
+
+REQUIRED APPLIED MEMORY REALITY IDS
+${JSON.stringify(requiredMemoryIds)}
+
+SYNTHESIS TASK
+Apply every validated, generalisable Memory to Reality's implementation in this worktree. Preserve immutable Anchors and public API semantics. Retain or strengthen every returned test artefact, run every parent-owned proof command plus the complete relevant test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
+Discover repository paths before referencing them, use the declared proof commands as the primary entry points, never search outside this Reality for missing dependencies, and keep each shell command independently diagnosable.
+${repairContext ? `\nREPAIR CONTEXT\n${repairContext}\nRepair the proof failure and rerun the complete suite.` : ""}
+Return only the structured synthesis report after the implementation and tests are complete. Set realityId exactly to "${reality.id}". Set appliedMemories to exactly the REQUIRED APPLIED MEMORY REALITY IDS above, with every ID once and no other IDs. List every changed file, retained artefact, and unresolved risk.`;
+}
+
 export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, scope: string): CodexRuntimeEvent | null {
   if (!rawEvent || typeof rawEvent !== "object") return null;
   const event = rawEvent as {
@@ -512,14 +589,19 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
   if (item.type === "command_execution") {
     const command = compactCommand(item.command, 180);
     const exitCode = integer(item.exit_code);
-    const failure: Partial<CommandFailure> = status === "failed"
+    const searchNoMatch = status === "failed"
+      && isReadOnlySearchNoMatch(item.command, item.aggregated_output, exitCode);
+    const presentedStatus = searchNoMatch ? "completed" : status;
+    const failure: Partial<CommandFailure> = presentedStatus === "failed"
       ? classifyCommandFailure(command, item.aggregated_output)
       : {};
     return CodexRuntimeEventSchema.parse({
       type: "tool",
-      summary: status === "started"
+      summary: presentedStatus === "started"
         ? `Command entered${command ? `: ${command}` : ""}.`
-        : status === "failed"
+        : searchNoMatch
+          ? "Read-only source search returned no matches."
+          : presentedStatus === "failed"
           ? failure.failureKind === "test"
             ? `Test evidence returned${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`
             : failure.failureKind === "test-harness"
@@ -527,10 +609,12 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
             : `Command failed${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`
           : `Command returned${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`,
       metadata: {
-        stage: "command",
-        status,
+        stage: searchNoMatch ? "search" : "command",
+        status: presentedStatus,
         command,
         exitCode,
+        tool: searchNoMatch ? "rg" : undefined,
+        detail: searchNoMatch ? "No matching source evidence was found." : undefined,
         ...failure
       }
     });
@@ -718,9 +802,11 @@ export class RealCodexRuntime implements CodexRuntime {
 ${buildSubjectOrchestrationPrompt(reality)}
 
 TASK
-Inspect the local source for the defined repository-maintenance task covering ${scope}, then run decisive local tests inside this Reality. Do not contact a running service, external target, account, or network system. In the root Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
+Inspect the local source for the defined repository-maintenance task covering ${scope}, then run decisive local tests inside this Reality. Do not contact a running application service, external target, account, or credential. Network use is allowed only for a parent-authorized dependency bootstrap explicitly recorded in this Reality's constitution; never install dependencies globally or alter the host runtime. In the root Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
 ${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
 ${diagnosisRequired ? "This Reality contains a sealed adversarial intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
+Inspect only the current HEAD ancestry. Never enumerate Git refs, reflogs, unreachable objects, sibling branches, or other worktrees; commands such as \`git log --all\`, \`git reflog\`, \`git show-ref\`, and \`git worktree list\` invalidate this Reality's evidence.
+Discover repository paths before referencing them, run declared proof commands before inventing alternate test entry points, and do not search the host home directory for missing dependencies. Keep shell commands to one quoting layer and split unrelated speculative probes into separate commands so a missing path cannot hide valid evidence.
 Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, Dream proposals when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.
 ${reality.constitution.dreamStrategy === "competing-siblings"
     ? "Return dreamProposal and alternativeDreamProposal as two materially different, bounded, defensive counterfactuals that can test competing explanations. Neither may request external interaction."
@@ -929,16 +1015,7 @@ Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contr
       target: "openAi",
       $refStrategy: "none"
     }) as Record<string, unknown>;
-    const memory = JSON.stringify(reports, null, 2);
-    const prompt = `${buildDreamPrompt(reality)}
-
-RETURNED MEMORIES
-${memory}
-
-SYNTHESIS TASK
-Apply the validated, generalisable Memories to Reality's implementation in this worktree. Preserve immutable Anchors and public API semantics. Retain or strengthen every returned test artefact, run every parent-owned proof command plus the complete relevant test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
-${repairContext ? `\nREPAIR CONTEXT\n${repairContext}\nRepair the proof failure and rerun the complete suite.` : ""}
-Return only the structured synthesis report after the implementation and tests are complete. Set realityId exactly to "${reality.id}", list every applied memory Reality ID, changed file, retained artefact, and unresolved risk.`;
+    const prompt = buildSynthesisPrompt(reality, reports, repairContext);
     const { thread, events, finalResponse } = await this.streamStructured(
       reality,
       repairContext ? "Reality repair" : "Memory synthesis",
@@ -965,6 +1042,19 @@ Return only the structured synthesis report after the implementation and tests a
       throw new CodexOutputValidationError("SynthesisReportSchema", [{
         path: "appliedMemories",
         code: "missing_returned_memory"
+      }]);
+    }
+    const returnedMemoryIds = new Set(reports.map((memoryReport) => memoryReport.realityId));
+    if (report.appliedMemories.some((memoryId) => !returnedMemoryIds.has(memoryId))) {
+      throw new CodexOutputValidationError("SynthesisReportSchema", [{
+        path: "appliedMemories",
+        code: "unknown_returned_memory"
+      }]);
+    }
+    if (new Set(report.appliedMemories).size !== report.appliedMemories.length) {
+      throw new CodexOutputValidationError("SynthesisReportSchema", [{
+        path: "appliedMemories",
+        code: "duplicate_returned_memory"
       }]);
     }
 
@@ -1081,6 +1171,24 @@ Return only the structured synthesis report after the implementation and tests a
         }
         const event = toSafeCodexRuntimeEvent(rawEvent, reality.name, scope);
         if (event) {
+          // Safe event commands are compacted for persistence. Policy decisions
+          // must inspect the complete ephemeral SDK command before compaction.
+          const command = rawCodexCommand(rawEvent) ?? event.metadata?.command;
+          if (
+            typeof command === "string"
+            && (
+              isCrossRealityGitInspection(command)
+              || isOutsideRealityFilesystemInspection(command, reality.worktreePath!)
+            )
+          ) {
+            controller.abort();
+            throw new CodexOutputValidationError("CodexCommandPolicy", [{
+              path: "commands",
+              code: isCrossRealityGitInspection(command)
+                ? "cross_reality_git_scope"
+                : "outside_reality_filesystem_scope"
+            }]);
+          }
           if (
             event.metadata?.status === "failed"
             && typeof event.metadata.detail === "string"
@@ -1103,6 +1211,7 @@ Return only the structured synthesis report after the implementation and tests a
       await emissionQueue;
       return { thread, events, finalResponse };
     } catch (error) {
+      if (error instanceof CodexOutputValidationError) throw error;
       const message = error instanceof Error ? error.message : String(error);
       const staleResume = Boolean(
         reality.codexThreadId

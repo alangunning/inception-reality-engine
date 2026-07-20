@@ -89,7 +89,7 @@ export class CodexSubjectRegistryTrace {
           summary: `Subject entered native Codex thread: ${record.name}.`,
           metadata: {
             stage: "subject",
-            status: "completed",
+            status: "started",
             subjectId: record.identity,
             subjectName: record.name,
             subjectRole: record.role,

@@ -447,6 +447,18 @@ test("Mission API returns concise field validation without raw Zod output", asyn
     expect.objectContaining({ path: "scope" }),
     expect.objectContaining({ path: "premise" })
   ]));
+
+  const limitsResponse = await page.request.post("/api/missions/not-a-run/limits", {
+    data: {
+      tokenBudget: "unbounded",
+      maxActions: 0,
+      maxMinutes: 0
+    }
+  });
+  expect(limitsResponse.status()).toBe(409);
+  const limitsBody = await limitsResponse.json() as { error: string };
+  expect(limitsBody.error).toContain("Choose whole-number Mission limits");
+  expect(limitsBody.error).not.toContain("invalid_type");
 });
 
 test("timeline replay survives a retained window without the creation event", async ({ page }) => {
@@ -1135,6 +1147,7 @@ test("Mission Control exposes general Nested Dream and native Subject evidence",
   let missionPosts = 0;
   let targetPosts = 0;
   let missionResets = 0;
+  let submittedMission: Record<string, unknown> | null = null;
   const passwordResetMission = {
     id: "password-reset",
     kind: "demo",
@@ -1204,6 +1217,7 @@ test("Mission Control exposes general Nested Dream and native Subject evidence",
   await page.route("**/api/missions", async (route) => {
     if (route.request().method() === "POST") {
       missionPosts += 1;
+      submittedMission = route.request().postDataJSON() as Record<string, unknown>;
       await route.fulfill({ json: fixture });
       return;
     }
@@ -1249,6 +1263,16 @@ test("Mission Control exposes general Nested Dream and native Subject evidence",
   await expect(page.getByLabel("Initial belief to challenge")).toHaveValue(/documented owner and administrator invariants/i);
   await expect(page.getByLabel("Parent truths / one per line")).toHaveValue(/operator-owned local educational fixture/i);
   await expect(page.getByLabel("Local Git repository")).toHaveValue("");
+  await expect(page.getByLabel(/Bootstrap pinned dependencies/)).toBeChecked();
+  await expect(page.getByLabel("Environment kind")).toHaveValue("python-venv");
+  await expect(page.getByLabel("Exact dependency manifest")).toHaveValue("requirements-reality.txt");
+  await expect(page.getByLabel("Required Python version / optional")).toHaveValue("");
+  await expect(page.getByText(/Any installed Python 3 is auto-detected from python3 or python/)).toBeVisible();
+  await page.getByLabel("Environment kind").selectOption("node-npm");
+  await expect(page.getByLabel("Exact dependency manifest")).toHaveValue("package-lock.json");
+  await expect(page.getByLabel("Required Node version / optional exact version")).toBeVisible();
+  await expect(page.getByText(/npm ci verifies package-lock integrity/)).toBeVisible();
+  await page.getByLabel("Environment kind").selectOption("python-venv");
   await expect(page.getByLabel(/Inject one bounded Adversarial Subject/)).toBeChecked();
   await expect(page.getByText("Inject one bounded Adversarial Subject at Dream depth 2")).toBeVisible();
   await expect(page.locator(".mission-segments").last().getByRole("button", { name: "3" })).toHaveClass(/is-selected/);
@@ -1343,6 +1367,16 @@ test("Mission Control exposes general Nested Dream and native Subject evidence",
   expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   await page.getByRole("button", { name: "Create Mission" }).click();
   expect(missionPosts).toBe(1);
+  expect(submittedMission).toMatchObject({
+    dependencyBootstrap: {
+      kind: "python-venv",
+      manifestPath: "requirements-reality.txt",
+      pythonExecutable: "auto",
+      virtualEnvironmentPath: ".venv",
+      indexUrl: "https://pypi.org/simple",
+      targetDepth: 3
+    }
+  });
 
   await expect(page).toHaveURL(/\/missions\/mission-1$/);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
@@ -1445,6 +1479,253 @@ test("General Missions use the same explicit Dream proposal gate as the Demo Mis
   await expect(gate).toContainText("MODEL-ESTIMATED CODEX BUDGET");
   await gate.getByRole("button", { name: "Keep Reality unchanged" }).click();
   await expect(gate).toHaveCount(0);
+});
+
+test("dense depth-three topology claims the full band and keeps the inspector below it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "Desktop verifies the dense topology breakpoint.");
+  const fixture = missionSnapshotFixture();
+  const realities = fixture.run.realities as Array<Record<string, unknown>>;
+  const source = realities.find((reality) => reality.id === "dream-reality")!;
+  const nested = [
+    {
+      id: "nested-a",
+      parentId: "dream-reality",
+      depth: 2,
+      name: "Framework-backed proof"
+    },
+    {
+      id: "nested-b",
+      parentId: "sibling-reality",
+      depth: 2,
+      name: "Dependency-light proof"
+    },
+    {
+      id: "nested-a-1",
+      parentId: "nested-a",
+      depth: 3,
+      name: "Pinned environment"
+    },
+    {
+      id: "nested-b-1",
+      parentId: "nested-b",
+      depth: 3,
+      name: "Mutation sensitivity"
+    }
+  ].map((entry) => ({
+    ...source,
+    ...entry,
+    subjects: [
+      ...(source.subjects as Array<Record<string, unknown>>),
+      {
+        id: `subject-${entry.id}-2`,
+        realityId: entry.id,
+        name: "Saito",
+        role: "Boundary reviewer",
+        mission: "Check the inherited boundary.",
+        status: "returned",
+        findings: ["The inherited boundary remained observable."]
+      },
+      {
+        id: `subject-${entry.id}-3`,
+        realityId: entry.id,
+        name: "Eames",
+        role: "Negative-test engineer",
+        mission: "Challenge the proposed invariant.",
+        status: "returned",
+        findings: ["The negative proof distinguished the candidate change."]
+      }
+    ],
+    evidence: [],
+    proposals: [],
+    worktreePath: `/tmp/mission/${entry.id}`,
+    branchName: `inception-mission/${entry.id}`,
+    codexThreadId: `thread-${entry.id}`
+  }));
+  realities.push(...nested);
+  fixture.run.definition.maxDreamDepth = 3;
+  fixture.run.activeRealityId = "nested-a-1";
+  (fixture as { activeReality: unknown }).activeReality = nested[2];
+
+  await page.route("**/api/missions/events?**", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream",
+    body: "data: {\"type\":\"connected\"}\n\n"
+  }));
+  await page.route("**/api/missions/mission-1", (route) => route.fulfill({
+    json: {
+      snapshot: fixture,
+      runtime: { mode: "real", model: "gpt-5.6-sol", sdkVersion: "0.144.6", authSource: "cli" }
+    }
+  }));
+
+  await page.goto("/missions/mission-1");
+  const topology = page.locator(".topology-workspace");
+  await expect(topology).toHaveClass(/is-expanded-topology/);
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(7);
+  const geometry = await topology.evaluate((section) => {
+    const map = section.querySelector<HTMLElement>(".map-section")!;
+    const graph = section.querySelector<HTMLElement>("[data-testid='reality-graph']")!;
+    const inspector = section.querySelector<HTMLElement>(".world-inspector")!;
+    const sectionRect = section.getBoundingClientRect();
+    const mapRect = map.getBoundingClientRect();
+    const inspectorRect = inspector.getBoundingClientRect();
+    const inspectorIntersections = [...graph.querySelectorAll<HTMLElement>(".reality-node")]
+      .filter((node) => {
+        const nodeRect = node.getBoundingClientRect();
+        return nodeRect.right > inspectorRect.left
+          && nodeRect.left < inspectorRect.right
+          && nodeRect.bottom > inspectorRect.top
+          && nodeRect.top < inspectorRect.bottom;
+      }).length;
+    const graphItems = [...graph.querySelectorAll<HTMLElement>(
+      ".reality-node-main, .graph-subject"
+    )].map((item) => item.getBoundingClientRect());
+    let graphItemIntersections = 0;
+    for (let left = 0; left < graphItems.length; left += 1) {
+      for (let right = left + 1; right < graphItems.length; right += 1) {
+        const first = graphItems[left]!;
+        const second = graphItems[right]!;
+        const horizontalOverlap = Math.min(first.right, second.right)
+          - Math.max(first.left, second.left);
+        const verticalOverlap = Math.min(first.bottom, second.bottom)
+          - Math.max(first.top, second.top);
+        if (horizontalOverlap > 0.5 && verticalOverlap > 0.5) {
+          graphItemIntersections += 1;
+        }
+      }
+    }
+    const tabs = section.querySelector<HTMLElement>(".inspector-tabs")!;
+    const tabsRect = tabs.getBoundingClientRect();
+    const inspectorBody = section.querySelector<HTMLElement>(".inspector-body")!;
+    const inspectorBodyRect = inspectorBody.getBoundingClientRect();
+    const edgeEndpointErrors = [...graph.querySelectorAll<SVGGElement>(
+      ".map-links g[data-parent-reality-id][data-child-reality-id]"
+    )].map((edge) => {
+      const parentId = edge.dataset.parentRealityId!;
+      const childId = edge.dataset.childRealityId!;
+      const parent = graph.querySelector<HTMLElement>(
+        `.reality-node[data-reality-id="${CSS.escape(parentId)}"] .reality-node-main`
+      )!;
+      const child = graph.querySelector<HTMLElement>(
+        `.reality-node[data-reality-id="${CSS.escape(childId)}"] .reality-node-main`
+      )!;
+      const path = edge.querySelector<SVGPathElement>(".map-path")!;
+      const matrix = path.getScreenCTM()!;
+      const length = path.getTotalLength();
+      const start = path.getPointAtLength(0).matrixTransform(matrix);
+      const end = path.getPointAtLength(length).matrixTransform(matrix);
+      const parentRect = parent.getBoundingClientRect();
+      const childRect = child.getBoundingClientRect();
+      return {
+        start: Math.hypot(
+          start.x - parentRect.right,
+          start.y - (parentRect.top + parentRect.height / 2)
+        ),
+        end: Math.hypot(
+          end.x - childRect.left,
+          end.y - (childRect.top + childRect.height / 2)
+        )
+      };
+    });
+    const subjectOwnershipErrors = [...graph.querySelectorAll<HTMLElement>(
+      ".graph-subjects[data-owner-reality-id]"
+    )].filter((subjects) =>
+      subjects.dataset.ownerRealityId
+      !== subjects.closest<HTMLElement>(".reality-node[data-reality-id]")?.dataset.realityId
+    ).length;
+    return {
+      sectionWidth: sectionRect.width,
+      mapWidth: mapRect.width,
+      mapBottom: mapRect.bottom,
+      inspectorTop: inspectorRect.top,
+      graphClientWidth: graph.clientWidth,
+      graphScrollWidth: graph.scrollWidth,
+      inspectorIntersections,
+      graphItemIntersections,
+      tabsRight: tabsRect.right,
+      inspectorBodyRight: inspectorBodyRect.right,
+      tabsBottom: tabsRect.bottom,
+      inspectorBodyTop: inspectorBodyRect.top,
+      inspectorBodyOverflowY: window.getComputedStyle(inspectorBody).overflowY,
+      edgeEndpointErrors,
+      subjectOwnershipErrors
+    };
+  });
+  expect(geometry.mapWidth).toBeGreaterThanOrEqual(geometry.sectionWidth - 2);
+  expect(geometry.inspectorTop).toBeGreaterThanOrEqual(geometry.mapBottom - 1);
+  expect(geometry.graphClientWidth).toBeGreaterThanOrEqual(geometry.graphScrollWidth);
+  expect(geometry.inspectorIntersections).toBe(0);
+  expect(geometry.graphItemIntersections).toBe(0);
+  expect(Math.abs(geometry.tabsRight - geometry.inspectorBodyRight)).toBeLessThan(2);
+  expect(geometry.inspectorBodyTop).toBeGreaterThanOrEqual(geometry.tabsBottom - 1);
+  expect(geometry.inspectorBodyOverflowY).toBe("visible");
+  expect(geometry.edgeEndpointErrors.length).toBe(6);
+  expect(geometry.edgeEndpointErrors.every((error) => error.start < 2 && error.end < 2)).toBe(true);
+  expect(geometry.subjectOwnershipErrors).toBe(0);
+  await expect(topology).toHaveScreenshot("dense-topology.png", {
+    animations: "disabled"
+  });
+});
+
+test("a paused Mission can raise its observed-token ceiling without losing Reality state", async ({ page }) => {
+  const fixture = missionSnapshotFixture();
+  Object.assign(fixture.run.definition, { tokenBudget: 20_000_000 });
+  Object.assign(fixture.run, {
+    observedTokens: 20_500_000,
+    autopilot: {
+      mode: "paused",
+      kind: "guided-real",
+      maxActions: 60,
+      maxMinutes: 180,
+      pauseOnDream: true,
+      pauseOnIntervention: true,
+      actionsCompleted: 8,
+      pauseReason: "Action inspect stopped after the Mission observed SDK token ceiling was reached."
+    }
+  });
+
+  let approvedBody: {
+    tokenBudget: number;
+    maxActions: number;
+    maxMinutes: number;
+  } | undefined;
+  await page.route("**/api/missions/events?**", (route) => route.fulfill({
+    status: 200,
+    contentType: "text/event-stream",
+    body: "data: {\"type\":\"connected\"}\n\n"
+  }));
+  await page.route("**/api/missions/mission-1/limits", async (route) => {
+    approvedBody = route.request().postDataJSON() as typeof approvedBody;
+    fixture.run.definition.tokenBudget = approvedBody!.tokenBudget;
+    await route.fulfill({ json: fixture });
+  });
+  await page.route("**/api/missions/mission-1", (route) => route.fulfill({
+    json: {
+      snapshot: fixture,
+      runtime: { mode: "real", model: "gpt-5.6-sol", sdkVersion: "0.144.6", authSource: "cli" }
+    }
+  }));
+
+  await page.goto("/missions/mission-1");
+  const recovery = page.getByTestId("mission-limit-recovery");
+  await expect(recovery).toContainText("20,500,000 observed / 20,000,000 approved");
+  await expect(recovery).toContainText("Reality state is preserved");
+  await expect(page.getByLabel("Approved Mission token ceiling")).toHaveValue("25000000");
+  await expect(page.getByTestId("mission-autopilot").getByRole("button", { name: "Approve and continue" }))
+    .toHaveCount(0);
+  await recovery.getByRole("button", { name: "Approve 25,000,000 ceiling" }).click();
+
+  expect(approvedBody).toEqual({
+    tokenBudget: 25_000_000,
+    maxActions: 60,
+    maxMinutes: 180
+  });
+  await expect(recovery).toHaveCount(0);
+  await expect(page.getByTestId("mission-autopilot").getByRole("button", { name: "Approve and continue" }))
+    .toBeVisible();
+  await expect(page.getByTestId("reality-graph").locator(".reality-node")).toHaveCount(
+    fixture.run.realities.length
+  );
 });
 
 test("a token-budget rejection can be explicitly increased and retried from guided auto mode", async ({ page }) => {

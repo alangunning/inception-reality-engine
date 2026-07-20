@@ -4,14 +4,18 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { RealityEntity } from "@inception/domain";
 import {
+  buildSynthesisPrompt,
   buildSubjectOrchestrationPrompt,
   codexThreadOptions,
   configuredCodexModel,
   CodexSubjectRegistryTrace,
   CodexRuntimeEventSchema,
   MockCodexRuntime,
+  isCrossRealityGitInspection,
+  isOutsideRealityFilesystemInspection,
   normaliseCodexExecutionError,
   prepareCodexExecutionEnvironment,
+  rawCodexCommand,
   SubjectCollaborationTrace,
   toSafeCodexRuntimeEvent,
   WakeReportParser,
@@ -267,6 +271,33 @@ describe("Codex runtime", () => {
     expect((await runtime.synthesise(reality, [])).applied).toBe(false);
   });
 
+  it("makes the complete returned-memory identity set explicit during synthesis", () => {
+    const reality = RealityEntity.create({
+      depth: 0,
+      kind: "waking",
+      name: "Reality",
+      premise: constitution.premise,
+      constitution
+    }).snapshot();
+    const reports = ["dream-one", "dream-two"].map((realityId) => ({
+      realityId,
+      initialBeliefs: [],
+      experiences: [],
+      changedBeliefs: [],
+      invariants: [],
+      artefacts: [],
+      remainingUncertainty: [],
+      recommendation: "Retain verified evidence.",
+      generatedAt: new Date().toISOString()
+    }));
+
+    const prompt = buildSynthesisPrompt(reality, reports);
+
+    expect(prompt).toContain("REQUIRED APPLIED MEMORY REALITY IDS");
+    expect(prompt).toContain("Set appliedMemories to exactly the REQUIRED APPLIED MEMORY REALITY IDS");
+    expect(prompt).toContain('["dream-one","dream-two"]');
+  });
+
   it("rejects malformed wake reports", () => {
     const parser = new WakeReportParser();
     try {
@@ -312,6 +343,20 @@ describe("Codex runtime", () => {
         command: "npm test",
         exitCode: 0,
         rawOutput: "must not persist"
+      }
+    })).toThrow();
+  });
+
+  it("rejects contradictory Subject lifecycle metadata", () => {
+    expect(() => CodexRuntimeEventSchema.parse({
+      type: "subject",
+      summary: "Subject entered native Codex thread.",
+      metadata: {
+        stage: "subject",
+        status: "completed",
+        subjectId: "subject-1",
+        subjectState: "started",
+        collaborationTool: "thread_registry"
       }
     })).toThrow();
   });
@@ -393,6 +438,76 @@ describe("Codex runtime", () => {
       }
     });
     expect(JSON.stringify(event)).not.toContain("flask_sqlalchemy");
+  });
+
+  it("treats a read-only ripgrep no-match exit as a completed search", () => {
+    const event = toSafeCodexRuntimeEvent({
+      type: "item.completed",
+      item: {
+        type: "command_execution",
+        command: "git status --short && rg --files | sed -n '1,20p' && rg -n owner README.md",
+        aggregated_output: "",
+        exit_code: 1,
+        status: "failed"
+      }
+    }, "Authorization Dream", "ownership boundary");
+
+    expect(event).toMatchObject({
+      type: "tool",
+      summary: "Read-only source search returned no matches.",
+      metadata: {
+        stage: "search",
+        status: "completed",
+        exitCode: 1,
+        tool: "rg",
+        detail: "No matching source evidence was found."
+      }
+    });
+  });
+
+  it("rejects Git commands that can inspect sibling Reality state", () => {
+    expect(isCrossRealityGitInspection("git log --oneline HEAD")).toBe(false);
+    expect(isCrossRealityGitInspection("git diff HEAD -- src")).toBe(false);
+    expect(isCrossRealityGitInspection("git log --oneline --all")).toBe(true);
+    expect(isCrossRealityGitInspection("git reflog show --all")).toBe(true);
+    expect(isCrossRealityGitInspection("git worktree list --porcelain")).toBe(true);
+  });
+
+  it("rejects explicit filesystem inspection outside the Reality worktree", () => {
+    const worktree = "/Users/judge/project/.inception/worktrees/reality-1";
+    expect(isOutsideRealityFilesystemInspection(
+      `find ${worktree} -name '*.py'`,
+      worktree,
+      "/Users/judge"
+    )).toBe(false);
+    expect(isOutsideRealityFilesystemInspection(
+      "find /Users/judge -name site-packages",
+      worktree,
+      "/Users/judge"
+    )).toBe(true);
+    expect(isOutsideRealityFilesystemInspection(
+      "rg flask $HOME/.cache",
+      worktree,
+      "/Users/judge"
+    )).toBe(true);
+    expect(isOutsideRealityFilesystemInspection(
+      "find / -name flask_sqlalchemy",
+      worktree,
+      "/Users/judge"
+    )).toBe(true);
+  });
+
+  it("checks the full ephemeral command rather than its persisted compact form", () => {
+    const worktree = `/Users/judge/project/.inception/missions/${"mission-".repeat(30)}/worktrees/reality`;
+    const command = `/bin/zsh -lc "ls -la ${worktree}/tests; git -C ${worktree} status --short"`;
+    const compacted = `${command.slice(0, 180)}...`;
+
+    expect(isOutsideRealityFilesystemInspection(command, worktree, "/Users/judge")).toBe(false);
+    expect(isOutsideRealityFilesystemInspection(compacted, worktree, "/Users/judge")).toBe(true);
+    expect(rawCodexCommand({
+      type: "item.started",
+      item: { type: "command_execution", command }
+    })).toBe(command);
   });
 
   it("retains a concise SDK failure diagnostic", () => {
@@ -692,6 +807,7 @@ describe("Codex runtime", () => {
       }));
 
       expect(events.filter((event) => event.metadata?.subjectState === "started")).toHaveLength(2);
+      expect(events.filter((event) => event.metadata?.status === "started")).toHaveLength(2);
       expect(events.filter((event) => event.metadata?.subjectState === "completed")).toHaveLength(0);
       expect(events.every((event) =>
         event.metadata?.collaborationTool === "thread_registry"
@@ -959,7 +1075,7 @@ describe("Codex runtime", () => {
         model: "gpt-5.6-sol",
         modelReasoningEffort: "high",
         workingDirectory: "/tmp/reality-worktree",
-        sandboxMode: "danger-full-access",
+        sandboxMode: "workspace-write",
         approvalPolicy: "never",
         networkAccessEnabled: true,
         webSearchMode: "live"
@@ -1009,6 +1125,7 @@ describe("Codex runtime", () => {
     expect(entered[0]).toMatchObject({
       type: "subject",
       metadata: {
+        status: "started",
         subjectId: "subject-attacker",
         subjectThreadId: "thread-subject-1",
         subjectState: "started",

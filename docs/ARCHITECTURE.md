@@ -158,7 +158,7 @@ Dream proposals are idempotent within their owning Reality. A proposal moves fro
 | Mission Composer | Disabled | Enabled |
 | Default model | Deterministic mock | `gpt-5.6-sol`, high reasoning |
 
-Real mode is intentionally powerful. Its Codex thread options use `danger-full-access`, `approvalPolicy: never`, network access, live web search, and the Reality worktree as the working directory. This is a trusted local execution model, not a hosted multi-tenant service.
+Real mode is intentionally powerful inside its Reality boundary. Its Codex thread options use `workspace-write`, `approvalPolicy: never`, network access, live web search, high reasoning effort, and the Reality worktree as the working directory. Explicit home-directory, root-filesystem, cross-ref, reflog, and sibling-worktree inspection is rejected as a validated command-policy failure. This is a trusted local execution model, not a hosted multi-tenant service.
 
 `CodexExecutionEnvironment` separates authentication, model metadata, and resumable session state from personal configuration. It copies the user's current CLI authentication and model cache into an ignored project runtime home, then keeps the SDK's writable session directory and SQLite state local to that runtime. The user's `config.toml`, plugins, MCP servers, unrelated sessions, and global CLI version remain outside the default boundary. This keeps SDK startup deterministic, preserves Reality-owned thread IDs across application restarts, and prevents global CLI upgrades or home-directory permissions from corrupting a run. Operators can explicitly widen the boundary with `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` when a Mission depends on authenticated personal integrations.
 
@@ -211,9 +211,34 @@ Canonical, Playwright, and Mission worktrees have distinct roots and branch pref
 | Playwright | `.inception/playwright-worktrees` | `inception-playwright/*` |
 | Mission | `.inception/missions/<id>/worktrees` | `inception-mission-<id>/*` |
 
-Pinned training targets live in `.inception/training-targets`. They are reusable source caches, not Reality worktrees, and are cloned only by an explicit preparation action. Each Mission still receives separate worktrees and owned branches.
+Pinned training targets live in `.inception/training-targets`. They are reusable source caches, not Reality worktrees, and are cloned only by an explicit preparation action. Curated targets may add a versioned fixture commit whose parent is the exact pinned upstream revision; preparation validates the parent, clean state, fixture paths, and fixture contents before exposing the repository. Each Mission still receives separate worktrees and owned branches.
 
-This prevents test resets from deleting live worktrees. If a persisted Reality loses its worktree, the Demo Mission orchestrator restores it from parent state and persisted artefacts without consuming Codex.
+Playwright additionally uses `.inception/playwright-missions` and `.inception/playwright-training-targets`, so test deletion cannot address live Mission or training-target roots. Each Mission directory carries an ownership marker; bulk cleanup ignores every unmarked directory and never recursively deletes the configured storage root itself.
+
+If a persisted unsynthesised root loses its worktree, the Mission orchestrator can reform it from the unchanged repository baseline. A returned Dream is restored only from the exact Git commit recorded by its verified memory seal. A missing Reality without one of those safe checkpoints fractures instead of reconstructing mutable state.
+
+### Dependency Environments
+
+`MissionDependencyBootstrap` is a parent-owned policy, not a Codex command. The orchestrator evaluates it before Codex enters a configured Dream and again in the root before synthesis and verification:
+
+```mermaid
+flowchart LR
+  P[Parent-authorized manifest] --> V{Validate boundary}
+  V -->|Python| PY[Auto-detect python3 or python]
+  V -->|Node| JS[Check host Node]
+  PY --> PV["Reality worktree/.venv"]
+  JS --> NM["Reality worktree/node_modules"]
+  PV --> E[Emit manifest hash, runtime, count, duration]
+  NM --> E
+  E --> C[Codex enters Reality]
+  V -->|invalid or unavailable| F[Fracture before Codex]
+```
+
+Python uses the host only as an interpreter source. It creates a new `.venv` in each matching Reality and installs the parent's exact tracked pins through that environment's own `pip`. The default selector accepts any available Python 3 exposed as `python3` or `python`; exact runtime checks are optional and never trigger interpreter installation.
+
+Node uses the host's existing `node` and `npm` but performs a project-local `npm ci` into each Reality's ignored `node_modules`. Registry URLs and lockfile integrity are validated before download, lifecycle scripts are disabled during bootstrap, and no global install or runtime manager is invoked. Local workspace links are accepted only when they resolve within the same worktree.
+
+Ignored dependency directories are deliberately absent from parent-state inheritance, so sibling Dreams cannot share installed packages or bootstrap markers. Removing a Reality worktree removes its environment. A failed required environment blocks Codex entry, synthesis, and immutable proof execution rather than being misreported as behavioral evidence.
 
 ## Persistence
 

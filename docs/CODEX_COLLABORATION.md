@@ -1,7 +1,7 @@
 # Codex and GPT-5.6 Collaboration
 
 **Version:** 0.1.0
-**Last reviewed:** 2026-07-19
+**Last reviewed:** 2026-07-20
 
 ## How Codex Accelerated the Build
 
@@ -17,6 +17,8 @@ High-leverage contributions included:
 - enriching SDK events without persisting raw reasoning or raw tool output;
 - building refresh-stable operation state and retrospective safe logs;
 - validating nested Wake artefacts against executable proof;
+- implementing and live-testing parent-authorized Python and Node dependency environments inside isolated Reality worktrees;
+- tracing a dense-graph rendering regression to independent SVG and HTML coordinate scaling, then proving every parent-child endpoint in Playwright;
 - creating desktop and tablet Playwright coverage for the complete demo.
 
 ## Human Product and Engineering Decisions

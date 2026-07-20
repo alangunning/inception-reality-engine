@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   DemoSessionSchema,
+  MissionRunSchema,
   RealityEventSchema,
   RealityRunArchiveSchema,
   RealitySchema
@@ -36,8 +37,11 @@ const MissionHistorySchema = z.object({
 
 function expectCredentialRedacted(value: unknown): void {
   const serialized = JSON.stringify(value);
-  expect(serialized).not.toMatch(/sk-[A-Za-z0-9_-]{12,}/);
-  expect(serialized).not.toMatch(/Bearer [A-Za-z0-9._~+/-]{12,}/);
+  const credentialScan = serialized
+    .replaceAll("Bearer synthetic-token", "Bearer [synthetic]")
+    .replaceAll("Bearer synthetic-local-token", "Bearer [synthetic]");
+  expect(credentialScan).not.toMatch(/sk-[A-Za-z0-9_-]{12,}/);
+  expect(credentialScan).not.toMatch(/Bearer [A-Za-z0-9._~+/-]{12,}/);
   expect(serialized).not.toMatch(/(?:OPENAI|CODEX)_API_KEY\s*[=:]\s*\S+/);
   expect(serialized).not.toContain("/.codex/auth.json");
 
@@ -89,6 +93,62 @@ describe("committed real-run exports", () => {
       model: "gpt-5.6-sol",
       authSource: "cli"
     });
+    expectCredentialRedacted(raw);
+  });
+
+  it("keeps the VAmPI Mission history aligned with its stabilised real state", () => {
+    const raw = loadFixture("vampi-real-mission-history-2026-07-20.json");
+    const history = z.object({
+      snapshot: z.object({
+        run: MissionRunSchema,
+        activeReality: RealitySchema,
+        operation: z.null(),
+        nextAction: z.null()
+      }),
+      runtime: z.object({
+        mode: z.literal("real"),
+        model: z.string().min(1),
+        sdkVersion: z.string().min(1),
+        authSource: z.literal("cli")
+      })
+    }).parse(raw);
+
+    expect(history.snapshot.run.status).toBe("stabilised");
+    expect(history.snapshot.run.realities).toHaveLength(15);
+    expect(history.snapshot.run.memories).toHaveLength(14);
+    expect(history.snapshot.run.memoryIntegrity).toHaveLength(14);
+    expect(history.snapshot.run.events).toHaveLength(1_048);
+    expect(history.snapshot.run.proofResults.every((result) => result.status === "passed"))
+      .toBe(true);
+    expect(history.snapshot.run.realities.flatMap((reality) => reality.proposals)
+      .every((proposal) => proposal.status === "resolved")).toBe(true);
+    expect(history.snapshot.run.finalDiff).not.toContain(".inception/");
+    expectCredentialRedacted(raw);
+  });
+
+  it("keeps the standalone VAmPI event log complete and schema-valid", () => {
+    const raw = loadFixture("vampi-real-run-log-2026-07-20.json");
+    const log = z.object({
+      format: z.literal("inception-mission-event-log"),
+      version: z.literal(1),
+      mission: z.object({
+        id: z.string().min(1),
+        name: z.string().min(1),
+        status: z.literal("stabilised"),
+        createdAt: z.string().datetime(),
+        updatedAt: z.string().datetime()
+      }),
+      runtime: z.object({
+        mode: z.literal("real"),
+        model: z.string().min(1),
+        sdkVersion: z.string().min(1),
+        authSource: z.literal("cli")
+      }),
+      eventCount: z.literal(1_048),
+      events: z.array(RealityEventSchema).length(1_048)
+    }).parse(raw);
+
+    expect(log.events.at(-1)?.type).toBe("autopilot.completed");
     expectCredentialRedacted(raw);
   });
 });

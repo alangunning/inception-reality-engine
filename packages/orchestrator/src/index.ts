@@ -9,5 +9,6 @@ export * from "./synthesis-service";
 export * from "./reality-orchestrator";
 export * from "./mission-orchestrator";
 export * from "./counterfactual-reflection-service";
+export * from "./dependency-bootstrap-service";
 
 export * from "./sqlite-repository";

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -17,6 +17,7 @@ describe("GitWorktreeManager", () => {
       execFileSync("git", ["config", "user.email", "demo@example.com"], { cwd: repo });
       execFileSync("git", ["config", "user.name", "Inception Test"], { cwd: repo });
       await writeFile(path.join(repo, "seed.txt"), "waking\n");
+      await writeFile(path.join(repo, ".gitignore"), ".venv/\nnode_modules/\n");
       execFileSync("git", ["add", "."], { cwd: repo });
       execFileSync("git", ["commit", "-m", "seed"], { cwd: repo });
 
@@ -24,6 +25,8 @@ describe("GitWorktreeManager", () => {
       const descriptor = await manager.create("dream-one");
       await manager.writeFile(descriptor.path, "seed.txt", "dream\n");
       await manager.writeFile(descriptor.path, "evidence/failing.spec.ts", "parent evidence\n");
+      await manager.writeFile(descriptor.path, ".venv/bin/python", "parent-only Python environment\n");
+      await manager.writeFile(descriptor.path, "node_modules/example/index.js", "parent-only Node environment\n");
 
       expect(await readFile(path.join(repo, "seed.txt"), "utf8")).toBe("waking\n");
       expect(await readFile(path.join(descriptor.path, "seed.txt"), "utf8")).toBe("dream\n");
@@ -40,6 +43,8 @@ describe("GitWorktreeManager", () => {
       expect(await readFile(path.join(nested.path, "seed.txt"), "utf8")).toBe("dream\n");
       expect(await readFile(path.join(nested.path, "evidence/failing.spec.ts"), "utf8")).toBe("parent evidence\n");
       expect(await readFile(path.join(nested.path, "evidence/live.txt"), "utf8")).toBe("uncommitted observation\n");
+      await expect(access(path.join(nested.path, ".venv/bin/python"))).rejects.toThrow();
+      await expect(access(path.join(nested.path, "node_modules/example/index.js"))).rejects.toThrow();
       await manager.writeFile(nested.path, "seed.txt", "nested\n");
       expect(await readFile(path.join(descriptor.path, "seed.txt"), "utf8")).toBe("dream\n");
       expect(await manager.listChangedFiles(nested.path)).toEqual([
@@ -156,11 +161,16 @@ describe("GitMissionWorkspaceFactory", () => {
       const factory = new GitMissionWorkspaceFactory(storage);
       const mission = await factory.open(repo, "orphan-mission");
       const descriptor = await mission.worktrees.create("orphan-reality");
+      const unrelated = path.join(storage, "unmarked-neighbour");
+      await mkdir(unrelated);
+      await writeFile(path.join(unrelated, "keep.txt"), "not owned by Reality Engine\n");
 
       expect(execFileSync("git", ["worktree", "list"], { cwd: repo }).toString())
         .toContain(descriptor.path);
       expect(await factory.cleanupAll()).toBe(1);
       await expect(access(descriptor.path)).rejects.toThrow();
+      expect(await readFile(path.join(unrelated, "keep.txt"), "utf8"))
+        .toBe("not owned by Reality Engine\n");
       expect(execFileSync("git", ["branch", "--list", "inception-mission-orphan-mission/*"], {
         cwd: repo
       }).toString().trim()).toBe("");
@@ -191,7 +201,12 @@ describe("TrainingTargetManager", () => {
         cloneUrl: source,
         revision,
         license: "MIT",
-        catalogueUrl: "https://example.invalid/catalogue"
+        catalogueUrl: "https://example.invalid/catalogue",
+        fixtureVersion: "test-v1",
+        fixtures: [{
+          path: "tests/regression.txt",
+          content: "fixture evidence\n"
+        }]
       }]);
 
       expect(await manager.list()).toEqual([
@@ -203,11 +218,18 @@ describe("TrainingTargetManager", () => {
         prepared: true,
         revision
       });
-      expect(execFileSync("git", ["rev-parse", "HEAD"], {
+      expect(execFileSync("git", ["rev-parse", "HEAD^"], {
         cwd: prepared.repositoryPath
       }).toString().trim()).toBe(revision);
       expect(await readFile(path.join(prepared.repositoryPath!, "app.py"), "utf8"))
         .toBe("vulnerable = True\n");
+      expect(await readFile(
+        path.join(prepared.repositoryPath!, "tests/regression.txt"),
+        "utf8"
+      )).toBe("fixture evidence\n");
+      expect(execFileSync("git", ["status", "--porcelain"], {
+        cwd: prepared.repositoryPath
+      }).toString()).toBe("");
       expect((await manager.prepare("vampi")).repositoryPath).toBe(prepared.repositoryPath);
     } finally {
       await rm(source, { recursive: true, force: true });

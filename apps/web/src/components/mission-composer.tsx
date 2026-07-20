@@ -118,6 +118,12 @@ interface ComposerState {
   }>;
   tokenBudget: number;
   maxDreamDepth: number;
+  dependencyBootstrapEnabled: boolean;
+  dependencyBootstrapKind: "python-venv" | "node-npm";
+  dependencyManifestPath: string;
+  dependencyTargetDepth: number;
+  requiredPythonVersion: string;
+  requiredNodeVersion: string;
   interventionEnabled: boolean;
   interventionHypothesis: string;
   interventionFaultClass: AdversarialFaultClass;
@@ -133,11 +139,11 @@ interface ComposerState {
 const initialState: ComposerState = {
   name: "VAmPI Ownership Regression",
   repositoryPath: "",
-  mission: "Maintain the local VAmPI educational fixture. Using only its source and local tests, reproduce the documented book-ownership regression in tests/test_authorization_regression.py, correct the smallest implementation boundary, and preserve the existing API contract.",
+  mission: "Maintain the local VAmPI educational fixture. Use its operator-provided tests/test_authorization_regression.py harness to reproduce the documented book-ownership regression, correct the smallest implementation boundary, and preserve the existing API contract.",
   scope: "VAmPI local ownership rules for book records and user deletion",
   premise: "The current handlers enforce the documented owner and administrator invariants.",
-  constraints: "Work only inside the operator-provided local VAmPI educational fixture.\nPerform repository maintenance with static source inspection and local tests; do not start or contact a service.\nUse only synthetic test data and do not access credentials, accounts, external targets, or network systems.\nLimit changes to reproducing and correcting the documented local behavior.\nPreserve the documented OpenAPI shape unless a compatible correction requires otherwise.\nReturn reproducible test evidence without exposing hidden model reasoning.",
-  parentTruths: "This is an operator-owned local educational fixture with published defects.\nA book record is available only to its documented owner.\nOnly the administrator role may delete users.\nEvery conclusion must cite executable local-test or source evidence.",
+  constraints: "Work only inside the operator-provided local VAmPI educational fixture.\nPerform repository maintenance with static source inspection and local tests; do not start or contact an application service.\nUse only synthetic test data and do not access credentials, accounts, or external targets.\nNetwork use is limited to the parent-authorized pinned dependency bootstrap from its approved package index.\nNever install packages globally or alter the host Python or Node runtime.\nLimit changes to reproducing and correcting the documented local behavior.\nPreserve the documented OpenAPI shape unless a compatible correction requires otherwise.\nReturn reproducible test evidence without exposing hidden model reasoning.",
+  parentTruths: "This is an operator-owned local educational fixture with published defects and a committed regression harness.\nA book record is available only to its documented owner.\nOnly the administrator role may delete users.\nEvery conclusion must cite executable local-test or source evidence.",
   wakeContract: "State initial beliefs and what changed.\nReturn reproducible evidence and artefacts.\nSeparate invariants from world-specific observations.\nPreserve remaining uncertainty.",
   runtimeLaws: "Only evidence reproduced inside the local repository may become memory.\nA failed immutable proof prevents Reality stabilisation.\nCompeting Dreams may disagree; only evidence-backed conclusions may propagate.",
   safetyProfile: "authorized-local-defensive-review",
@@ -147,8 +153,8 @@ const initialState: ComposerState = {
   proofs: [{
     key: "authorization-regression",
     name: "Authorization regression",
-    executable: "python3",
-    args: "tests/test_authorization_regression.py"
+    executable: "sh",
+    args: "scripts/run_authorization_regression.sh"
   }],
   subjects: [
     {
@@ -170,8 +176,14 @@ const initialState: ComposerState = {
       mission: "Turn the documented behavior mismatch into the smallest decisive executable local test."
     }
   ],
-  tokenBudget: 8_000_000,
+  tokenBudget: 30_000_000,
   maxDreamDepth: 3,
+  dependencyBootstrapEnabled: true,
+  dependencyBootstrapKind: "python-venv",
+  dependencyManifestPath: "requirements-reality.txt",
+  dependencyTargetDepth: 3,
+  requiredPythonVersion: "",
+  requiredNodeVersion: "",
   interventionEnabled: true,
   interventionHypothesis: "A minimal authorization-boundary regression should be discoverable from cross-user behavior and ordinary source evidence without revealing which line changed.",
   interventionFaultClass: "permission",
@@ -237,8 +249,8 @@ function missionAutopilot(run: MissionRun): MissionRun["autopilot"] {
   return run.autopilot ?? {
     mode: "off",
     kind: "guided-real",
-    maxActions: 30,
-    maxMinutes: 60,
+    maxActions: 60,
+    maxMinutes: 180,
     pauseOnDream: true,
     pauseOnIntervention: true,
     actionsCompleted: 0
@@ -306,11 +318,13 @@ function MissionAutoModeBar({
   run,
   busy,
   onControl,
+  onApproveMissionLimits,
   onApproveInterventionBudget
 }: {
   run: MissionRun;
   busy: boolean;
   onControl(command: AutopilotCommand): void;
+  onApproveMissionLimits(tokenBudget: number): void;
   onApproveInterventionBudget(tokenBudget: number): void;
 }) {
   const state = missionAutopilot(run);
@@ -339,13 +353,41 @@ function MissionAutoModeBar({
   const budgetRecovery = paused
     && Boolean(rejectedIntervention)
     && currentBudget > 0;
+  const observedMissionTokensCount = run.observedTokens
+    ?? observedMissionTokens(run.events);
+  const missionCeilingReached = observedMissionTokensCount >= run.definition.tokenBudget;
+  const missionLimitRecovery = missionCeilingReached
+    && !budgetRecovery
+    && run.status !== "stabilised";
   const sameHardCeilingRetry = currentBudget === 500_000
     && maximumBudget === currentBudget;
   const [approvedBudget, setApprovedBudget] = useState(suggestedBudget);
+  const maximumMissionBudget = 30_000_000;
+  const minimumMissionBudget = Math.min(
+    maximumMissionBudget,
+    Math.max(
+      run.definition.tokenBudget + 100_000,
+      Math.ceil(observedMissionTokensCount / 100_000) * 100_000
+    )
+  );
+  const suggestedMissionBudget = Math.min(
+    maximumMissionBudget,
+    Math.max(
+      minimumMissionBudget,
+      Math.ceil(Math.max(
+        run.definition.tokenBudget + 5_000_000,
+        observedMissionTokensCount * 1.15
+      ) / 100_000) * 100_000
+    )
+  );
+  const [approvedMissionBudget, setApprovedMissionBudget] = useState(suggestedMissionBudget);
 
   useEffect(() => {
     setApprovedBudget(suggestedBudget);
   }, [run.id, rejectedIntervention?.id, rejectedIntervention?.lastAttemptTokens, suggestedBudget]);
+  useEffect(() => {
+    setApprovedMissionBudget(suggestedMissionBudget);
+  }, [run.id, run.definition.tokenBudget, observedMissionTokensCount, suggestedMissionBudget]);
 
   return (
     <section className={`mission-autopilot autopilot-${state.mode}`} data-testid="mission-autopilot">
@@ -357,11 +399,13 @@ function MissionAutoModeBar({
             ? "Advancing one validated Reality action at a time"
             : budgetRecovery
               ? "Adversarial Subject exceeded its approved token ceiling"
-              : paused
-                ? state.pauseReason ?? "Waiting at a parent-owned gate"
-                : state.mode === "completed"
-                  ? "Auto mode reached a stable Reality"
-                  : "Manual control"}</strong>
+              : missionLimitRecovery
+                ? "Mission reached its observed SDK token ceiling"
+                : paused
+                  ? state.pauseReason ?? "Waiting at a parent-owned gate"
+                  : state.mode === "completed"
+                    ? "Auto mode reached a stable Reality"
+                    : "Manual control"}</strong>
         </p>
       </div>
       <dl>
@@ -369,7 +413,9 @@ function MissionAutoModeBar({
         <div><dt>LIMIT</dt><dd>{state.maxMinutes} min</dd></div>
       </dl>
       <nav aria-label="Guided auto mode controls">
-        {["off", "stopped", "completed"].includes(state.mode) && run.status !== "stabilised" && (
+        {["off", "stopped", "completed"].includes(state.mode)
+          && run.status !== "stabilised"
+          && !missionLimitRecovery && (
           <button type="button" onClick={() => onControl("start")} disabled={busy}>
             <Play size={14} /> Start guided auto
           </button>
@@ -379,7 +425,7 @@ function MissionAutoModeBar({
             <Pause size={14} /> Pause
           </button>
         )}
-        {paused && !budgetRecovery && (
+        {paused && !budgetRecovery && !missionLimitRecovery && (
           <button type="button" className="is-primary" onClick={() => onControl("resume")} disabled={busy}>
             <Play size={14} /> Approve and continue
           </button>
@@ -434,6 +480,49 @@ function MissionAutoModeBar({
             <small className="budget-limit-warning">
               No bounded retry remains under this Mission&apos;s overall ceiling. Stop this run and form a Mission with a larger overall budget.
             </small>
+          )}
+        </div>
+      )}
+      {missionLimitRecovery && (
+        <div className="autopilot-budget-recovery" data-testid="mission-limit-recovery">
+          <span>
+            <small>MISSION LIMIT APPROVAL</small>
+            <strong>
+              {observedMissionTokensCount.toLocaleString()} observed / {run.definition.tokenBudget.toLocaleString()} approved
+            </strong>
+            <p>
+              {run.definition.tokenBudget < maximumMissionBudget
+                ? "Reality state is preserved. No Codex usage resumes until you approve a higher observed-token ceiling."
+                : "The Mission already uses the maximum supported observed-token ceiling. Provider limits remain controlled by the Codex account."}
+            </p>
+          </span>
+          {run.definition.tokenBudget < maximumMissionBudget && (
+            <>
+              <label>
+                <small>NEW MISSION CEILING</small>
+                <input
+                  aria-label="Approved Mission token ceiling"
+                  type="number"
+                  min={minimumMissionBudget}
+                  max={maximumMissionBudget}
+                  step={100_000}
+                  value={approvedMissionBudget}
+                  onChange={(event) => setApprovedMissionBudget(Number(event.target.value))}
+                />
+              </label>
+              <button
+                type="button"
+                className="is-primary"
+                onClick={() => onApproveMissionLimits(approvedMissionBudget)}
+                disabled={
+                  busy
+                  || approvedMissionBudget < minimumMissionBudget
+                  || approvedMissionBudget > maximumMissionBudget
+                }
+              >
+                <ShieldCheck size={14} /> Approve {approvedMissionBudget.toLocaleString()} ceiling
+              </button>
+            </>
           )}
         </div>
       )}
@@ -593,7 +682,9 @@ function MissionActionDock({
           {replaying
             ? "Return the timeline to Live to continue"
             : ceilingReached
-              ? "Observed SDK token ceiling reached; form a new Mission with a higher ceiling before execution"
+              ? snapshot.run.definition.tokenBudget < 30_000_000
+                ? "Observed SDK token ceiling reached; approve a higher ceiling above to preserve and continue this Reality"
+                : "Maximum observed SDK token ceiling reached; no further Codex action can enter this Mission"
               : canonicalProductCopy(snapshot.operation?.label ?? next?.label ?? "Reality stabilised")}
         </strong>
         <div><i style={{ width: `${progress}%` }} /></div>
@@ -883,6 +974,36 @@ function MissionRunView({
     }
   };
 
+  const approveMissionLimits = async (tokenBudget: number) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const autopilot = missionAutopilot(run);
+      const response = await fetch(`/api/missions/${encodeURIComponent(run.id)}/limits`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenBudget,
+          maxActions: autopilot.maxActions,
+          maxMinutes: autopilot.maxMinutes
+        })
+      });
+      const body = await readJson<MissionSnapshot & { error?: string }>(
+        response,
+        "The Mission limits could not be approved."
+      );
+      if (!response.ok) {
+        throw new Error(body.error ?? "The Mission limits could not be approved.");
+      }
+      onReload(body);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      await load().catch(() => undefined);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadEarlierEvents = async () => {
     const earliest = run.events[0];
     if (!earliest) return;
@@ -1036,6 +1157,8 @@ function MissionRunView({
           run={run}
           busy={busy}
           onControl={(command) => void controlAutopilot(command)}
+          onApproveMissionLimits={(tokenBudget) =>
+            void approveMissionLimits(tokenBudget)}
           onApproveInterventionBudget={(tokenBudget) =>
             void approveInterventionBudget(tokenBudget)}
         />
@@ -1394,6 +1517,11 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
         ["Intervention allowed paths", composer.interventionAllowedPaths]
       );
     }
+    if (composer.dependencyBootstrapEnabled) {
+      requiredFields.push(
+        ["Dependency manifest", composer.dependencyManifestPath]
+      );
+    }
     const missingFields = requiredFields
       .filter(([, value]) => !value.trim())
       .map(([label]) => label);
@@ -1428,6 +1556,28 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
         role: subject.role.trim(),
         mission: subject.mission.trim()
       })),
+      dependencyBootstrap: composer.dependencyBootstrapEnabled
+        ? composer.dependencyBootstrapKind === "python-venv"
+          ? {
+              kind: "python-venv",
+              manifestPath: composer.dependencyManifestPath.trim(),
+              pythonExecutable: "auto",
+              virtualEnvironmentPath: ".venv",
+              indexUrl: "https://pypi.org/simple",
+              requiredPythonVersion: composer.requiredPythonVersion.trim() || undefined,
+              targetDepth: composer.dependencyTargetDepth
+            }
+          : {
+              kind: "node-npm",
+              manifestPath: "package-lock.json",
+              nodeExecutable: "node",
+              packageManagerExecutable: "npm",
+              dependencyPath: "node_modules",
+              indexUrl: "https://registry.npmjs.org/",
+              requiredNodeVersion: composer.requiredNodeVersion.trim() || undefined,
+              targetDepth: composer.dependencyTargetDepth
+            }
+        : undefined,
       intervention: composer.interventionEnabled ? {
         enabled: true,
         subject: adversarialSubject,
@@ -1623,6 +1773,112 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
             </label>
 
             <div className="mission-section-title mission-form-divider">
+              <span><LockKeyhole size={16} /> DEPENDENCY ENVIRONMENT</span>
+              <b>PARENT-AUTHORIZED / HOST-PRESERVING</b>
+            </div>
+            <label className="mission-toggle mission-field-wide">
+              <input
+                type="checkbox"
+                checked={composer.dependencyBootstrapEnabled}
+                onChange={(event) => setComposer({
+                  ...composer,
+                  dependencyBootstrapEnabled: event.target.checked
+                })}
+              />
+              <span>Bootstrap pinned dependencies inside target Dreams and the base Reality before synthesis</span>
+            </label>
+            {composer.dependencyBootstrapEnabled && (
+              <>
+                <label>
+                  <span>Environment kind</span>
+                  <select
+                    value={composer.dependencyBootstrapKind}
+                    onChange={(event) => {
+                      const kind = event.target.value as ComposerState["dependencyBootstrapKind"];
+                      setComposer({
+                        ...composer,
+                        dependencyBootstrapKind: kind,
+                        dependencyManifestPath: kind === "python-venv"
+                          ? "requirements-reality.txt"
+                          : "package-lock.json"
+                      });
+                    }}
+                  >
+                    <option value="python-venv">Python / .venv</option>
+                    <option value="node-npm">Node / locked node_modules</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Exact dependency manifest</span>
+                  <input
+                    required
+                    value={composer.dependencyManifestPath}
+                    readOnly={composer.dependencyBootstrapKind === "node-npm"}
+                    onChange={(event) => setComposer({
+                      ...composer,
+                      dependencyManifestPath: event.target.value
+                    })}
+                  />
+                </label>
+                {composer.dependencyBootstrapKind === "python-venv" && (
+                  <label>
+                    <span>Required Python version / optional</span>
+                    <input
+                      value={composer.requiredPythonVersion}
+                      placeholder="Auto-detect any installed Python 3"
+                      onChange={(event) => setComposer({
+                        ...composer,
+                        requiredPythonVersion: event.target.value
+                      })}
+                    />
+                  </label>
+                )}
+                {composer.dependencyBootstrapKind === "node-npm" && (
+                  <label>
+                    <span>Required Node version / optional exact version</span>
+                    <input
+                      value={composer.requiredNodeVersion}
+                      placeholder="22.15.0"
+                      onChange={(event) => setComposer({
+                        ...composer,
+                        requiredNodeVersion: event.target.value
+                      })}
+                    />
+                  </label>
+                )}
+                <fieldset>
+                  <legend>Bootstrap Dream depth</legend>
+                  <div className="mission-segments">
+                    {[1, 2, 3, 4, 5]
+                      .filter((depth) => depth <= composer.maxDreamDepth)
+                      .map((depth) => (
+                        <button
+                          type="button"
+                          className={composer.dependencyTargetDepth === depth ? "is-selected" : ""}
+                          onClick={() => setComposer({
+                            ...composer,
+                            dependencyTargetDepth: depth
+                          })}
+                          key={depth}
+                        >
+                          {depth}
+                        </button>
+                      ))}
+                  </div>
+                </fieldset>
+                <div className="mission-trust-warning mission-field-wide">
+                  <ShieldCheck size={18} />
+                  <span>
+                    <b>HOST RUNTIME PRESERVED</b>
+                    {composer.dependencyBootstrapKind === "python-venv"
+                      ? "Any installed Python 3 is auto-detected from python3 or python by default. Exact package pins install into this Reality's .venv; Python itself is never replaced."
+                      : "npm ci verifies package-lock integrity, installs only into ignored node_modules, disables lifecycle scripts, and never changes host Node."}
+                  </span>
+                </div>
+              </>
+            )}
+
+            <div className="mission-section-title mission-form-divider">
               <span><ShieldAlert size={16} /> SEALED INTERVENTION</span>
               <b>OPTIONAL / EXPLICIT ACTION</b>
             </div>
@@ -1771,7 +2027,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
             </div>
             <label>
               <span>Observed SDK token ceiling</span>
-              <input type="number" min={10_000} max={10_000_000} step={10_000} value={composer.tokenBudget} onChange={(event) => setComposer({ ...composer, tokenBudget: Number(event.target.value) })} />
+              <input type="number" min={10_000} max={30_000_000} step={10_000} value={composer.tokenBudget} onChange={(event) => setComposer({ ...composer, tokenBudget: Number(event.target.value) })} />
             </label>
             <label>
               <span>Dream exploration strategy</span>
@@ -1811,6 +2067,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
                     onClick={() => setComposer({
                       ...composer,
                       maxDreamDepth: depth,
+                      dependencyTargetDepth: Math.min(composer.dependencyTargetDepth, depth),
                       interventionTargetDepth: Math.min(composer.interventionTargetDepth, depth)
                     })}
                     key={depth}

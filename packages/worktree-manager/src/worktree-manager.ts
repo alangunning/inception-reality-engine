@@ -4,6 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
+const MISSION_WORKSPACE_MARKER = ".inception-mission-workspace.json";
 
 export interface WorktreeDescriptor {
   path: string;
@@ -387,11 +388,19 @@ export class GitMissionWorkspaceFactory {
     const repoRoot = stdout.trim();
     if (!repoRoot) throw new Error("Mission repository is not a Git worktree.");
     const safeMissionId = safeBranchPart(missionId);
+    if (!safeMissionId) throw new Error("Mission ID must contain a safe filesystem component.");
+    const missionRoot = path.join(this.storageRoot, safeMissionId);
+    await mkdir(missionRoot, { recursive: true });
+    await writeFile(
+      path.join(missionRoot, MISSION_WORKSPACE_MARKER),
+      `${JSON.stringify({ format: 1, missionId: safeMissionId }, null, 2)}\n`,
+      "utf8"
+    );
     return {
       repoRoot,
       worktrees: new GitWorktreeManager(
         repoRoot,
-        path.join(this.storageRoot, safeMissionId, "worktrees"),
+        path.join(missionRoot, "worktrees"),
         `inception-mission-${safeMissionId}`
       )
     };
@@ -408,7 +417,19 @@ export class GitMissionWorkspaceFactory {
     for (const missionDirectory of missionDirectories) {
       if (!missionDirectory.isDirectory()) continue;
       const missionId = safeBranchPart(missionDirectory.name);
+      if (!missionId || missionId !== missionDirectory.name) continue;
       const missionRoot = path.join(storageRoot, missionDirectory.name);
+      const marker = await readFile(
+        path.join(missionRoot, MISSION_WORKSPACE_MARKER),
+        "utf8"
+      ).then((value) => {
+        try {
+          return JSON.parse(value) as { format?: unknown; missionId?: unknown };
+        } catch {
+          return undefined;
+        }
+      }).catch(() => undefined);
+      if (marker?.format !== 1 || marker.missionId !== missionId) continue;
       const worktreeRoot = path.join(missionRoot, "worktrees");
       const worktreeDirectories = await readdir(worktreeRoot, { withFileTypes: true })
         .catch(() => []);
@@ -442,7 +463,6 @@ export class GitMissionWorkspaceFactory {
       await rm(missionRoot, { recursive: true, force: true });
     }
 
-    await rm(storageRoot, { recursive: true, force: true });
     return removed;
   }
 }

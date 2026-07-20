@@ -17,23 +17,38 @@ class FakeMissionWorktrees implements WorktreeManagerPort {
   restoreCalls = 0;
   cleanupCalls = 0;
   dirtyWorktrees = new Set<string>();
+  missingWorktrees = new Set<string>();
+  readonly createCalls: Array<{
+    realityId: string;
+    baseRef?: string;
+    parentWorktreePath?: string;
+  }> = [];
+  readonly commands: Array<{ worktreePath: string; command: string; args: string[] }> = [];
+  failDependencyInstall = false;
 
   async discoverRepoRoot(): Promise<string> {
     return "/repo";
   }
-  async create(realityId: string): Promise<WorktreeDescriptor> {
-    return {
+  async create(
+    realityId: string,
+    baseRef?: string,
+    parentWorktreePath?: string
+  ): Promise<WorktreeDescriptor> {
+    this.createCalls.push({ realityId, baseRef, parentWorktreePath });
+    const descriptor = {
       path: `/mission-worktrees/${realityId}`,
       branchName: `mission/${realityId}`
     };
+    this.missingWorktrees.delete(descriptor.path);
+    return descriptor;
   }
   async remove(): Promise<void> {}
   async cleanupAll(): Promise<number> {
     this.cleanupCalls += 1;
     return 1;
   }
-  async isPresent(): Promise<boolean> {
-    return true;
+  async isPresent(worktreePath?: string): Promise<boolean> {
+    return worktreePath !== undefined && !this.missingWorktrees.has(worktreePath);
   }
   async writeFile(worktreePath: string, relativePath: string, content: string): Promise<void> {
     this.files.set(`${worktreePath}/${relativePath}`, content);
@@ -71,7 +86,36 @@ class FakeMissionWorktrees implements WorktreeManagerPort {
     this.changedFiles = [];
     this.changedDiff = "";
   }
-  async run(): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  async run(
+    worktreePath: string,
+    command: string,
+    args: string[]
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    this.commands.push({ worktreePath, command, args });
+    if ((command === "python3" || command === "python") && args[0] === "--version") {
+      return { stdout: "Python 3.12.10", stderr: "", exitCode: 0 };
+    }
+    if (command === "node" && args[0] === "--version") {
+      return { stdout: "v22.15.0", stderr: "", exitCode: 0 };
+    }
+    if (command === ".venv/bin/python" && args.includes("--format=json")) {
+      return {
+        stdout: JSON.stringify([
+          { name: "Flask", version: "2.2.2" },
+          { name: "Werkzeug", version: "2.2.3" }
+        ]),
+        stderr: "",
+        exitCode: 0
+      };
+    }
+    if (
+      this.failDependencyInstall
+      && command === ".venv/bin/python"
+      && args[0] === "-m"
+      && args[1] === "pip"
+    ) {
+      return { stdout: "", stderr: "dependency install failed", exitCode: 1 };
+    }
     return { stdout: "passed", stderr: "", exitCode: 0 };
   }
 }
@@ -133,6 +177,11 @@ describe("MissionOrchestrator", () => {
       snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
       snapshot = await orchestrator.act(snapshot.run.id, "inspect");
       snapshot = await orchestrator.act(snapshot.run.id, "kick");
+      const returnedDream = snapshot.run.realities
+        .filter((reality) => reality.depth === 1)
+        .at(-1);
+      expect(returnedDream?.proposals.every((proposal) => proposal.status === "resolved"))
+        .toBe(true);
     }
 
     expect(snapshot.run.realities.filter((reality) => reality.parentId === snapshot.activeReality.id))
@@ -153,6 +202,9 @@ describe("MissionOrchestrator", () => {
     snapshot = await orchestrator.act(snapshot.run.id, "synthesise");
     snapshot = await orchestrator.act(snapshot.run.id, "verify");
     snapshot = await orchestrator.act(snapshot.run.id, "stabilise");
+    expect(snapshot.run.realities.every((reality) =>
+      reality.proposals.every((proposal) => proposal.status === "resolved")
+    )).toBe(true);
     expect(snapshot.run.outcome).toMatchObject({
       metrics: {
         realitiesExplored: 2,
@@ -248,6 +300,10 @@ describe("MissionOrchestrator", () => {
     expect(paused.nextAction?.id).toBe("create_dream");
     expect(paused.run.events.some((event) => event.type === "autopilot.paused")).toBe(true);
 
+    const fractured = await repository.getMissionRun(created.run.id);
+    expect(fractured).not.toBeNull();
+    fractured!.status = "fractured";
+    await repository.saveMissionRun(fractured!);
     await orchestrator.controlAutopilot(created.run.id, { command: "resume" });
     let completed = await orchestrator.snapshot(created.run.id);
     for (let attempt = 0; attempt < 100 && completed.run.autopilot.mode === "running"; attempt += 1) {
@@ -257,6 +313,142 @@ describe("MissionOrchestrator", () => {
     expect(completed.run.autopilot.mode).toBe("completed");
     expect(completed.run.status).toBe("stabilised");
     expect(completed.run.events.some((event) => event.type === "autopilot.completed")).toBe(true);
+    expect(completed.run.events.some((event) =>
+      event.type === "reality.recovered"
+      && event.payload.recovery === "explicit-retry"
+    )).toBe(true);
+  });
+
+  it("clears a transient fracture after a manual retry succeeds", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      ...basicMission(),
+      maxDreamDepth: 1
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+
+    const fractured = await repository.getMissionRun(snapshot.run.id);
+    expect(fractured).not.toBeNull();
+    fractured!.status = "fractured";
+    await repository.saveMissionRun(fractured!);
+
+    snapshot = await orchestrator.act(snapshot.run.id, "kick");
+    expect(snapshot.run.status).toBe("exploring");
+    expect(snapshot.run.events.some((event) =>
+      event.type === "reality.recovered"
+      && event.payload.recovery === "successful-action"
+    )).toBe(true);
+  });
+
+  it("records an unchanged auto-mode pause only once", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    const created = await orchestrator.create(basicMission());
+    const pausable = orchestrator as unknown as {
+      pauseAutopilot(
+        run: typeof created.run,
+        reality: typeof created.activeReality,
+        reason: string
+      ): Promise<void>;
+    };
+    const reason = "Reality fractured; inspect the validated failure before continuing.";
+
+    await pausable.pauseAutopilot(created.run, created.activeReality, reason);
+    await pausable.pauseAutopilot(created.run, created.activeReality, reason);
+
+    const paused = await orchestrator.snapshot(created.run.id);
+    expect(paused.run.events.filter((event) =>
+      event.type === "autopilot.paused" && event.payload.reason === reason
+    )).toHaveLength(1);
+  });
+
+  it("increases Mission limits without resetting action or token evidence", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    const created = await orchestrator.create(basicMission());
+
+    const approved = await orchestrator.approveLimits(created.run.id, {
+      tokenBudget: 200_000,
+      maxActions: 70,
+      maxMinutes: 180
+    });
+
+    expect(approved.run.definition.tokenBudget).toBe(200_000);
+    expect(approved.run.autopilot).toMatchObject({
+      maxActions: 70,
+      maxMinutes: 180,
+      actionsCompleted: 0
+    });
+    expect(approved.run.events.at(-1)).toMatchObject({
+      type: "mission.limits.approved",
+      payload: {
+        previous: {
+          tokenBudget: 100_000,
+          maxActions: 60,
+          maxMinutes: 180
+        },
+        approved: {
+          tokenBudget: 200_000,
+          maxActions: 70,
+          maxMinutes: 180
+        }
+      }
+    });
+    await expect(orchestrator.approveLimits(created.run.id, {
+      tokenBudget: 100_000,
+      maxActions: 70,
+      maxMinutes: 180
+    })).rejects.toThrow("Approve a Mission token ceiling");
+  });
+
+  it("reforms a missing unsynthesised root worktree before retrying its action", async () => {
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      realRuntime(),
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    const created = await orchestrator.create(basicMission());
+    worktrees.missingWorktrees.add(created.activeReality.worktreePath!);
+
+    const inspected = await orchestrator.act(created.run.id, "inspect");
+
+    expect(worktrees.createCalls).toHaveLength(2);
+    expect(worktrees.createCalls.at(-1)).toEqual({
+      realityId: created.activeReality.id,
+      baseRef: "HEAD",
+      parentWorktreePath: "/repo"
+    });
+    expect(inspected.run.events).toContainEqual(expect.objectContaining({
+      type: "reality.recovered",
+      payload: expect.objectContaining({
+        recovery: "root-baseline"
+      })
+    }));
+    expect(inspected.activeReality.codexThreadId).not.toMatch(/^unbound:/);
   });
 
   it("forms without Codex usage, then supports auditable nested real-mode Dreams", async () => {
@@ -359,6 +551,118 @@ describe("MissionOrchestrator", () => {
     )?.descendantSealIds).toContain(nestedSealId);
     expect(snapshot.nextAction?.id).toBe("synthesise");
     expect(await repository.getMissionRun(snapshot.run.id)).not.toBeNull();
+  });
+
+  it("bootstraps a Python environment inside the configured Dream before Codex enters it", async () => {
+    const mock = new MockCodexRuntime();
+    let inspections = 0;
+    const runtime: CodexRuntime = {
+      ...realRuntime(mock),
+      inspect: async (...args) => {
+        inspections += 1;
+        return mock.inspect(...args);
+      }
+    };
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      runtime,
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      ...basicMission(),
+      maxDreamDepth: 1,
+      dependencyBootstrap: {
+        kind: "python-venv",
+        manifestPath: "requirements-reality.txt",
+        pythonExecutable: "auto",
+        virtualEnvironmentPath: ".venv",
+        indexUrl: "https://pypi.org/simple",
+        targetDepth: 1
+      }
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    expect(snapshot.run.events.some((event) => event.type.startsWith("environment.bootstrap.")))
+      .toBe(false);
+
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+    worktrees.files.set(
+      `${snapshot.activeReality.worktreePath}/requirements-reality.txt`,
+      "Flask==2.2.2\nWerkzeug==2.2.3\n"
+    );
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+
+    const environmentEvents = snapshot.run.events.filter((event) =>
+      event.type.startsWith("environment.bootstrap.")
+    );
+    expect(environmentEvents.map((event) => event.type)).toEqual([
+      "environment.bootstrap.started",
+      "environment.bootstrap.completed"
+    ]);
+    expect(environmentEvents[1]?.payload).toMatchObject({
+      phase: "inspection",
+      status: "completed",
+      packageCount: 2,
+      runtimeVersion: "3.12.10",
+      dependencyPath: ".venv",
+      reused: false
+    });
+    expect(worktrees.commands).toContainEqual({
+      worktreePath: snapshot.activeReality.worktreePath,
+      command: "python3",
+      args: ["-m", "venv", ".venv"]
+    });
+    expect(inspections).toBe(2);
+  });
+
+  it("stops a required dependency-backed Dream before Codex when its bootstrap fails", async () => {
+    const mock = new MockCodexRuntime();
+    let inspections = 0;
+    const runtime: CodexRuntime = {
+      ...realRuntime(mock),
+      inspect: async (...args) => {
+        inspections += 1;
+        return mock.inspect(...args);
+      }
+    };
+    const repository = new InMemoryRealityRepository();
+    const worktrees = new FakeMissionWorktrees();
+    const orchestrator = new MissionOrchestrator(
+      repository,
+      new InMemoryRealityEventBus(),
+      runtime,
+      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+    );
+    let snapshot = await orchestrator.create({
+      ...basicMission(),
+      maxDreamDepth: 1,
+      dependencyBootstrap: {
+        kind: "python-venv",
+        manifestPath: "requirements-reality.txt",
+        pythonExecutable: "auto",
+        virtualEnvironmentPath: ".venv",
+        indexUrl: "https://pypi.org/simple",
+        targetDepth: 1
+      }
+    });
+    snapshot = await orchestrator.act(snapshot.run.id, "inspect");
+    snapshot = await orchestrator.act(snapshot.run.id, "create_dream");
+    worktrees.files.set(
+      `${snapshot.activeReality.worktreePath}/requirements-reality.txt`,
+      "Flask==2.2.2\n"
+    );
+    worktrees.failDependencyInstall = true;
+
+    await expect(orchestrator.act(snapshot.run.id, "inspect"))
+      .rejects.toThrow("Reality-local dependency bootstrap failed");
+    const failed = await orchestrator.snapshot(snapshot.run.id);
+    expect(failed.run.status).toBe("fractured");
+    expect(failed.nextAction?.id).toBe("inspect");
+    expect(failed.run.events.some((event) => event.type === "environment.bootstrap.failed"))
+      .toBe(true);
+    expect(inspections).toBe(1);
   });
 
   it("quarantines a memory when its sealed Dream worktree changes after Kick", async () => {

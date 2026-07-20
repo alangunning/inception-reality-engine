@@ -251,7 +251,11 @@ export const RealityEventTypeSchema = z.enum([
   "wake.collecting",
   "wake.sealing",
   "wake.returning",
+  "environment.bootstrap.started",
+  "environment.bootstrap.completed",
+  "environment.bootstrap.failed",
   "autopilot.started",
+  "mission.limits.approved",
   "autopilot.paused",
   "autopilot.stopped",
   "autopilot.completed"
@@ -440,6 +444,47 @@ export const MissionDreamStrategySchema = z.enum([
   "competing-siblings"
 ]);
 
+const RelativeMissionPathSchema = z.string()
+  .min(1)
+  .max(500)
+  .refine(
+    (value) =>
+      !value.startsWith("/")
+      && !value.startsWith("\\")
+      && !value.split(/[\\/]/).includes(".."),
+    "Path must remain relative to the Reality worktree."
+  );
+
+const PythonDependencyBootstrapSchema = z.object({
+  kind: z.literal("python-venv"),
+  manifestPath: RelativeMissionPathSchema,
+  pythonExecutable: z.enum(["auto", "python3", "python"]),
+  virtualEnvironmentPath: z.literal(".venv"),
+  indexUrl: z.literal("https://pypi.org/simple"),
+  requiredPythonVersion: z.string()
+    .regex(/^\d+\.\d+\.\d+$/, "Required Python version must be an exact semantic version.")
+    .optional(),
+  targetDepth: z.number().int().min(1).max(5)
+}).strict();
+
+const NodeDependencyBootstrapSchema = z.object({
+  kind: z.literal("node-npm"),
+  manifestPath: z.literal("package-lock.json"),
+  nodeExecutable: z.literal("node"),
+  packageManagerExecutable: z.literal("npm"),
+  dependencyPath: z.literal("node_modules"),
+  indexUrl: z.literal("https://registry.npmjs.org/"),
+  requiredNodeVersion: z.string()
+    .regex(/^v?\d+\.\d+\.\d+$/, "Required Node version must be an exact semantic version.")
+    .optional(),
+  targetDepth: z.number().int().min(1).max(5)
+}).strict();
+
+export const MissionDependencyBootstrapSchema = z.discriminatedUnion("kind", [
+  PythonDependencyBootstrapSchema,
+  NodeDependencyBootstrapSchema
+]);
+
 export const DEFAULT_INTERVENTION_TOKEN_BUDGET = 500_000;
 
 export const MissionInterventionContractSchema = z.object({
@@ -476,8 +521,9 @@ export const MissionDefinitionSchema = z.object({
   maxSiblingDreams: z.number().int().min(1).max(3).default(2),
   proofs: z.array(MissionProofSchema).min(1).max(20),
   subjects: z.array(MissionSubjectCharterSchema).max(6),
+  dependencyBootstrap: MissionDependencyBootstrapSchema.optional(),
   intervention: MissionInterventionContractSchema.optional(),
-  tokenBudget: z.number().int().positive().max(10_000_000),
+  tokenBudget: z.number().int().positive().max(30_000_000),
   maxDreamDepth: z.number().int().min(1).max(5),
   createdAt: z.string()
 });
@@ -620,8 +666,8 @@ export const MissionAutopilotStateSchema = z.object({
 const DefaultMissionAutopilotState = {
   mode: "off",
   kind: "guided-real",
-  maxActions: 30,
-  maxMinutes: 60,
+  maxActions: 60,
+  maxMinutes: 180,
   pauseOnDream: true,
   pauseOnIntervention: true,
   actionsCompleted: 0,
@@ -681,6 +727,7 @@ export type MissionSubjectCharter = z.infer<typeof MissionSubjectCharterSchema>;
 export type MissionSafetyProfile = z.infer<typeof MissionSafetyProfileSchema>;
 export type MissionMemoryPolicy = z.infer<typeof MissionMemoryPolicySchema>;
 export type MissionDreamStrategy = z.infer<typeof MissionDreamStrategySchema>;
+export type MissionDependencyBootstrap = z.infer<typeof MissionDependencyBootstrapSchema>;
 export type MissionInterventionContract = z.infer<typeof MissionInterventionContractSchema>;
 export type MissionDefinition = z.infer<typeof MissionDefinitionSchema>;
 export type MissionDefinitionDraft = z.input<typeof MissionDefinitionDraftSchema>;

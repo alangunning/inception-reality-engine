@@ -46,7 +46,7 @@ declare global {
 }
 
 const requireModule = createRequire(import.meta.url);
-const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260719.16";
+const RUNTIME_IMPLEMENTATION_VERSION = "0.1.0-20260720.17";
 
 function upgradeRuntimeCapabilities(
   candidate: CodexRuntime,
@@ -95,6 +95,22 @@ function worktreeRoot(repoRoot: string): string {
   const configured = process.env.INCEPTION_WORKTREE_ROOT?.trim();
   if (!configured) return path.join(repoRoot, ".inception", "worktrees");
   return path.isAbsolute(configured) ? configured : path.resolve(repoRoot, configured);
+}
+
+function missionStorageRoot(repoRoot: string): string {
+  const configured = process.env.INCEPTION_MISSION_ROOT?.trim();
+  if (configured) {
+    return path.isAbsolute(configured) ? configured : path.resolve(repoRoot, configured);
+  }
+  return path.join(repoRoot, ".inception", "missions");
+}
+
+function trainingTargetRoot(repoRoot: string): string {
+  const configured = process.env.INCEPTION_TRAINING_TARGET_ROOT?.trim();
+  if (configured) {
+    return path.isAbsolute(configured) ? configured : path.resolve(repoRoot, configured);
+  }
+  return path.join(repoRoot, ".inception", "training-targets");
 }
 
 function createCodexRuntime(
@@ -204,10 +220,10 @@ export function getRuntime(): RuntimeContainer {
         missionRepository,
         existing.missionEventBus,
         codexRuntime,
-        new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
+        new GitMissionWorkspaceFactory(missionStorageRoot(repoRoot))
       );
       existing.trainingTargets = new TrainingTargetManager(
-        path.join(repoRoot, ".inception", "training-targets")
+        trainingTargetRoot(repoRoot)
       );
       existing.persistence = persistence.persistence;
       existing.disconnect = persistence.disconnect;
@@ -239,11 +255,11 @@ export function getRuntime(): RuntimeContainer {
         repository,
         existing.missionEventBus,
         existing.codexRuntime,
-        new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
+        new GitMissionWorkspaceFactory(missionStorageRoot(repoRoot))
       );
     }
     existing.trainingTargets ??= new TrainingTargetManager(
-      path.join(discoverRepoRoot(), ".inception", "training-targets")
+      trainingTargetRoot(discoverRepoRoot())
     );
     return existing;
   }
@@ -270,10 +286,10 @@ export function getRuntime(): RuntimeContainer {
     persistence.repository,
     missionEventBus,
     codexRuntime,
-    new GitMissionWorkspaceFactory(path.join(repoRoot, ".inception", "missions"))
+    new GitMissionWorkspaceFactory(missionStorageRoot(repoRoot))
   );
   const trainingTargets = new TrainingTargetManager(
-    path.join(repoRoot, ".inception", "training-targets")
+    trainingTargetRoot(repoRoot)
   );
   globalThis.__inceptionRuntime = {
     implementationVersion: RUNTIME_IMPLEMENTATION_VERSION,

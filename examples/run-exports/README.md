@@ -3,6 +3,48 @@
 This directory contains credential-redacted Reality Engine exports that can be
 used as judging evidence, replay fixtures, and future import fixtures.
 
+## VAmPI real Mission
+
+`vampi-real-mission-history-2026-07-20.json` is the complete, stabilised
+general Mission snapshot for the authorized local VAmPI educational fixture.
+`vampi-real-run-log-2026-07-20.json` is its standalone chronological event log.
+Both replace the local repository and home paths with `$REPO_ROOT` and `$HOME`;
+they contain no credentials, raw model responses, or hidden reasoning.
+
+This run exercised 15 isolated Realities through Dream depth 3, 44 native
+Subjects, 115 evidence records, 14 validated Wake Reports and integrity seals,
+seven sibling-Dream reflections, and one detected and contained adversarial
+intervention. The final root Reality admitted all 14 memories, passed its
+immutable authorization proof, and stabilised after 45 guided actions. Codex
+used `gpt-5.6-sol` through CLI authentication and recorded 24,393,379 observed
+input-plus-output tokens.
+
+The four-file result removes the unscoped book lookup, rejects missing
+authenticated identities before access or mutation, introduces an
+owner-qualified model boundary, changes book-title uniqueness to be per owner,
+and adds 12 service-free authorization regression tests. Engine-owned
+`.inception` constitution and anchor files are intentionally excluded from the
+judge-facing Git diff.
+
+This is an honest operational trace, not a fabricated clean replay. Of 185
+terminal command events, 154 completed and 31 returned non-zero. Eleven were
+deliberate failing-test evidence, ten exposed missing framework dependencies,
+three referenced an absent proof or path, and three were test-harness errors;
+the remainder were bounded exploratory command failures. The dependency
+findings led directly to the Reality-local Python/Node bootstrap now used by
+new Missions. One CLI quota fracture was explicitly recovered. Two synthesis
+attempts were rejected by validation before any memory entered Reality; the
+applied-memory contract, full-command policy validation, and sealed-worktree
+recovery fixes are present in the committed engine. The final run has no
+unresolved Dream proposals.
+
+SHA-256:
+
+```text
+1d177c6991f1127efcc807f62fef97d3a757c636dac91a1552f5e005cc3d3702  vampi-real-mission-history-2026-07-20.json
+a47fc87366332dba3985e8ac60549cc927b39fde67f7fe8c0c434f4b845c4e16  vampi-real-run-log-2026-07-20.json
+```
+
 ## Password-reset real run
 
 `password-reset-real-stabilised-2026-07-20.json` is a completed real-Codex run

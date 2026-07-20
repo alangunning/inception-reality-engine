@@ -62,7 +62,7 @@ export class MockCodexRuntime implements CodexRuntime {
         summary: `Subject entered Codex thread: ${subject.name}.`,
         metadata: {
           stage: "subject",
-          status: "completed",
+          status: "started",
           subjectId: subject.id,
           subjectName: subject.name,
           subjectRole: subject.role,
@@ -317,7 +317,7 @@ export class MockCodexRuntime implements CodexRuntime {
         summary: `Subject entered Codex thread: ${contract.subject.name}.`,
         metadata: {
           stage: "subject",
-          status: "completed",
+          status: "started",
           subjectId: contract.subject.id,
           subjectName: contract.subject.name,
           subjectRole: contract.subject.role,

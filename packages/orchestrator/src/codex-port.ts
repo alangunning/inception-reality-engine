@@ -46,7 +46,19 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   subjectThreadId: z.string().min(1).max(100).optional(),
   subjectState: z.enum(["started", "completed", "failed"]).optional(),
   collaborationTool: z.enum(["spawn_agent", "wait", "close_agent", "thread_registry"]).optional()
-}).strict();
+}).strict().superRefine((metadata, context) => {
+  if (
+    metadata.stage === "subject"
+    && metadata.subjectState
+    && metadata.status !== metadata.subjectState
+  ) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["status"],
+      message: "Subject event status must match its lifecycle state."
+    });
+  }
+});
 
 export const CodexRuntimeEventSchema = z.object({
   type: z.enum(["progress", "tool", "file", "decision", "subject"]),
@@ -139,7 +151,12 @@ export interface WakeReportValidationIssue {
 
 export class CodexOutputValidationError extends Error {
   constructor(
-    readonly contract: "InvestigationReportSchema" | "AdversarialInterventionReportSchema" | "WakeReportSchema" | "SynthesisReportSchema",
+    readonly contract:
+      | "InvestigationReportSchema"
+      | "AdversarialInterventionReportSchema"
+      | "WakeReportSchema"
+      | "SynthesisReportSchema"
+      | "CodexCommandPolicy",
     readonly issues: WakeReportValidationIssue[] = []
   ) {
     const first = issues[0];

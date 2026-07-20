@@ -38,7 +38,7 @@ The UI renders this complete parent-child graph, including sibling Dreams, Neste
 
 ## Run It Live
 
-Requires Node.js 22.15+, npm, Git, and either the judge's Codex CLI login or an API key. Docker is not required.
+Requires Node.js 22.15+, npm, Git, and either the judge's Codex CLI login or an API key. The default VAmPI Mission also requires any Python 3 exposed as `python3` or `python`; its baseline proof is dependency-free and its deep integration proof installs exact pins only into each Reality's `.venv`. Docker is not required.
 
 ```bash
 git clone https://github.com/alangunning/inception-reality-engine.git
@@ -48,7 +48,7 @@ codex login              # skip if already authenticated or using an API key
 npm run judge:demo
 ```
 
-Open [http://localhost:3000](http://localhost:3000). `judge:demo` starts full-power real Codex mode with GPT-5.6 and the judge's own authentication. Authentication defaults to `auto`: an explicit `CODEX_API_KEY`, otherwise the judge's Codex CLI login, otherwise `OPENAI_API_KEY`. To deliberately use an API key when CLI auth also exists, set `INCEPTION_CODEX_AUTH_MODE=api` in the ignored `.env`.
+Open [http://localhost:3000](http://localhost:3000). `judge:demo` starts real Codex mode with GPT-5.6 and the judge's own authentication. Codex has high-reasoning, network-enabled, writable execution inside each isolated Reality worktree; unrelated home, root, Git-ref, and sibling-worktree inspection is rejected. Authentication defaults to `auto`: an explicit `CODEX_API_KEY`, otherwise the judge's Codex CLI login, otherwise `OPENAI_API_KEY`. To deliberately use an API key when CLI auth also exists, set `INCEPTION_CODEX_AUTH_MODE=api` in the ignored `.env`.
 
 Page load, refresh, timeline replay, Admin, and Mission creation never start Codex. Usage begins only after an explicit Codex-backed action.
 
@@ -89,7 +89,7 @@ The Demo Mission deliberately uses one parent Dream with two depth-two siblings,
 
 Use **Start recording auto** for the deterministic video path or **Start guided auto** in real mode. Real guided auto runs bounded Codex actions but pauses before every new Dream premise and after failed immutable proof; **Resume** is the explicit approval to cross that gate. Neither mode starts on page load.
 
-**Mission Control** applies the same engine to a trusted local Git repository. Its default is a pinned VAmPI educational fixture, competing sibling Dreams, editable Subject charters, structured proofs, bounded guided auto mode, and an optional Adversarial Subject. Creating a Mission creates isolated Git state but makes no Codex call.
+**Mission Control** applies the same engine to a trusted local Git repository. Its default is a pinned VAmPI educational fixture with a committed authorization proof, competing sibling Dreams, editable Subject charters, bounded guided auto mode, an optional Adversarial Subject, and a parent-authorized Python environment for the deepest integration branches. Python packages enter a per-Reality `.venv`; Node packages enter a lockfile-verified per-Reality `node_modules`. Neither path installs runtimes or packages globally. Creating a Mission creates isolated Git state but makes no Codex call.
 
 Judges can inspect:
 

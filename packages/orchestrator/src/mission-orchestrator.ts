@@ -11,6 +11,7 @@ import {
   type AdversarialInterventionReport,
   type AnchorResult,
   type InvestigationReport,
+  type MissionDependencyBootstrap,
   type MissionInterventionContract,
   type MissionDefinitionDraft,
   type MissionAutopilotState,
@@ -31,11 +32,16 @@ import type { RealityEventBus, RealityRepository } from "./ports";
 import { MemoryIntegrityService } from "./memory-integrity-service";
 import { CounterfactualReflectionService } from "./counterfactual-reflection-service";
 import {
+  DependencyBootstrapService,
+  type DependencyBootstrapResult
+} from "./dependency-bootstrap-service";
+import {
   autopilotActiveMilliseconds,
   pauseAutopilotClock,
   resumeAutopilotClock
 } from "./autopilot-clock";
 import type {
+  MissionWorkspace,
   MissionWorkspaceFactoryPort,
   WorktreeManagerPort
 } from "./worktree-port";
@@ -84,6 +90,12 @@ export interface InterventionBudgetApproval {
   retry?: boolean;
 }
 
+export interface MissionLimitApproval {
+  tokenBudget: number;
+  maxActions: number;
+  maxMinutes: number;
+}
+
 export type MissionAutopilotCommand =
   | { command: "start"; options?: MissionAutopilotOptions }
   | { command: "resume" }
@@ -99,6 +111,28 @@ const DEFAULT_WAKE_CONTRACT = [
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function dependencyPath(contract: MissionDependencyBootstrap): string {
+  return contract.kind === "python-venv"
+    ? contract.virtualEnvironmentPath
+    : contract.dependencyPath;
+}
+
+function resolveOutstandingProposals(reality: Reality): Reality {
+  const entity = RealityEntity.hydrate(reality);
+  for (const proposal of reality.proposals) {
+    if (proposal.status === "open" || proposal.status === "dreaming") {
+      entity.updateProposal(proposal.id, "resolved");
+    }
+  }
+  return entity.snapshot();
+}
+
+function dependencyRuntimeCommand(contract: MissionDependencyBootstrap): string {
+  return contract.kind === "python-venv"
+    ? `${contract.virtualEnvironmentPath}/bin/python`
+    : contract.nodeExecutable;
 }
 
 function safeFailure(error: unknown): string {
@@ -196,6 +230,7 @@ export class MissionOrchestrator {
   private readonly autopilotLoops = new Map<string, Promise<void>>();
   private readonly memoryIntegrity = new MemoryIntegrityService();
   private readonly reflections = new CounterfactualReflectionService();
+  private readonly dependencyBootstrap = new DependencyBootstrapService();
 
   constructor(
     private readonly repository: RealityRepository,
@@ -211,6 +246,12 @@ export class MissionOrchestrator {
     const draft = MissionDefinitionDraftSchema.parse(input);
     if (draft.intervention?.targetDepth && draft.intervention.targetDepth > draft.maxDreamDepth) {
       throw new Error("The intervention target depth must fit within the Mission Dream depth.");
+    }
+    if (
+      draft.dependencyBootstrap?.targetDepth
+      && draft.dependencyBootstrap.targetDepth > draft.maxDreamDepth
+    ) {
+      throw new Error("The dependency bootstrap target depth must fit within the Mission Dream depth.");
     }
     for (const pattern of [
       ...(draft.intervention?.allowedPaths ?? []),
@@ -251,7 +292,6 @@ export class MissionOrchestrator {
         premise: definition.premise,
         constraints: [
           ...definition.constraints,
-          `Return early enough to stay within the Mission's observed SDK token ceiling of ${definition.tokenBudget.toLocaleString("en-US")} input plus output tokens.`,
           "Do not expose raw model reasoning."
         ],
         wakeContract: definition.wakeContract,
@@ -309,8 +349,8 @@ export class MissionOrchestrator {
       autopilot: {
         mode: "off",
         kind: "guided-real",
-        maxActions: 30,
-        maxMinutes: 60,
+        maxActions: 60,
+        maxMinutes: 180,
         pauseOnDream: true,
         pauseOnIntervention: true,
         actionsCompleted: 0,
@@ -331,6 +371,32 @@ export class MissionOrchestrator {
 
   async snapshot(id: string): Promise<MissionSnapshot> {
     const run = await this.requireRun(id);
+    if (
+      run.status === "stabilised"
+      && run.realities.some((reality) =>
+        reality.proposals.some((proposal) =>
+          proposal.status === "open" || proposal.status === "dreaming"
+        )
+      )
+    ) {
+      run.realities = run.realities.map(resolveOutstandingProposals);
+      run.updatedAt = now();
+      const root = run.realities.find((reality) => reality.depth === 0);
+      if (root?.worktreePath) {
+        try {
+          const workspace = await this.workspaces.open(run.definition.repositoryPath, run.id);
+          if (await workspace.worktrees.isPresent(root.worktreePath)) {
+            run.finalDiff = await workspace.worktrees.diff(
+              root.worktreePath,
+              ":(exclude).inception/**"
+            );
+          }
+        } catch {
+          // Preserve the last validated diff when an archived repository is unavailable.
+        }
+      }
+      await this.repository.saveMissionRun(MissionRunSchema.parse(run));
+    }
     if (
       run.autopilot.mode === "paused"
       && run.autopilot.pauseReason === "The configured auto-mode wall-clock limit was reached."
@@ -409,8 +475,8 @@ export class MissionOrchestrator {
       run.autopilot = {
         mode: "running",
         kind: "guided-real",
-        maxActions: Math.max(1, Math.min(options.maxActions ?? 30, 100)),
-        maxMinutes: Math.max(1, Math.min(options.maxMinutes ?? 60, 180)),
+        maxActions: Math.max(1, Math.min(options.maxActions ?? 60, 100)),
+        maxMinutes: Math.max(1, Math.min(options.maxMinutes ?? 180, 180)),
         pauseOnDream: options.pauseOnDream ?? true,
         pauseOnIntervention: options.pauseOnIntervention ?? true,
         actionsCompleted: 0,
@@ -433,16 +499,36 @@ export class MissionOrchestrator {
       if (run.autopilot.mode !== "paused") {
         throw new Error("Guided auto mode is not paused.");
       }
+      const approvedAction = this.describeAction(run, active)?.id;
+      if (run.status === "fractured" && !approvedAction) {
+        throw new Error("This fractured Reality has no retryable action.");
+      }
+      const recoveringFracture = run.status === "fractured";
+      if (recoveringFracture) run.status = "exploring";
       run.autopilot = {
         ...run.autopilot,
         ...resumeAutopilotClock(run.autopilot, timestamp),
         mode: "running",
-        approvedAction: this.describeAction(run, active)?.id,
+        approvedAction,
         pauseReason: undefined,
         updatedAt: timestamp
       };
       this.autopilotControls.set(id, { ...run.autopilot });
-      await this.repository.saveMissionRun(MissionRunSchema.parse(run));
+      if (recoveringFracture) {
+        await this.emit(
+          run,
+          active,
+          "reality.recovered",
+          `Operator approved retry from ${active.name}; the next bounded action may proceed.`,
+          {
+            missionId: id,
+            approvedAction,
+            recovery: "explicit-retry"
+          }
+        );
+      } else {
+        await this.repository.saveMissionRun(MissionRunSchema.parse(run));
+      }
       this.startAutopilotLoop(id);
     } else {
       const mode = command.command === "pause" ? "paused" as const : "stopped" as const;
@@ -466,6 +552,79 @@ export class MissionOrchestrator {
         { missionId: id, actionsCompleted: run.autopilot.actionsCompleted }
       );
     }
+    return this.snapshot(id);
+  }
+
+  async approveLimits(
+    id: string,
+    approval: MissionLimitApproval
+  ): Promise<MissionSnapshot> {
+    if (this.activeOperations.has(id)) {
+      throw new Error("Wait for the active Reality operation before changing Mission limits.");
+    }
+    const run = await this.requireRun(id);
+    const active = this.requireActive(run);
+    if (
+      !Number.isInteger(approval.tokenBudget)
+      || approval.tokenBudget < run.definition.tokenBudget
+      || approval.tokenBudget > 30_000_000
+    ) {
+      throw new Error(
+        `Approve a Mission token ceiling from ${run.definition.tokenBudget.toLocaleString("en-US")} to 30,000,000.`
+      );
+    }
+    if (
+      !Number.isInteger(approval.maxActions)
+      || approval.maxActions < run.autopilot.maxActions
+      || approval.maxActions > 100
+    ) {
+      throw new Error(
+        `Approve an action ceiling from ${run.autopilot.maxActions} to 100.`
+      );
+    }
+    if (
+      !Number.isInteger(approval.maxMinutes)
+      || approval.maxMinutes < run.autopilot.maxMinutes
+      || approval.maxMinutes > 180
+    ) {
+      throw new Error(
+        `Approve an active-runtime ceiling from ${run.autopilot.maxMinutes} to 180 minutes.`
+      );
+    }
+    if (approval.tokenBudget < this.observedTokens(run)) {
+      throw new Error(
+        `The approved token ceiling cannot be below the Mission's ${this.observedTokens(run).toLocaleString("en-US")} observed tokens.`
+      );
+    }
+
+    const previous = {
+      tokenBudget: run.definition.tokenBudget,
+      maxActions: run.autopilot.maxActions,
+      maxMinutes: run.autopilot.maxMinutes
+    };
+    run.definition = MissionDefinitionSchema.parse({
+      ...run.definition,
+      tokenBudget: approval.tokenBudget
+    });
+    run.autopilot = {
+      ...run.autopilot,
+      maxActions: approval.maxActions,
+      maxMinutes: approval.maxMinutes,
+      updatedAt: now()
+    };
+    this.autopilotControls.set(id, { ...run.autopilot });
+    await this.emit(
+      run,
+      active,
+      "mission.limits.approved",
+      "Operator increased the bounded Mission limits without resetting Reality state.",
+      {
+        missionId: id,
+        previous,
+        approved: approval,
+        observedTokens: this.observedTokens(run)
+      }
+    );
     return this.snapshot(id);
   }
 
@@ -576,7 +735,7 @@ export class MissionOrchestrator {
     const prior = this.operationQueues.get(id) ?? Promise.resolve();
     const runOperation = prior.then(async () => {
       const run = await this.requireRun(id);
-      const active = this.requireActive(run);
+      let active = this.requireActive(run);
       const expected = this.describeAction(run, active);
       if (!expected || expected.id !== action) {
         throw new Error(`Action ${action} is not valid; expected ${expected?.id ?? "none"}.`);
@@ -592,6 +751,12 @@ export class MissionOrchestrator {
       this.activeOperations.set(id, operation);
       try {
         const workspace = await this.workspaces.open(run.definition.repositoryPath, run.id);
+        active = await this.ensureActionWorktree(
+          run,
+          active,
+          workspace,
+          action
+        );
         switch (action) {
           case "inspect":
             await this.inspect(run, active, workspace.worktrees);
@@ -617,6 +782,20 @@ export class MissionOrchestrator {
           case "stabilise":
             await this.stabilise(run, active, workspace.worktrees);
             break;
+        }
+        if (run.status === "fractured") {
+          run.status = "exploring";
+          await this.emit(
+            run,
+            this.requireActive(run),
+            "reality.recovered",
+            `${expected.label} succeeded on retry; the Reality may continue.`,
+            {
+              missionId: run.id,
+              action,
+              recovery: "successful-action"
+            }
+          );
         }
       } catch (error) {
         const validation = safeValidationFailure(error);
@@ -695,6 +874,7 @@ export class MissionOrchestrator {
         revealPolicy: intervention.revealPolicy,
         requireRollbackCommit: intervention.requireRollbackCommit
       } : undefined,
+      dependencyBootstrap: run.definition.dependencyBootstrap,
       tokenBudget: run.definition.tokenBudget,
       maxDreamDepth: run.definition.maxDreamDepth
     });
@@ -731,6 +911,17 @@ export class MissionOrchestrator {
   ): Promise<void> {
     // Refresh persisted pre-contract Missions before Codex reads their worktree.
     await this.materialiseContext(worktrees, reality);
+    const dependencyEnvironment = await this.ensureDependencyEnvironment(
+      run,
+      reality,
+      worktrees,
+      "inspection"
+    );
+    if (dependencyEnvironment?.status === "failed") {
+      throw new Error(
+        `Reality-local dependency bootstrap failed: ${dependencyEnvironment.diagnostic}`
+      );
+    }
     const baselineCommit = await worktrees.checkpoint(
       reality.worktreePath!,
       `Reality baseline before Codex inspection ${reality.id}`
@@ -749,6 +940,9 @@ export class MissionOrchestrator {
             ...reality.constitution,
             constraints: [
               ...reality.constitution.constraints,
+              ...(dependencyEnvironment ? [
+                `Use ${dependencyRuntimeCommand(run.definition.dependencyBootstrap!)} for dependency-backed proofs; its exact pinned manifest was parent-authorized and verified for this Reality.`
+              ] : []),
               `Return promptly enough to keep this turn within the remaining observed SDK token ceiling of ${remainingTokenEvidence.toLocaleString("en-US")} input plus output tokens.`
             ]
           }
@@ -1112,7 +1306,9 @@ export class MissionOrchestrator {
       result.report,
       worktrees
     );
-    const kicked = RealityEntity.hydrate(bound).setWakeReport(report).snapshot();
+    const kicked = RealityEntity.hydrate(resolveOutstandingProposals(bound))
+      .setWakeReport(report)
+      .snapshot();
     this.replaceReality(run, kicked);
     await this.emit(run, kicked, "wake.sealing", `Totem Check is sealing ${reality.name}'s structured memory to its Git source and descendant lineage.`, {
       missionId: run.id,
@@ -1197,10 +1393,16 @@ export class MissionOrchestrator {
     }
     const unverifiedMemories: WakeReport[] = [];
     for (const memory of run.memories) {
-      const source = this.requireReality(run, memory.realityId);
+      let source = this.requireReality(run, memory.realityId);
       const seal = run.memoryIntegrity.find((candidate) =>
         candidate.realityId === memory.realityId
       );
+      if (
+        seal?.verdict === "verified"
+        && !await worktrees.isPresent(source.worktreePath)
+      ) {
+        source = await this.restoreSealedWorktree(run, source, seal.sourceCommit, worktrees);
+      }
       let failedCheck: "report-digest" | "descendant-lineage" | "source-state" | undefined;
       if (seal?.verdict === "verified") {
         if (!this.memoryIntegrity.matchesReport(seal, memory)) {
@@ -1276,6 +1478,17 @@ export class MissionOrchestrator {
     if (run.definition.memoryPolicy === "verified-reports-and-artefacts") {
       await this.promoteArtefacts(run, root, worktrees);
     }
+    const synthesisEnvironment = await this.ensureDependencyEnvironment(
+      run,
+      root,
+      worktrees,
+      "synthesis"
+    );
+    if (synthesisEnvironment?.status === "failed") {
+      throw new Error(
+        `Reality-local dependency bootstrap failed before synthesis: ${synthesisEnvironment.diagnostic}`
+      );
+    }
     const result = await this.codexRuntime.synthesise(
       {
         ...root,
@@ -1296,7 +1509,10 @@ export class MissionOrchestrator {
     this.replaceReality(run, updated);
     run.proofResults = [];
     run.status = "exploring";
-    run.finalDiff = await worktrees.diff(root.worktreePath!);
+    run.finalDiff = await worktrees.diff(
+      root.worktreePath!,
+      ":(exclude).inception/**"
+    );
     await this.emit(run, updated, "synthesis.completed", repairContext ? "Reality repair returned from Codex." : "Returned memories synthesised into Reality.", {
       missionId: run.id,
       appliedMemoryCount: result.report.appliedMemories.length,
@@ -1330,6 +1546,17 @@ export class MissionOrchestrator {
     root: Reality,
     worktrees: WorktreeManagerPort
   ): Promise<void> {
+    const verificationEnvironment = await this.ensureDependencyEnvironment(
+      run,
+      root,
+      worktrees,
+      "verification"
+    );
+    if (verificationEnvironment?.status === "failed") {
+      throw new Error(
+        `Reality-local dependency bootstrap failed before immutable proofs: ${verificationEnvironment.diagnostic}`
+      );
+    }
     run.status = "verifying";
     await this.emit(run, root, "verification.started", "Immutable Mission proofs entered Reality.", {
       missionId: run.id,
@@ -1380,7 +1607,10 @@ export class MissionOrchestrator {
     this.replaceReality(run, updated);
     run.proofResults = results;
     run.status = results.every((result) => result.status === "passed") ? "exploring" : "fractured";
-    run.finalDiff = await worktrees.diff(root.worktreePath!);
+    run.finalDiff = await worktrees.diff(
+      root.worktreePath!,
+      ":(exclude).inception/**"
+    );
     await this.emit(run, updated, results.every((result) => result.status === "passed")
       ? "verification.passed"
       : "verification.failed", results.every((result) => result.status === "passed")
@@ -1400,13 +1630,17 @@ export class MissionOrchestrator {
     if (!run.proofResults.length || run.proofResults.some((result) => result.status !== "passed")) {
       throw new Error("Reality stabilisation requires every immutable proof to pass.");
     }
-    const stabilised = RealityEntity.hydrate(root)
+    run.realities = run.realities.map(resolveOutstandingProposals);
+    const stabilised = RealityEntity.hydrate(this.requireReality(run, root.id))
       .setStatus("stabilised", "Reality stabilised")
       .advanceTime(2, "Reality stabilised", "Counterfactual memories survived parent-owned proof.")
       .snapshot();
     this.replaceReality(run, stabilised);
     run.status = "stabilised";
-    run.finalDiff = await worktrees.diff(root.worktreePath!);
+    run.finalDiff = await worktrees.diff(
+      root.worktreePath!,
+      ":(exclude).inception/**"
+    );
     run.outcome = this.reflections.outcome(run, stabilised, now());
     await this.emit(run, stabilised, "reality.stabilised", "Reality stabilised: returned knowledge and implementation survived every immutable proof.", {
       missionId: run.id,
@@ -2108,6 +2342,8 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
 - Do not create child Dreams. Return one structured Dream proposal to the orchestrator.
 - Label hypothetical or simulated evidence as synthetic.
 - Use Subjects only for bounded, independent investigations and wait for every Subject to return.
+- Treat an exploratory search with no matches as evidence, not a failed prerequisite. Do not chain optional \`rg\` probes after required commands, and use quoted \`-g\` patterns instead of shell globs.
+- Inspect only the current HEAD ancestry. Never enumerate Git refs, reflogs, unreachable objects, sibling branches, or other worktrees; cross-Reality Git inspection invalidates this Reality's evidence.
 - Return evidence, artefacts, decisions, belief changes, and validated summaries. Never expose hidden reasoning.
 `
     );
@@ -2125,6 +2361,175 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
         }))
       }, null, 2)}\n`
     );
+  }
+
+  private async ensureDependencyEnvironment(
+    run: MissionRun,
+    reality: Reality,
+    worktrees: WorktreeManagerPort,
+    phase: "inspection" | "synthesis" | "verification"
+  ): Promise<DependencyBootstrapResult | undefined> {
+    const contract = run.definition.dependencyBootstrap;
+    if (
+      !contract
+      || (
+        phase === "inspection"
+        && reality.depth !== contract.targetDepth
+      )
+    ) {
+      return undefined;
+    }
+    await this.emit(
+      run,
+      reality,
+      "environment.bootstrap.started",
+      `Parent-authorized dependencies entered ${reality.name}.`,
+      {
+        missionId: run.id,
+        phase,
+        kind: contract.kind,
+        manifestPath: contract.manifestPath,
+        dependencyPath: dependencyPath(contract),
+        indexUrl: contract.indexUrl,
+        targetDepth: contract.targetDepth,
+        metadata: {
+          stage: "environment",
+          status: "started",
+          detail: `${contract.kind} / ${contract.manifestPath} / Dream depth ${contract.targetDepth}`
+        }
+      }
+    );
+    const result = await this.dependencyBootstrap.bootstrap(
+      worktrees,
+      reality.worktreePath!,
+      contract
+    );
+    await this.emit(
+      run,
+      reality,
+      result.status === "completed"
+        ? "environment.bootstrap.completed"
+        : "environment.bootstrap.failed",
+      result.status === "completed"
+        ? `${result.reused ? "Verified" : "Installed"} pinned dependencies inside ${reality.name}.`
+        : `Reality-local dependency bootstrap could not complete in ${reality.name}.`,
+      {
+        missionId: run.id,
+        phase,
+        status: result.status,
+        command: result.command,
+        manifestPath: result.manifestPath,
+        manifestSha256: result.manifestSha256,
+        packageCount: result.packageCount,
+        runtimeVersion: result.runtimeVersion,
+        runtimeExecutable: result.runtimeExecutable,
+        packageManagerVersion: result.packageManagerVersion,
+        exitCode: result.exitCode,
+        indexUrl: contract.indexUrl,
+        dependencyPath: dependencyPath(contract),
+        durationMs: result.durationMs,
+        reused: result.reused,
+        diagnostic: result.diagnostic,
+        metadata: {
+          stage: "environment",
+          status: result.status,
+          command: result.command,
+          exitCode: result.exitCode,
+          diagnostic: result.diagnostic,
+          detail: [
+            result.runtimeExecutable,
+            result.runtimeVersion,
+            result.packageManagerVersion ? `npm ${result.packageManagerVersion}` : undefined,
+            result.reused ? "reused" : "created"
+          ].filter(Boolean).join(" / ")
+        }
+      }
+    );
+    return result;
+  }
+
+  private async ensureActionWorktree(
+    run: MissionRun,
+    reality: Reality,
+    workspace: MissionWorkspace,
+    action: MissionAction
+  ): Promise<Reality> {
+    if (await workspace.worktrees.isPresent(reality.worktreePath)) return reality;
+    const seal = run.memoryIntegrity.find((entry) =>
+      entry.realityId === reality.id && entry.verdict === "verified"
+    );
+    if (seal) {
+      return this.restoreSealedWorktree(
+        run,
+        reality,
+        seal.sourceCommit,
+        workspace.worktrees
+      );
+    }
+    const rootCanBeReformed = reality.depth === 0
+      && !run.events.some((event) => event.type === "synthesis.completed");
+    if (!rootCanBeReformed) {
+      throw new Error(
+        `Reality ${reality.name} is missing its worktree and has no immutable source checkpoint that can be restored.`
+      );
+    }
+    const descriptor = await workspace.worktrees.create(
+      reality.id,
+      "HEAD",
+      workspace.repoRoot
+    );
+    const restored = RealityEntity.hydrate(reality)
+      .bindRuntime(
+        reality.codexThreadId ?? `unbound:${reality.id}`,
+        descriptor.path,
+        descriptor.branchName
+      )
+      .snapshot();
+    this.replaceReality(run, restored);
+    await this.materialiseContext(workspace.worktrees, restored);
+    await this.emit(
+      run,
+      restored,
+      "reality.recovered",
+      `${restored.name} worktree was reformed from its unchanged repository baseline.`,
+      {
+        missionId: run.id,
+        action,
+        recovery: "root-baseline",
+        worktreePath: descriptor.path
+      }
+    );
+    return restored;
+  }
+
+  private async restoreSealedWorktree(
+    run: MissionRun,
+    reality: Reality,
+    sourceCommit: string,
+    worktrees: WorktreeManagerPort
+  ): Promise<Reality> {
+    const descriptor = await worktrees.create(reality.id, sourceCommit);
+    const restored = RealityEntity.hydrate(reality)
+      .bindRuntime(
+        reality.codexThreadId ?? `unbound:${reality.id}`,
+        descriptor.path,
+        descriptor.branchName
+      )
+      .snapshot();
+    this.replaceReality(run, restored);
+    await this.emit(
+      run,
+      restored,
+      "reality.recovered",
+      `${restored.name} worktree was restored from its immutable memory checkpoint.`,
+      {
+        missionId: run.id,
+        recovery: "sealed-source",
+        sourceCommit,
+        worktreePath: descriptor.path
+      }
+    );
+    return restored;
   }
 
   private async bindRealityThread(
@@ -2337,6 +2742,11 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
     reason: string
   ): Promise<void> {
     const current = this.autopilotControls.get(run.id) ?? run.autopilot;
+    if (current.mode === "paused" && current.pauseReason === reason) {
+      this.autopilotControls.set(run.id, current);
+      run.autopilot = current;
+      return;
+    }
     const timestamp = now();
     const paused = {
       ...current,
