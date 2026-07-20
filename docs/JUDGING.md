@@ -2,7 +2,7 @@
 
 **Guide version:** 0.1.0
 **Target track:** Developer Tools
-**Last reviewed:** 2026-07-19
+**Last reviewed:** 2026-07-20
 
 ## Recommended Evaluation - Live Codex, No Docker
 
@@ -16,7 +16,7 @@ codex login              # skip if already authenticated
 npm run judge:demo
 ```
 
-Open `http://localhost:3000`. An ignored `.env` containing `CODEX_API_KEY` or `OPENAI_API_KEY` is the alternative to CLI auth. Opening, refreshing, forming a Mission, inspecting Admin, and moving the timeline never launches Codex. Each Codex-backed action is explicit.
+Open `http://localhost:3000`. An ignored `.env` containing `CODEX_API_KEY` or `OPENAI_API_KEY` is the alternative to CLI auth. Opening, refreshing, creating a Mission, inspecting Admin, and moving the timeline never launches Codex. Each Codex-backed action is explicit.
 
 For offline product inspection or a credential-free deterministic fallback:
 
@@ -28,19 +28,25 @@ Recording mode exercises the same domain and presentation contracts, but live mo
 
 ## Three-Minute Demo Script
 
-| Time | Action | Judge signal |
-| --- | --- | --- |
-| 0:00 | Show the waking Reality, one uncertain belief, four hidden anchors | Real problem and parent-owned requirements |
-| 0:20 | Ask Codex to audit password-reset security | Explicit usage boundary; event stream begins |
-| 0:40 | Create **Under coordinated attack** | Uncertainty becomes an isolated world |
-| 0:55 | Enter and run attacker, investigator, test-engineer Subjects | Bounded parallel investigation |
-| 1:10 | Create and Kick **Rotating IP swarm** | First nested counterfactual returns a failing test and source-bound seal |
-| 1:30 | Create **Account enumeration oracle** and run Mal's sealed intervention | One bounded planted fault becomes a lived but reversible counterfactual |
-| 1:48 | Kick it; show Totem reveal and containment | Exact diagnosis returns a safe test; 1 mutation is rolled back and 0 injected files ascend |
-| 2:02 | Kick parent and synthesise three memories | Good tested knowledge changes the waking implementation |
-| 2:20 | Run four anchors and returned regressions | Shared cross-instance budget and parent truth gate the agent |
-| 2:35 | Stabilise; show 12/12 to 3/12 outcome and diff | Specific prevented failure and complete product result |
-| 2:50 | Play adaptive replay and open model/thread/Subject evidence | Auditable real Codex execution without recording wait time |
+The authoritative 2:57 shot list and word-for-word narration are in
+[OpenAI Build Week Submission](./SUBMISSION.md#three-minute-video). The
+submitted video uses adaptive replay from a clean, completed real run; it does
+not wait for Codex operations on camera.
+
+The narrative must visibly establish:
+
+1. the Inception mental model is translated before product terms are used:
+   Reality is the protected repository marked ROOT, Dreams are isolated
+   counterfactuals, Subjects are injected Codex subagents, a Kick proposes
+   Memory upward, and the Totem Check verifies that Memory;
+2. one risky assumption becomes an isolated Dream;
+3. native Subjects investigate two nested counterfactuals;
+4. the Totem Check contains one planted change and admits zero injected
+   files;
+5. verified memories synthesise only through parent-owned proof;
+6. the measurable outcome changes from `12/12` to `3/12` deliveries and all
+   four Anchors pass;
+7. Mission Control applies the same engine beyond password reset.
 
 ## Real Codex Evaluation
 
@@ -55,9 +61,9 @@ Or set `INCEPTION_CODEX_AUTH_MODE=api` with `CODEX_API_KEY`/`OPENAI_API_KEY` in 
 
 Reality Engine reuses the judge's CLI authentication while isolating personal Codex plugins and MCPs by default. This makes the evaluation reproducible even when the judge has unrelated integrations configured; `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` is an explicit opt-in for missions that need them.
 
-**Mission Control** is available at `/missions`. Its default is a pinned VAmPI repository-maintenance Mission for one documented ownership regression. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit local source-review action. The prompt prohibits running a service or contacting targets, accounts, credentials, or network systems. The controlled intervention is on by default at Dream depth two, remains bounded to configured local paths, fault class, files, lines, tokens, time, and a rollback checkpoint, and can be disabled before forming the Mission.
+**Mission Control** is available at `/missions`. Its default is a pinned VAmPI repository-maintenance Mission for one documented ownership regression. Preparing that allowlisted target is explicit and makes no Codex call; creating a Mission creates only Git state. The first Codex execution begins after the explicit local source-review action. The prompt prohibits running a service or contacting targets, accounts, credentials, or network systems. The Adversarial Subject is enabled by default at Dream depth two, remains bounded to configured local paths, fault class, files, lines, tokens, time, and a rollback checkpoint, and can be disabled before creating the Mission.
 
-The Mission Library lists the immutable password-reset Demo Mission beside user-created Missions. Password reset can be opened, exported, and reset but not deleted; user-created runs expose the full lifecycle. Every Mission opens in the same product shell and generalized runs also receive the Dream gate, waking outcome, Reality Mirror, memory-ascent view, staged Kick, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
+The Mission Library lists the immutable password-reset Demo Mission beside user-created Missions. Password reset can be opened, exported, and reset but not deleted; user-created runs expose the full lifecycle. Every Mission opens in the same product shell and generalized runs also receive the Dream gate, Reality outcome, Reality Mirror, Memory-ascent view, staged Kick, and final diff. Click any event to inspect its exact time, IDs, safe metadata, validated payload, and the plan snapshot retained at that point.
 
 ## What to Inspect
 
@@ -77,7 +83,7 @@ The Mission Library lists the immutable password-reset Demo Mission beside user-
 - One persisted Codex SDK thread and Git worktree per Reality.
 - GPT-5.6 with high reasoning and full worktree capability in real mode.
 - Native Codex subagents must produce auditable spawn and terminal return events.
-- Branching nested Reality graphs, competing sibling comparison, structured Wake Reports, automatic memory-integrity seals, controlled-fault containment, stale-memory rejection, SSE, Prisma/SQLite, worktree recovery, and proof-gated synthesis.
+- Branching Reality graphs, competing Dream comparison, structured Wake Reports, automatic memory-integrity seals, adversarial-fault containment, stale-memory rejection, SSE, Prisma/SQLite, worktree recovery, and proof-gated synthesis.
 - Mock and real modes use the same schemas and orchestration boundaries.
 
 ### Design
@@ -88,7 +94,7 @@ The Mission Library lists the immutable password-reset Demo Mission beside user-
 
 ### Potential Impact
 
-Coding-agent mistakes impose review cost, branch contamination, incomplete tests, security incidents, and user harm. Reality Engine makes the most expensive uncertainty explicit, explores it outside the waking branch, and requires reproducible evidence plus parent-owned proof before adoption.
+Coding-agent mistakes impose review cost, branch contamination, incomplete tests, security incidents, and user harm. Reality Engine makes the most expensive uncertainty explicit, explores it outside Reality's branch, and requires reproducible evidence plus parent-owned proof before adoption.
 
 Initial users are security-sensitive engineering teams, maintainers reviewing agent patches, and platform teams governing coding-agent workflows. The password-reset scenario demonstrates an account-enumeration and distributed-abuse mistake. The VAmPI preset demonstrates authorized discovery and repair of known API vulnerabilities in a small open-source training repository; Mission Composer still accepts any trusted local repository and proof suite.
 
@@ -96,7 +102,7 @@ The canonical run quantifies what was prevented: rotating sources move from `12/
 
 ### Quality of Idea
 
-Reality Engine is not a multi-agent dashboard. Its novel unit is the counterfactual software world: premise, constitution, inherited truth, isolated filesystem, persistent agent memory, bounded Subjects, a typed wake transition, and an automatic Reality Totem that prevents an unverified deep memory from silently reaching the waking implementation. The parent retains epistemic and technical control without requiring repetitive human approval.
+Reality Engine is not a multi-agent dashboard. Its novel unit is the counterfactual software world: premise, constitution, inherited truth, isolated filesystem, persistent agent Memory, bounded Subjects, a typed Kick transition, and an automatic Totem Check that prevents unverified deep Memory from silently reaching Reality's implementation. The parent retains epistemic and technical control without requiring repetitive human approval.
 
 ## Required Submission Checklist
 

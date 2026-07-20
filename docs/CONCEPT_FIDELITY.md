@@ -5,7 +5,7 @@ This document tracks the Reality Engine against the canonical product conversati
 ## Product identity
 
 - A Reality is a premise, constitution, history, evidence set, Codex thread, and isolated Git worktree.
-- A Dream is a child Reality created only by the orchestrator after an explicit human decision.
+- A Dream is a counterfactual child world created only by the orchestrator after an explicit human decision.
 - A Subject is a bounded Codex sub-agent inside one Reality.
 - A Kick ends exploration and returns a validated Wake Report.
 - The product presents evidence, artefacts, decisions, belief changes, and uncertainty, never hidden reasoning.
@@ -17,18 +17,18 @@ This document tracks the Reality Engine against the canonical product conversati
 - Schema-constrained Investigation, Subject, Wake, and Synthesis reports with exact Reality identity.
 - Native opportunistic Subjects are admitted only when their reports bind to a completed child through SDK collaboration items or Codex's thread registry and structural task completion.
 - Real Codex inspection and synthesis; deterministic mock behavior behind the same ports.
-- Transactional waking inspection restores its isolated Git checkpoint after returning knowledge; rejected turns restore the checkpoint while retaining the resumable Reality thread.
+- Transactional root inspection restores its isolated Git checkpoint after returning knowledge; rejected turns restore the checkpoint while retaining the resumable Reality thread.
 - Parent filesystem snapshot inheritance, including tracked changes, deletions, and untracked evidence.
 - Wake artefact promotion and complete diffs that include untracked files.
 - Parent-owned immutable anchors plus a complete inherited regression proof.
-- Automatic Reality Totem seals binding each memory to source state, parent anchors, evidence, artefacts, and verified descendant lineage.
+- Automatic Totem Check seals binding each Memory to source state, parent Anchors, evidence, artefacts, and verified descendant lineage.
 - Memory quarantine on stale digests, missing lineage, unresolved evidence/artefacts, or an incompletely diagnosed sealed intervention.
-- An optional controlled resilience Subject with operator-owned paths, fault classes, budgets, rollback, target depth, and delayed reveal.
+- An optional Adversarial Subject with operator-owned paths, fault classes, budgets, rollback, target depth, and delayed reveal.
 - Automatic post-diagnosis containment: injected paths are excluded, the pre-intervention checkpoint is restored, and only safe independent artefacts can ascend.
 - Competing sibling Dreams, a Reality Mirror evidence matrix, shared-invariant synthesis, and explicit disagreement retention.
 - A scrollable branching Reality graph that keeps every nested and sibling world visible instead of presenting only maximum depth.
-- Staged Wake presentation covering evidence collection, Totem sealing, containment, and upward memory return.
-- Generalized waking outcomes that quantify verified/quarantined memories, injected faults detected, proofs passed, and waking files changed.
+- Staged Memory-return presentation covering evidence collection, Totem Check sealing, containment, and upward return.
+- Generalized Reality outcomes that quantify verified/quarantined Memories, injected faults detected, proofs passed, and Reality files changed.
 - Explicit recording and guided-real auto modes with persisted bounds and pause gates; neither begins on page load.
 - Append-only cursor-readable Mission event history with incremental SSE and a bounded UI window.
 - A pinned VAmPI authorization-testing preset plus arbitrary trusted local repositories in Mission Composer.

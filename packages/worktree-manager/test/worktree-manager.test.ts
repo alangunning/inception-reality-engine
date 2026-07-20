@@ -3,7 +3,11 @@ import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { GitWorktreeManager, TrainingTargetManager } from "../src";
+import {
+  GitMissionWorkspaceFactory,
+  GitWorktreeManager,
+  TrainingTargetManager
+} from "../src";
 
 describe("GitWorktreeManager", () => {
   it("creates an isolated branch and cleans registered or orphaned worktrees", async () => {
@@ -133,6 +137,36 @@ describe("GitWorktreeManager", () => {
       await manager.cleanupAll();
     } finally {
       await rm(repo, { recursive: true, force: true });
+    }
+  }, 15_000);
+});
+
+describe("GitMissionWorkspaceFactory", () => {
+  it("cleans owned Mission worktrees even when their database records are gone", async () => {
+    const repo = await mkdtemp(path.join(os.tmpdir(), "inception-mission-source-"));
+    const storage = await mkdtemp(path.join(os.tmpdir(), "inception-mission-storage-"));
+    try {
+      execFileSync("git", ["init", "-b", "main"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "demo@example.com"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "Inception Test"], { cwd: repo });
+      await writeFile(path.join(repo, "seed.txt"), "reality\n");
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-m", "seed"], { cwd: repo });
+
+      const factory = new GitMissionWorkspaceFactory(storage);
+      const mission = await factory.open(repo, "orphan-mission");
+      const descriptor = await mission.worktrees.create("orphan-reality");
+
+      expect(execFileSync("git", ["worktree", "list"], { cwd: repo }).toString())
+        .toContain(descriptor.path);
+      expect(await factory.cleanupAll()).toBe(1);
+      await expect(access(descriptor.path)).rejects.toThrow();
+      expect(execFileSync("git", ["branch", "--list", "inception-mission-orphan-mission/*"], {
+        cwd: repo
+      }).toString().trim()).toBe("");
+    } finally {
+      await rm(repo, { recursive: true, force: true });
+      await rm(storage, { recursive: true, force: true });
     }
   }, 15_000);
 });

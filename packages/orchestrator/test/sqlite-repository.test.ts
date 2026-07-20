@@ -25,7 +25,7 @@ describe("SqliteRealityRepository", () => {
     const reality = RealityEntity.create({
       depth: 0,
       kind: "waking",
-      name: "Waking Reality",
+      name: "Reality",
       premise: "Test premise",
       constitution: {
         mission: "Test mission",

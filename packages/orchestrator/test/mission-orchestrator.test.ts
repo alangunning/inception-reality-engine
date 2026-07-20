@@ -80,7 +80,7 @@ function basicMission() {
   return {
     name: "Authorization review",
     repositoryPath: "/repo",
-    mission: "Find the smallest authorization uncertainty without changing the waking baseline.",
+    mission: "Find the smallest authorization uncertainty without changing the Reality baseline.",
     scope: "book ownership",
     premise: "Book lookups enforce ownership.",
     constraints: ["Use only local synthetic evidence."],
@@ -448,7 +448,7 @@ describe("MissionOrchestrator", () => {
                 name: "Injected permission regression",
                 path: "src/sealed-intervention.ts",
                 kind: "patch" as const,
-                summary: "The controlled mutation must never leave this Dream.",
+                summary: "The adversarial mutation must never leave this Dream.",
                 content: "export const permissionRegression = true;\n"
               }
             ]
@@ -822,7 +822,7 @@ describe("MissionOrchestrator", () => {
     expect(snapshot.nextAction?.id).toBe("create_dream");
   });
 
-  it("admits native opportunistic Subjects and restores the waking filesystem baseline", async () => {
+  it("admits native opportunistic Subjects and restores the root filesystem baseline", async () => {
     const mock = new MockCodexRuntime();
     const repository = new InMemoryRealityRepository();
     const worktrees = new FakeMissionWorktrees();
@@ -838,7 +838,7 @@ describe("MissionOrchestrator", () => {
         worktrees.changedDiff = "+waking mutation that must not survive\n";
         await onEvent?.({
           type: "progress",
-          summary: "Codex thread entered the waking Reality worktree.",
+          summary: "Codex thread entered the Reality worktree.",
           metadata: { stage: "thread", status: "started", threadId }
         });
         return {
@@ -926,7 +926,7 @@ describe("MissionOrchestrator", () => {
         worktrees.changedDiff = "+rejected mutation\n";
         await onEvent?.({
           type: "progress",
-          summary: "Codex thread entered the waking Reality worktree.",
+          summary: "Codex thread entered the Reality worktree.",
           metadata: { stage: "thread", status: "started", threadId }
         });
         return {
@@ -1011,7 +1011,7 @@ describe("MissionOrchestrator", () => {
         const threadId = "thread-over-token-ceiling";
         const usageEvent = {
           type: "progress" as const,
-          summary: "Authorization review returned from the waking Reality.",
+          summary: "Authorization review returned from Reality.",
           metadata: {
             stage: "turn" as const,
             status: "completed" as const,
@@ -1023,7 +1023,7 @@ describe("MissionOrchestrator", () => {
         worktrees.changedFiles = ["api_views/books.py"];
         await onEvent?.({
           type: "progress",
-          summary: "Codex thread entered the waking Reality worktree.",
+          summary: "Codex thread entered the Reality worktree.",
           metadata: { stage: "thread", status: "started", threadId }
         });
         await onEvent?.(usageEvent);
@@ -1069,11 +1069,18 @@ describe("MissionOrchestrator", () => {
   it("resets one Mission from its definition and can clean up every saved Mission", async () => {
     const repository = new InMemoryRealityRepository();
     const worktrees = new FakeMissionWorktrees();
+    let orphanCleanupCalls = 0;
     const orchestrator = new MissionOrchestrator(
       repository,
       new InMemoryRealityEventBus(),
       realRuntime(),
-      { open: async () => ({ repoRoot: "/repo", worktrees }) }
+      {
+        open: async () => ({ repoRoot: "/repo", worktrees }),
+        cleanupAll: async () => {
+          orphanCleanupCalls += 1;
+          return 0;
+        }
+      }
     );
     const original = await orchestrator.create(basicMission());
 
@@ -1104,5 +1111,6 @@ describe("MissionOrchestrator", () => {
     });
     expect(await repository.listMissionRuns()).toHaveLength(0);
     expect(worktrees.cleanupCalls).toBe(3);
+    expect(orphanCleanupCalls).toBe(1);
   });
 });

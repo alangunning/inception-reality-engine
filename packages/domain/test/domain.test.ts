@@ -44,7 +44,7 @@ describe("Reality domain", () => {
     expect(reality.anchors[0]?.ownerRealityId).toBe("parent");
   });
 
-  it("prevents a child Reality from mutating parent-owned anchors", () => {
+  it("prevents a Dream from mutating parent-owned anchors", () => {
     const entity = RealityEntity.create({
       depth: 1,
       kind: "dream",
@@ -65,7 +65,7 @@ describe("Reality domain", () => {
     });
 
     expect(() => entity.replaceAnchors(entity.snapshot().anchors)).toThrow(
-      "Child Realities cannot mutate parent-owned anchors."
+      "Dreams cannot mutate parent-owned anchors."
     );
   });
 
@@ -73,7 +73,7 @@ describe("Reality domain", () => {
     const entity = RealityEntity.create({
       depth: 0,
       kind: "waking",
-      name: "Waking Reality",
+      name: "Reality",
       premise: constitution.premise,
       constitution,
       initialBeliefs: [{ statement: "IP limiting prevents abuse", confidence: 0.7, origin: "initial" }]

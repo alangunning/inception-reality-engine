@@ -321,7 +321,7 @@ export class MissionOrchestrator {
       createdAt,
       updatedAt: createdAt
     });
-    await this.emit(run, reality, "reality.created", `${definition.name} formed with ${definition.proofs.length} immutable proof${definition.proofs.length === 1 ? "" : "s"}.`, {
+    await this.emit(run, reality, "reality.created", `${definition.name} created with ${definition.proofs.length} immutable proof${definition.proofs.length === 1 ? "" : "s"}.`, {
       missionId: id,
       depthBudget: definition.maxDreamDepth,
       tokenBudget: definition.tokenBudget
@@ -481,7 +481,7 @@ export class MissionOrchestrator {
     const contract = this.requireInterventionContract(run, active);
     const ledger = run.interventions.find((entry) => entry.realityId === active.id);
     if (!ledger || ledger.status !== "rejected") {
-      throw new Error("No rejected controlled intervention is waiting for a budget approval.");
+      throw new Error("No rejected adversarial intervention is waiting for a budget approval.");
     }
     if (
       ledger.rejectionCode !== "intervention_token_budget_exceeded"
@@ -491,13 +491,20 @@ export class MissionOrchestrator {
     }
 
     const requested = approval.tokenBudget;
-    if (!Number.isInteger(requested) || requested <= contract.tokenBudget) {
+    const sameHardCeilingRetry = requested === contract.tokenBudget
+      && requested === 500_000
+      && approval.retry !== false;
+    if (
+      !Number.isInteger(requested)
+      || requested < contract.tokenBudget
+      || (requested === contract.tokenBudget && !sameHardCeilingRetry)
+    ) {
       throw new Error(
-        `Approve an intervention ceiling above the current ${contract.tokenBudget.toLocaleString("en-US")} tokens.`
+        `Approve an intervention ceiling above the current ${contract.tokenBudget.toLocaleString("en-US")} tokens, or explicitly retry at the 500,000-token hard ceiling.`
       );
     }
     if (requested > 500_000) {
-      throw new Error("The controlled intervention ceiling cannot exceed 500,000 tokens.");
+      throw new Error("The adversarial intervention ceiling cannot exceed 500,000 tokens.");
     }
     const remainingMissionTokens = Math.max(
       0,
@@ -541,7 +548,9 @@ export class MissionOrchestrator {
       run,
       active,
       "intervention.budget.approved",
-      `Operator approved a bounded intervention retry ceiling of ${requested.toLocaleString("en-US")} tokens.`,
+      sameHardCeilingRetry
+        ? "Operator approved a fresh-context intervention retry at the existing 500,000-token hard ceiling."
+        : `Operator approved a bounded intervention retry ceiling of ${requested.toLocaleString("en-US")} tokens.`,
       {
         missionId: id,
         contractId: contract.id,
@@ -549,6 +558,8 @@ export class MissionOrchestrator {
         approvedTokenBudget: requested,
         failedAttemptTokens: ledger.lastAttemptTokens,
         remainingMissionTokens,
+        coordinatorContext: "fresh-after-rejected-attempt",
+        sameHardCeilingRetry,
         retry
       }
     );
@@ -706,6 +717,7 @@ export class MissionOrchestrator {
         deletedMissions += 1;
       }
     }
+    removedWorktrees += (await this.workspaces.cleanupAll?.()) ?? 0;
     return {
       deletedMissions,
       removedWorktrees
@@ -794,7 +806,7 @@ export class MissionOrchestrator {
       if (bound.kind === "waking") {
         await worktrees.checkpoint(
           updated.worktreePath!,
-          `Admit validated waking Reality context ${updated.id}`
+          `Admit validated Reality context ${updated.id}`
         );
       }
       await this.emit(run, updated, "inspection.completed", `Codex inspected ${run.definition.scope} and returned validated evidence.`, {
@@ -830,12 +842,13 @@ export class MissionOrchestrator {
   ): Promise<void> {
     const contract = this.requireInterventionContract(run, reality);
     const ledger = this.requireInterventionLedger(run, reality);
+    const retryingRejectedIntervention = ledger.status === "rejected";
     ledger.status = "injecting";
     ledger.startedAt = now();
     ledger.rejectionReason = undefined;
     ledger.rejectionCode = undefined;
     ledger.lastAttemptTokens = undefined;
-    await this.emit(run, reality, "intervention.started", `Controlled resilience Subject entered ${reality.name} under a sealed intervention contract.`, {
+    await this.emit(run, reality, "intervention.started", `Adversarial Subject entered ${reality.name} under a sealed intervention contract.`, {
       missionId: run.id,
       contractId: contract.id,
       subjectId: contract.subject.id,
@@ -845,7 +858,10 @@ export class MissionOrchestrator {
       maxChangedFiles: contract.maxChangedFiles,
       maxPatchLines: contract.maxPatchLines,
       tokenBudget: contract.tokenBudget,
-      maxMinutes: contract.maxMinutes
+      maxMinutes: contract.maxMinutes,
+      coordinatorContext: retryingRejectedIntervention
+        ? "fresh-after-rejected-attempt"
+        : "reality-thread"
     });
 
     let baselineCommit: string | undefined;
@@ -857,7 +873,9 @@ export class MissionOrchestrator {
       );
       ledger.baselineCommit = baselineCommit;
       const result = await this.codexRuntime.intervene(
-        reality,
+        retryingRejectedIntervention
+          ? { ...reality, codexThreadId: undefined }
+          : reality,
         contract,
         async (event) => this.emitSealedInterventionEvent(run, reality, contract, event)
       );
@@ -938,7 +956,7 @@ export class MissionOrchestrator {
       ledger.status = "rejected";
       ledger.rejectionCode = validation?.issues[0]?.code;
       ledger.rejectionReason = ledger.rejectionCode === "intervention_token_budget_exceeded"
-        ? `The controlled Subject used ${(ledger.lastAttemptTokens ?? 0).toLocaleString("en-US")} tokens, above the approved ${contract.tokenBudget.toLocaleString("en-US")} ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.`
+        ? `The Adversarial Subject used ${(ledger.lastAttemptTokens ?? 0).toLocaleString("en-US")} tokens, above the approved ${contract.tokenBudget.toLocaleString("en-US")} ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.`
         : safeFailure(error);
       ledger.report = undefined;
       ledger.interventionCommit = undefined;
@@ -994,7 +1012,7 @@ export class MissionOrchestrator {
         runtimeLaws: interventionContract
           ? [
               ...(parent.constitution.runtimeLaws ?? []),
-              "A sealed controlled intervention may exist; diagnose it only from observable code, behavior, and test evidence."
+              "A sealed adversarial intervention may exist; diagnose it only from observable code, behavior, and test evidence."
             ]
           : parent.constitution.runtimeLaws
       },
@@ -1067,7 +1085,7 @@ export class MissionOrchestrator {
     reality: Reality,
     worktrees: WorktreeManagerPort
   ): Promise<void> {
-    if (!reality.parentId) throw new Error("The waking Reality cannot be kicked.");
+    if (!reality.parentId) throw new Error("Reality cannot be kicked.");
     await this.emit(run, reality, "kick.triggered", `Kick triggered: ${reality.name} must return what generalises.`, {
       missionId: run.id
     });
@@ -1096,7 +1114,7 @@ export class MissionOrchestrator {
     );
     const kicked = RealityEntity.hydrate(bound).setWakeReport(report).snapshot();
     this.replaceReality(run, kicked);
-    await this.emit(run, kicked, "wake.sealing", `Reality Totem is sealing ${reality.name}'s structured memory to its Git source and descendant lineage.`, {
+    await this.emit(run, kicked, "wake.sealing", `Totem Check is sealing ${reality.name}'s structured memory to its Git source and descendant lineage.`, {
       missionId: run.id,
       wakeStage: "sealing",
       wakeStageIndex: 2
@@ -1241,8 +1259,8 @@ export class MissionOrchestrator {
             ...memory,
             invariants,
             recommendation: invariants.length
-              ? `Only these conclusions survived the sibling Reality Mirror: ${invariants.join("; ")}. Preserve every recorded disagreement as uncertainty.`
-              : "No conclusion survived every sibling Reality. Preserve the disagreement and use only reproducible evidence plus parent-owned proofs."
+              ? `Only these conclusions survived the sibling Dream Reality Mirror: ${invariants.join("; ")}. Preserve every recorded disagreement as uncertainty.`
+              : "No conclusion survived every sibling Dream. Preserve the disagreement and use only reproducible evidence plus parent-owned proofs."
           };
         })
       : run.memories;
@@ -1279,7 +1297,7 @@ export class MissionOrchestrator {
     run.proofResults = [];
     run.status = "exploring";
     run.finalDiff = await worktrees.diff(root.worktreePath!);
-    await this.emit(run, updated, "synthesis.completed", repairContext ? "Reality repair returned from Codex." : "Returned memories synthesised into the waking Reality.", {
+    await this.emit(run, updated, "synthesis.completed", repairContext ? "Reality repair returned from Codex." : "Returned memories synthesised into Reality.", {
       missionId: run.id,
       appliedMemoryCount: result.report.appliedMemories.length,
       changedFileCount: result.report.changedFiles.length,
@@ -1313,7 +1331,7 @@ export class MissionOrchestrator {
     worktrees: WorktreeManagerPort
   ): Promise<void> {
     run.status = "verifying";
-    await this.emit(run, root, "verification.started", "Immutable mission proofs entered the waking Reality.", {
+    await this.emit(run, root, "verification.started", "Immutable Mission proofs entered Reality.", {
       missionId: run.id,
       proofCount: run.definition.proofs.length
     });
@@ -1595,7 +1613,7 @@ export class MissionOrchestrator {
       evidenceTitles: ledger.diagnosis.evidenceTitles,
       assessedAt: now()
     };
-    await this.emit(run, reality, "intervention.revealed", `Intervention revealed: investigator Subjects ${outcome === "detected" ? "identified" : outcome === "partial" ? "partially identified" : "missed"} the controlled fault.`, {
+    await this.emit(run, reality, "intervention.revealed", `Intervention revealed: investigator Subjects ${outcome === "detected" ? "identified" : outcome === "partial" ? "partially identified" : "missed"} the adversarial fault.`, {
       missionId: run.id,
       contractId: ledger.contractId,
       outcome,
@@ -1667,7 +1685,7 @@ export class MissionOrchestrator {
       run,
       reality,
       "intervention.contained",
-      `Controlled fault contained: ${ledger.report.changedFiles.length} injected path${ledger.report.changedFiles.length === 1 ? "" : "s"} restored before memory could ascend.`,
+      `Adversarial fault contained: ${ledger.report.changedFiles.length} injected path${ledger.report.changedFiles.length === 1 ? "" : "s"} restored before Memory could ascend.`,
       {
         missionId: run.id,
         contractId: ledger.contractId,
@@ -1755,7 +1773,7 @@ export class MissionOrchestrator {
   ): MissionInterventionContract {
     const contract = run.definition.intervention;
     if (!contract || contract.targetDepth !== reality.depth) {
-      throw new Error("No controlled intervention is configured for this Reality.");
+      throw new Error("No adversarial intervention is configured for this Reality.");
     }
     return contract;
   }
@@ -1883,8 +1901,8 @@ export class MissionOrchestrator {
           kind: "intervene",
           executor: "codex",
           label: intervention.status === "rejected"
-            ? `Retry the bounded controlled intervention in ${active.name}`
-            : `Inject the controlled resilience Subject into ${active.name}`
+            ? `Retry the bounded Adversarial Subject in ${active.name}`
+            : `Inject the Adversarial Subject into ${active.name}`
         };
       }
       if (intervention?.status === "sealed" && !intervention.diagnosis) {
@@ -1915,7 +1933,7 @@ export class MissionOrchestrator {
         id: "kick",
         kind: "kick",
         executor: "codex",
-        label: `Kick ${active.name}: return validated memory`
+        label: `Kick: return Memory from ${active.name}`
       };
     }
 
@@ -1966,7 +1984,7 @@ export class MissionOrchestrator {
         id: "synthesise",
         kind: "advance",
         executor: "codex",
-        label: "Synthesise validated memories into the waking Reality"
+        label: "Synthesise validated memories into Reality"
       };
     }
     if (!run.proofResults.length) {
@@ -1981,7 +1999,7 @@ export class MissionOrchestrator {
       id: "stabilise",
       kind: "advance",
       executor: "orchestrator",
-      label: "Stabilise the proven waking Reality"
+      label: "Stabilise the proven Reality"
     };
   }
 
@@ -2086,7 +2104,7 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
 
 - Operate only inside this worktree and this Reality's premise.
 - Parent-owned Reality Anchors are immutable.
-- A waking inspection may investigate and test freely, but the orchestrator will roll its filesystem back before admitting knowledge.
+- A root inspection may investigate and test freely, but the orchestrator will roll its filesystem back before admitting knowledge.
 - Do not create child Dreams. Return one structured Dream proposal to the orchestrator.
 - Label hypothetical or simulated evidence as synthetic.
 - Use Subjects only for bounded, independent investigations and wait for every Subject to return.
@@ -2271,7 +2289,7 @@ ${reality.constitution.wakeContract.map((entry) => `- ${entry}`).join("\n")}
           ? "Immutable proof failed; inspect the evidence before authorizing repair."
           : next.kind === "dream"
             ? "A new counterfactual premise requires explicit approval."
-            : "A controlled intervention requires explicit approval.";
+            : "An adversarial intervention requires explicit approval.";
         await this.pauseAutopilot(run, active, reason);
         return;
       }

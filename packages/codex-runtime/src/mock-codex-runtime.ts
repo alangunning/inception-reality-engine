@@ -265,8 +265,7 @@ export class MockCodexRuntime implements CodexRuntime {
     if (
       nested
       && (reality.constitution.runtimeLaws ?? []).some((law) =>
-        law.includes("sealed controlled intervention")
-        || law.includes("sealed adversarial intervention")
+        law.includes("sealed adversarial intervention")
       )
     ) {
       if (enumerationDream) {
@@ -504,7 +503,7 @@ export class MockCodexRuntime implements CodexRuntime {
       events: [event],
       report: SynthesisReportSchema.parse({
         realityId: reality.id,
-        summary: "Layered abuse controls and returned attack tests are ready to enter the waking Reality.",
+        summary: "Layered abuse controls and returned attack tests are ready to enter Reality.",
         appliedMemories: reports.map((report) => report.realityId),
         changedFiles: [],
         retainedArtefacts: reports.flatMap((report) => report.artefacts.map((artefact) => artefact.path)),

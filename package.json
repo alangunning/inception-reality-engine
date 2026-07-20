@@ -30,7 +30,6 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.4",
-    "@openai/codex-sdk": "^0.144.6",
     "@prisma/adapter-libsql": "^7.8.0",
     "@prisma/client": "7.8.0",
     "zod": "3.25.76",

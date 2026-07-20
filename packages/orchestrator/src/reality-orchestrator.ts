@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
+  DEFAULT_INTERVENTION_TOKEN_BUDGET,
   RealityEntity,
   RealityRunArchiveSchema,
   type AdversarialInterventionLedger,
@@ -114,22 +115,22 @@ const ACTION_PLAN: Record<number, ActionDefinition> = {
   2: { id: "enter_subjects", kind: "advance", executor: "orchestrator", verb: "enter bounded Subjects" },
   3: { id: "discover_abuse", kind: "advance", executor: "codex", verb: "investigate" },
   4: { id: "create_nested_dream", kind: "dream", executor: "orchestrator", verb: "create nested Dream" },
-  5: { id: "wake_nested", kind: "kick", executor: "codex", verb: "return validated memory" },
-  6: { id: "wake_parent", kind: "kick", executor: "codex", verb: "return validated memory" },
+  5: { id: "wake_nested", kind: "kick", executor: "codex", verb: "return Memory" },
+  6: { id: "wake_parent", kind: "kick", executor: "codex", verb: "return Memory" },
   7: { id: "synthesise", kind: "advance", executor: "codex", verb: "synthesise returned memories" },
   8: { id: "run_anchors", kind: "verify", executor: "orchestrator", verb: "run immutable anchors" },
   9: { id: "stabilise", kind: "advance", executor: "orchestrator", verb: "stabilise" }
 };
 
-const ROOT_NAME = "Waking Reality";
+const ROOT_NAME = "Reality";
 const CANONICAL_INTERVENTION_PATH = "demo/password-reset/src/password-reset.ts";
 const CANONICAL_INTERVENTION: MissionInterventionContract = {
   id: "demo-enumeration-boundary-intervention-v1",
   enabled: true,
   subject: {
-    id: "demo-controlled-subject-mal",
+    id: "demo-adversarial-subject-mal",
     name: "Mal",
-    role: "Controlled resilience engineer",
+    role: "Bounded adversarial engineer",
     mission: "Introduce one reversible boundary-condition fault without changing tests, anchors, or Reality control files."
   },
   hypothesis: "Investigator Subjects can identify a one-line request-boundary regression from observable behavior and source evidence without seeing the sealed intervention ledger.",
@@ -142,7 +143,7 @@ const CANONICAL_INTERVENTION: MissionInterventionContract = {
   ],
   maxChangedFiles: 1,
   maxPatchLines: 12,
-  tokenBudget: 16_000,
+  tokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
   maxMinutes: 12,
   targetDepth: 2,
   revealPolicy: "after-diagnosis",
@@ -179,7 +180,13 @@ export class RealityOrchestrator {
   async ensureSeeded(): Promise<void> {
     const run = this.seedOperation.then(async () => {
       const existing = await this.repository.getSession();
-      if (existing) return;
+      if (existing) {
+        const persistedRoot = (await this.repository.listRealities()).find((entry) => entry.depth === 0);
+        if (persistedRoot && persistedRoot.name !== ROOT_NAME) {
+          await this.repository.saveReality({ ...persistedRoot, name: ROOT_NAME });
+        }
+        return;
+      }
 
       const root = RealityEntity.create({
         depth: 0,
@@ -301,7 +308,7 @@ export class RealityOrchestrator {
         updatedAt: timestamp
       };
       await this.repository.saveSession(session);
-      await this.emit(reality, "reality.created", "Waking Reality formed with four immutable anchors.", {
+      await this.emit(reality, "reality.created", "Reality created with four immutable Anchors.", {
         worktree: descriptor.path
       });
     });
@@ -520,7 +527,7 @@ export class RealityOrchestrator {
     if (!reality) throw new Error("The active Demo Reality is unavailable.");
     const ledger = session.interventions.find((entry) => entry.realityId === reality.id);
     if (!ledger || ledger.status !== "rejected") {
-      throw new Error("No rejected controlled intervention is waiting for a budget approval.");
+      throw new Error("No rejected adversarial intervention is waiting for a budget approval.");
     }
     if (
       ledger.rejectionCode !== "intervention_token_budget_exceeded"
@@ -531,13 +538,20 @@ export class RealityOrchestrator {
 
     const currentBudget = this.canonicalInterventionContract(ledger).tokenBudget;
     const requested = approval.tokenBudget;
-    if (!Number.isInteger(requested) || requested <= currentBudget) {
+    const sameHardCeilingRetry = requested === currentBudget
+      && requested === 500_000
+      && approval.retry !== false;
+    if (
+      !Number.isInteger(requested)
+      || requested < currentBudget
+      || (requested === currentBudget && !sameHardCeilingRetry)
+    ) {
       throw new Error(
-        `Approve an intervention ceiling above the current ${currentBudget.toLocaleString("en-US")} tokens.`
+        `Approve an intervention ceiling above the current ${currentBudget.toLocaleString("en-US")} tokens, or explicitly retry at the 500,000-token hard ceiling.`
       );
     }
     if (requested > 500_000) {
-      throw new Error("The controlled intervention ceiling cannot exceed 500,000 tokens.");
+      throw new Error("The adversarial intervention ceiling cannot exceed 500,000 tokens.");
     }
 
     const approvedAt = new Date().toISOString();
@@ -551,7 +565,7 @@ export class RealityOrchestrator {
     const retry = approval.retry ?? true;
     if (retry && session.autopilot.mode === "paused") {
       if (this.describeAction(session, reality)?.id !== "intervene") {
-        throw new Error("The controlled intervention is no longer the pending Reality action.");
+        throw new Error("The adversarial intervention is no longer the pending Reality action.");
       }
       session.autopilot = {
         ...session.autopilot,
@@ -571,12 +585,16 @@ export class RealityOrchestrator {
     await this.emit(
       reality,
       "intervention.budget.approved",
-      `Operator approved a bounded intervention retry ceiling of ${requested.toLocaleString("en-US")} tokens.`,
+      sameHardCeilingRetry
+        ? "Operator approved a fresh-context intervention retry at the existing 500,000-token hard ceiling."
+        : `Operator approved a bounded intervention retry ceiling of ${requested.toLocaleString("en-US")} tokens.`,
       {
         contractId: ledger.contractId,
         previousTokenBudget: currentBudget,
         approvedTokenBudget: requested,
         failedAttemptTokens: ledger.lastAttemptTokens,
+        coordinatorContext: "fresh-after-rejected-attempt",
+        sameHardCeilingRetry,
         retry
       }
     );
@@ -821,7 +839,7 @@ export class RealityOrchestrator {
           "Retain at least one decisive test artefact; other worktree-local exploration remains allowed.",
           "Wake immediately after one deterministic test decides the premise.",
           ...(armCanonicalIntervention ? [
-            "A sealed controlled intervention may exist. Diagnose it only from observable implementation, behavior, tests, and evidence; do not inspect Git history or .inception control files."
+            "A sealed adversarial intervention may exist. Diagnose it only from observable implementation, behavior, tests, and evidence; do not inspect Git history or .inception control files."
           ] : [])
         ]
       },
@@ -868,7 +886,7 @@ export class RealityOrchestrator {
       estimatedTokens: proposal.estimatedTokens
     });
     if (interventionLedger) {
-      await this.emit(created, "intervention.armed", `Sealed intervention armed for ${created.name}; the controlled Subject has not changed a file.`, {
+      await this.emit(created, "intervention.armed", `Sealed intervention armed for ${created.name}; the Adversarial Subject has not changed a file.`, {
         contractId: interventionLedger.contractId,
         subjectId: CANONICAL_INTERVENTION.subject.id,
         subjectName: CANONICAL_INTERVENTION.subject.name,
@@ -896,16 +914,17 @@ export class RealityOrchestrator {
   }
 
   private async interveneCanonicalDream(session: DemoSession): Promise<void> {
-    if (!session.activeRealityId) throw new Error("Controlled intervention locus missing.");
+    if (!session.activeRealityId) throw new Error("Adversarial intervention locus missing.");
     const reality = await this.repository.getReality(session.activeRealityId);
     if (!reality?.worktreePath || reality.depth !== 2) {
-      throw new Error("The controlled intervention requires an active nested Dream worktree.");
+      throw new Error("The adversarial intervention requires an active Nested Dream worktree.");
     }
     const ledger = session.interventions.find((entry) => entry.realityId === reality.id);
     if (!ledger || !["armed", "rejected"].includes(ledger.status)) {
       throw new Error("The sealed intervention is not ready to run.");
     }
     const contract = this.canonicalInterventionContract(ledger);
+    const retryingRejectedIntervention = ledger.status === "rejected";
 
     ledger.status = "injecting";
     ledger.startedAt = new Date().toISOString();
@@ -917,7 +936,7 @@ export class RealityOrchestrator {
       interventions: [...session.interventions],
       updatedAt: new Date().toISOString()
     });
-    await this.emit(reality, "intervention.started", `Controlled resilience Subject entered ${reality.name} under a sealed, reversible contract.`, {
+    await this.emit(reality, "intervention.started", `Adversarial Subject entered ${reality.name} under a sealed, reversible contract.`, {
       contractId: contract.id,
       subjectId: contract.subject.id,
       subjectName: contract.subject.name,
@@ -926,7 +945,10 @@ export class RealityOrchestrator {
       maxChangedFiles: contract.maxChangedFiles,
       maxPatchLines: contract.maxPatchLines,
       tokenBudget: contract.tokenBudget,
-      maxMinutes: contract.maxMinutes
+      maxMinutes: contract.maxMinutes,
+      coordinatorContext: retryingRejectedIntervention
+        ? "fresh-after-rejected-attempt"
+        : "reality-thread"
     });
     await this.emit(reality, "subject.entered", `Subject entered: ${CANONICAL_INTERVENTION.subject.name}, ${CANONICAL_INTERVENTION.subject.role}.`, {
       subjectId: CANONICAL_INTERVENTION.subject.id,
@@ -944,7 +966,9 @@ export class RealityOrchestrator {
       const result = await this.codexRuntime.intervene(
         {
           ...reality,
-          codexThreadId: reality.codexThreadId?.startsWith("unbound:")
+          codexThreadId: retryingRejectedIntervention
+            ? undefined
+            : reality.codexThreadId?.startsWith("unbound:")
             ? undefined
             : reality.codexThreadId
         },
@@ -1053,7 +1077,7 @@ export class RealityOrchestrator {
       ledger.status = "rejected";
       ledger.rejectionCode = validation?.code;
       ledger.rejectionReason = ledger.rejectionCode === "intervention_token_budget_exceeded"
-        ? `The controlled Subject used ${(ledger.lastAttemptTokens ?? 0).toLocaleString("en-US")} tokens, above the approved ${contract.tokenBudget.toLocaleString("en-US")} ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.`
+        ? `The Adversarial Subject used ${(ledger.lastAttemptTokens ?? 0).toLocaleString("en-US")} tokens, above the approved ${contract.tokenBudget.toLocaleString("en-US")} ceiling. The Dream was restored; approve a higher bounded ceiling before retrying.`
         : (error instanceof Error ? error.message : String(error)).slice(0, 500);
       ledger.report = undefined;
       ledger.interventionCommit = undefined;
@@ -1164,7 +1188,7 @@ export class RealityOrchestrator {
     const report = returned.wakeReport!;
 
     const parent = await this.requireDreamAtDepth(1);
-    await this.emit(returned, "wake.sealing", "Reality Totem is sealing the nested memory to its failing artefact and Git source.", {
+    await this.emit(returned, "wake.sealing", "Totem Check is sealing the nested memory to its failing artefact and Git source.", {
       wakeStage: "sealing",
       wakeStageIndex: 2
     });
@@ -1309,8 +1333,8 @@ export class RealityOrchestrator {
           ? "Enumeration response test prepared"
           : "Rotating-IP attack test prepared",
         summary: enumerationDream
-          ? "The nested Reality encoded the public response boundary as a deterministic regression test."
-          : "The nested Reality encoded the inherited delivery limit as a deterministic regression test.",
+          ? "The Nested Dream encoded the public response boundary as a deterministic regression test."
+          : "The Nested Dream encoded the inherited delivery limit as a deterministic regression test.",
         source: "nested-dream-codex",
         artefactPath: attackPath,
         provenance: "synthetic"
@@ -1443,7 +1467,7 @@ export class RealityOrchestrator {
     await this.emit(
       reality,
       "intervention.revealed",
-      `Reality Totem revealed the sealed intervention: investigator evidence ${outcome === "detected" ? "exactly identified" : outcome === "partial" ? "partially identified" : "missed"} the planted change.`,
+      `Totem Check revealed the sealed intervention: investigator evidence ${outcome === "detected" ? "exactly identified" : outcome === "partial" ? "partially identified" : "missed"} the planted change.`,
       {
         contractId: ledger.contractId,
         outcome,
@@ -1523,7 +1547,7 @@ export class RealityOrchestrator {
     await this.emit(
       contained,
       "intervention.contained",
-      "Controlled fault contained: 1 planted change was rolled back before memory could ascend.",
+      "Adversarial fault contained: 1 planted change was rolled back before Memory could ascend.",
       {
         contractId: ledger.contractId,
         rollbackCommit: ledger.baselineCommit,
@@ -1554,7 +1578,7 @@ export class RealityOrchestrator {
     await this.repository.saveReality(returned);
 
     const root = await this.requireNamedReality(ROOT_NAME);
-    await this.emit(returned, "wake.sealing", "Reality Totem is sealing the parent Dream memory and verified descendant lineage.", {
+    await this.emit(returned, "wake.sealing", "Totem Check is sealing the parent Dream memory and verified descendant lineage.", {
       wakeStage: "sealing",
       wakeStageIndex: 2
     });
@@ -1573,7 +1597,7 @@ export class RealityOrchestrator {
     rootEntity.advanceTime(6, "Receiving coordinated-attack memory", "The parent Dream returned layered defensive invariants.");
     const updatedRoot = rootEntity.snapshot();
     await this.repository.saveReality(updatedRoot);
-    await this.emit(returned, "wake.returning", "Validated parent memory is returning to the waking Reality.", {
+    await this.emit(returned, "wake.returning", "Validated parent memory is returning to Reality.", {
       parentRealityId: root.id,
       wakeStage: "returning",
       wakeStageIndex: 3
@@ -1590,9 +1614,9 @@ export class RealityOrchestrator {
       .filter((entry) => entry.kind === "dream" && entry.depth === 2)
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
     if (!root || !attack || !nestedRealities.length) {
-      throw new Error("The waking Reality and every canonical Dream must exist before synthesis.");
+      throw new Error("Reality and every canonical Dream must exist before synthesis.");
     }
-    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    if (!root.worktreePath) throw new Error("Reality worktree missing.");
     let integritySession = session;
     for (let index = 0; index < nestedRealities.length; index += 1) {
       const nested = nestedRealities[index]!;
@@ -1600,7 +1624,7 @@ export class RealityOrchestrator {
       await this.emit(
         nested,
         "validation.rejected",
-        "Persisted nested memory predates the decisive artefact contract; re-entering the nested Reality for validation.",
+        "Persisted nested Memory predates the decisive artefact contract; re-entering the Nested Dream for validation.",
         {
           contract: "WakeReportSchema",
           issues: [{ path: "realityId|artefacts.path", code: "legacy_memory_requires_revalidation" }]
@@ -1834,7 +1858,7 @@ export class RealityOrchestrator {
 
   private async runAnchors(session: DemoSession): Promise<void> {
     const root = await this.requireNamedReality(ROOT_NAME);
-    if (!root.worktreePath) throw new Error("Waking worktree missing.");
+    if (!root.worktreePath) throw new Error("Reality worktree missing.");
     const vitestPath = path.join(this.repoRoot, "node_modules", "vitest", "vitest.mjs");
     const patterns: Record<string, string> = {
       "anchor-generic-response": "returns the same public response",
@@ -1875,7 +1899,7 @@ export class RealityOrchestrator {
       const result = anchorResults.find((entry) => entry.anchorId === anchor.id);
       return { ...anchor, status: result?.status ?? "failed", output: result?.output ?? "Anchor did not execute." };
     });
-    await this.emit(root, "verification.started", "Complete inherited regression suite entered the waking Reality.", {});
+    await this.emit(root, "verification.started", "Complete inherited regression suite entered Reality.", {});
     const verificationStartedAt = Date.now();
     const verificationCommand = "vitest run demo/password-reset/tests";
     const verification = await this.worktrees.run(root.worktreePath, process.execPath, [
@@ -1939,7 +1963,7 @@ export class RealityOrchestrator {
       }
     );
     if (!allPassed) {
-      await this.emit(updated, "reality.fractured", "Reality fracture: implementation, returned evidence, and proof do not yet agree.", {});
+      await this.emit(updated, "reality.fractured", "Reality fractured: implementation, returned evidence, and proof do not yet agree.", {});
     }
     await this.advanceSession(
       { ...session, anchorResults, regressionResult },
@@ -1962,7 +1986,7 @@ export class RealityOrchestrator {
     const updated = RealityEntity.hydrate(root)
       .setStatus("stabilised", "Reality stabilised")
       .setImplementationState("Layered controls verified by immutable anchors")
-      .advanceTime(4, "Preserving inherited knowledge", "The waking Reality now contains the tested implementation and returned memories.")
+      .advanceTime(4, "Preserving inherited knowledge", "Reality now contains the tested implementation and returned memories.")
       .snapshot();
     await this.repository.saveReality(updated);
     await this.emit(updated, "reality.stabilised", "Reality stabilised: implementation, memories, and anchors agree.", {});
@@ -2031,7 +2055,7 @@ export class RealityOrchestrator {
       session.regressionResult?.status === "failed" ? session.regressionResult.output : ""
     ].filter(Boolean).join("\n\n");
     const runtimeResult = await this.requestSynthesis(root, reports, context);
-    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    if (!root.worktreePath) throw new Error("Reality worktree missing.");
     if (!runtimeResult.applied) {
       await this.worktrees.writeFile(root.worktreePath, "demo/password-reset/src/password-reset.ts", SECURE_PASSWORD_RESET_IMPLEMENTATION);
     }
@@ -2138,7 +2162,7 @@ ${laws || "- No additional runtime laws."}
         await this.emit(
           persisted,
           "reality.fractured",
-          `Reality fracture detected: ${persisted.name} lost its isolated worktree.`,
+          `Reality fractured: ${persisted.name} lost its isolated worktree.`,
           { failureKind: "worktree_missing", codexProcessActive: false }
         );
         const parent = persisted.parentId ? restored.get(persisted.parentId) : undefined;
@@ -2260,7 +2284,7 @@ ${laws || "- No additional runtime laws."}
     const definition = session.phase === 9 && !this.proofPassed(session, reality)
       ? { id: "repair", kind: "advance", executor: "codex", verb: "repair failed proof" } satisfies ActionDefinition
       : session.phase === 5 && intervention && ["armed", "rejected"].includes(intervention.status)
-        ? { id: "intervene", kind: "intervene", executor: "codex", verb: "inject bounded controlled Subject" } satisfies ActionDefinition
+        ? { id: "intervene", kind: "intervene", executor: "codex", verb: "inject bounded Adversarial Subject" } satisfies ActionDefinition
       : session.phase === 5 && reality?.depth === 1 && openProposal
         ? ACTION_PLAN[4]
       : ACTION_PLAN[session.phase];
@@ -2292,10 +2316,10 @@ ${laws || "- No additional runtime laws."}
         case "create_nested_dream": return `Create nested Dream: ${target}`;
         case "enter_subjects": return `Enter attacker, investigator, and test engineer into ${target}`;
         case "intervene": return intervention?.status === "rejected"
-          ? `Retry the bounded controlled Subject in ${target}`
+          ? `Retry the bounded Adversarial Subject in ${target}`
           : `Inject Mal under a sealed reversible contract in ${target}`;
         case "wake_nested":
-        case "wake_parent": return `${retryingRejectedAction ? "Retry Kick" : "Kick"} ${target}: ${definition.verb}`;
+        case "wake_parent": return `${retryingRejectedAction ? "Retry Kick" : "Kick"}: ${definition.verb} from ${target}`;
         case "synthesise": return `Synthesise returned memories into the ${target}`;
         case "run_anchors": return `Run ${target}`;
         case "repair": return `Ask Codex to repair ${target}`;
@@ -2496,7 +2520,7 @@ ${laws || "- No additional runtime laws."}
     sourceRealities: Reality[],
     reports: WakeReport[]
   ): Promise<void> {
-    if (!root.worktreePath) throw new Error("Waking Reality worktree missing.");
+    if (!root.worktreePath) throw new Error("Reality worktree missing.");
     for (const report of reports) {
       const source = sourceRealities.find((reality) => reality.id === report.realityId);
       if (!source?.worktreePath) throw new Error(`Memory source Reality ${report.realityId} is missing its worktree.`);
@@ -2608,7 +2632,9 @@ ${laws || "- No additional runtime laws."}
   }
 
   private async requireNamedReality(name: string): Promise<Reality> {
-    const reality = (await this.repository.listRealities()).find((entry) => entry.name === name);
+    const realities = await this.repository.listRealities();
+    const reality = realities.find((entry) => entry.name === name)
+      ?? (name === ROOT_NAME ? realities.find((entry) => entry.depth === 0) : undefined);
     if (!reality) throw new Error(`Reality ${name} missing.`);
     return reality;
   }
@@ -2713,7 +2739,7 @@ ${laws || "- No additional runtime laws."}
         this.demoAutopilotControl = completed;
         await this.repository.saveSession({ ...session, autopilot: completed });
         if (active) {
-          await this.emit(active, "autopilot.completed", "Guided auto mode reached the stabilised waking Reality.", {
+          await this.emit(active, "autopilot.completed", "Guided auto mode reached the stabilised Reality.", {
             actionsCompleted: completed.actionsCompleted
           });
         }
@@ -2749,7 +2775,7 @@ ${laws || "- No additional runtime laws."}
           proofFailure
             ? "An immutable anchor failed; inspect the evidence before authorizing repair."
             : next.kind === "intervene"
-              ? "A bounded controlled intervention requires explicit approval."
+              ? "A bounded adversarial intervention requires explicit approval."
               : "A new counterfactual premise requires explicit approval."
         );
         return;

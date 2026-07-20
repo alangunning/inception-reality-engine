@@ -27,7 +27,7 @@ Results:
 The complete ten-action API sequence was executed against production code with real Git worktrees and Vitest commands.
 
 - Final phase: 10
-- Reality tree: Waking Reality -> Under coordinated attack -> Rotating IP swarm
+- Reality tree: Reality (ROOT) -> Under coordinated attack -> Rotating IP swarm
 - Separate mock Codex thread ID for every Reality
 - Root-owned anchor ID preserved at both Dream depths
 - Nested rotating-IP test executed and failed as expected before synthesis

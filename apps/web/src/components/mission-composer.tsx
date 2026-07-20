@@ -30,8 +30,9 @@ import {
   UsersRound,
   XCircle
 } from "lucide-react";
-import type {
-  AdversarialFaultClass,
+import {
+  DEFAULT_INTERVENTION_TOKEN_BUDGET,
+  type AdversarialFaultClass,
   MissionDefinitionDraft,
   MissionDreamStrategy,
   MissionMemoryPolicy,
@@ -51,11 +52,22 @@ import {
   RealityTopbar,
   RealityWorkspace,
   WakeTransition,
+  replayActiveRealityId,
+  replayAnchorResults,
+  replayFinalDiff,
+  replayInterventions,
+  replayMemoryIntegrity,
+  replayOutcome,
+  replayReflections,
   replayRealities,
   type InspectorTab,
   type PresentedRealityOperation,
   type RealityPhaseStep
 } from "./reality-engine";
+import {
+  canonicalProductCopy,
+  realityDisplayName
+} from "./product-terminology";
 
 type AutopilotCommand = "start" | "resume" | "pause" | "stop";
 
@@ -167,14 +179,14 @@ const initialState: ComposerState = {
   interventionProtectedPaths: ".git/**\n.inception/**\n.github/**\nopenapi_specs/**\nrequirements.txt\nDockerfile\ndocker-compose.yaml",
   interventionMaxChangedFiles: 2,
   interventionMaxPatchLines: 80,
-  interventionTokenBudget: 16_000,
+  interventionTokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
   interventionMaxMinutes: 12,
   interventionTargetDepth: 2
 };
 
 const adversarialSubject = {
   name: "Mal",
-  role: "Controlled resilience engineer",
+  role: "Bounded adversarial engineer",
   mission: "Introduce one minimal reversible local fault inside the operator's explicit path, file, patch, time, and token limits."
 };
 
@@ -239,7 +251,7 @@ function missionEventCount(run: MissionRun): number {
 
 function statusLabel(status: MissionRun["status"]): string {
   return {
-    forming: "FORMING",
+    forming: "CREATING",
     exploring: "EXPLORING",
     verifying: "VERIFYING",
     stabilised: "STABILISED",
@@ -252,7 +264,7 @@ function missionActionCommand(action: MissionAction | undefined): string {
     case "inspect": return "Run Codex review";
     case "intervene": return "Run intervention";
     case "create_dream": return "Create Dream";
-    case "kick": return "Kick and return memory";
+    case "kick": return "Kick: return memory";
     case "synthesise": return "Synthesise memories";
     case "verify": return "Run immutable proofs";
     case "repair": return "Repair failed proofs";
@@ -261,20 +273,28 @@ function missionActionCommand(action: MissionAction | undefined): string {
   }
 }
 
-function missionPhaseSteps(run: MissionRun): RealityPhaseStep[] {
-  const hasDream = run.realities.some((entry) => entry.depth > 0);
+function missionPhaseSteps(
+  run: MissionRun,
+  realities = run.realities,
+  events = run.events,
+  replaying = false
+): RealityPhaseStep[] {
+  const hasDream = realities.some((entry) => entry.depth > 0);
   const hasInspection = hasDream
-    || run.realities.some((entry) => entry.proposals.length > 0)
-    || run.events.some((event) => event.type === "inspection.completed");
-  const hasMemory = run.memories.length > 0
-    || run.realities.some((entry) => entry.status === "kicked" || Boolean(entry.wakeReport));
-  const hasSynthesis = Boolean(run.finalDiff)
-    || run.events.some((event) => event.type === "synthesis.completed");
-  const hasProof = run.proofResults.length > 0
-    || run.events.some((event) => event.type === "verification.passed" || event.type === "verification.failed");
+    || realities.some((entry) => entry.proposals.length > 0)
+    || events.some((event) => event.type === "inspection.completed");
+  const hasMemory = realities.some((entry) => entry.status === "kicked" || Boolean(entry.wakeReport))
+    || events.some((event) => event.type === "memory.returned");
+  const hasSynthesis = events.some((event) => event.type === "synthesis.completed")
+    || (!replaying && Boolean(run.finalDiff));
+  const hasProof = events.some((event) =>
+    event.type === "verification.passed" || event.type === "verification.failed"
+  ) || (!replaying && run.proofResults.length > 0);
   const progress = hasProof ? 5 : hasSynthesis ? 4 : hasMemory ? 3 : hasDream ? 2 : hasInspection ? 1 : 0;
-  const labels = ["Inspect", "Dream", "Wake", "Synthesis", "Proof"];
-  const stabilised = run.status === "stabilised";
+  const labels = ["Inspect", "Dream", "Memory", "Synthesis", "Proof"];
+  const stabilised = replaying
+    ? events.some((event) => event.type === "reality.stabilised")
+    : run.status === "stabilised";
   return labels.map((label, index) => ({
     label,
     complete: stabilised || index < progress,
@@ -319,6 +339,8 @@ function MissionAutoModeBar({
   const budgetRecovery = paused
     && Boolean(rejectedIntervention)
     && currentBudget > 0;
+  const sameHardCeilingRetry = currentBudget === 500_000
+    && maximumBudget === currentBudget;
   const [approvedBudget, setApprovedBudget] = useState(suggestedBudget);
 
   useEffect(() => {
@@ -334,7 +356,7 @@ function MissionAutoModeBar({
           <strong>{running
             ? "Advancing one validated Reality action at a time"
             : budgetRecovery
-              ? "Controlled Subject exceeded its approved token ceiling"
+              ? "Adversarial Subject exceeded its approved token ceiling"
               : paused
                 ? state.pauseReason ?? "Waiting at a parent-owned gate"
                 : state.mode === "completed"
@@ -377,10 +399,12 @@ function MissionAutoModeBar({
                 ? `${rejectedIntervention.lastAttemptTokens.toLocaleString()} used / ${currentBudget.toLocaleString()} approved`
                 : `Prior attempt exceeded the ${currentBudget.toLocaleString()} approved ceiling`}
             </strong>
-            <p>The Dream baseline was restored. No Codex usage resumes until you approve a new ceiling.</p>
+            <p>{sameHardCeilingRetry
+              ? "The Dream baseline was restored. Retry uses a fresh coordinator context at the existing hard ceiling."
+              : "The Dream baseline was restored. No Codex usage resumes until you approve a new ceiling."}</p>
           </span>
           <label>
-            <small>NEW RETRY CEILING</small>
+            <small>{sameHardCeilingRetry ? "HARD RETRY CEILING" : "NEW RETRY CEILING"}</small>
             <input
               aria-label="Approved intervention token ceiling"
               type="number"
@@ -397,13 +421,16 @@ function MissionAutoModeBar({
             onClick={() => onApproveInterventionBudget(approvedBudget)}
             disabled={
               busy
-              || approvedBudget <= currentBudget
+              || (!sameHardCeilingRetry && approvedBudget <= currentBudget)
+              || (sameHardCeilingRetry && approvedBudget !== currentBudget)
               || approvedBudget > maximumBudget
             }
           >
-            <ShieldCheck size={14} /> Approve {approvedBudget.toLocaleString()} and retry
+            <ShieldCheck size={14} /> {sameHardCeilingRetry
+              ? `Retry at ${approvedBudget.toLocaleString()}`
+              : `Approve ${approvedBudget.toLocaleString()} and retry`}
           </button>
-          {maximumBudget <= currentBudget && (
+          {maximumBudget < currentBudget && (
             <small className="budget-limit-warning">
               No bounded retry remains under this Mission&apos;s overall ceiling. Stop this run and form a Mission with a larger overall budget.
             </small>
@@ -428,19 +455,19 @@ function MissionOutcomePanel({
   return (
     <section className="outcome-summary mission-outcome" data-testid="mission-outcome">
       <div className="outcome-intro">
-        <span className="eyebrow">WAKING OUTCOME</span>
+        <span className="eyebrow">REALITY OUTCOME</span>
         <h2>{outcome.title}</h2>
         <p>{outcome.summary}</p>
       </div>
       <div className="outcome-results">
         <div><BrainCircuit size={19} /><span><b>{outcome.metrics.realitiesExplored} Dreams lived</b><small>Maximum depth {outcome.metrics.maximumDepth}; {outcome.metrics.subjectsReturned} Subjects returned.</small></span></div>
         <div><Fingerprint size={19} /><span><b>{outcome.metrics.memoriesVerified} memories admitted</b><small>{outcome.metrics.interventionsDetected} injected faults detected; {outcome.metrics.memoriesQuarantined} unsafe memories quarantined.</small></span></div>
-        <div><ShieldCheck size={19} /><span><b>{outcome.metrics.proofsPassed} of {outcome.metrics.proofsTotal} proofs passed</b><small>{outcome.metrics.changedFiles} waking files changed.</small></span></div>
+        <div><ShieldCheck size={19} /><span><b>{outcome.metrics.proofsPassed} of {outcome.metrics.proofsTotal} proofs passed</b><small>{outcome.metrics.changedFiles} Reality files changed.</small></span></div>
       </div>
       <p className="outcome-boundary"><LockKeyhole size={15} /><span><b>Risk prevented</b> {outcome.preventedRisk}</span></p>
       <div className="outcome-actions">
         <button type="button" onClick={onToggle}>
-          <Minimize2 size={15} /> {collapsed ? "Reveal lived Realities" : "Collapse Dreams into waking Reality"}
+          <Minimize2 size={15} /> {collapsed ? "Reveal lived Realities" : "Collapse Dreams into Reality"}
         </button>
         <span><BrainCircuit size={14} /> {outcome.generalisedInvariants.length} inherited truths</span>
       </div>
@@ -448,11 +475,16 @@ function MissionOutcomePanel({
   );
 }
 
-function RealityMirrorBand({ run }: { run: MissionRun }) {
-  const reflection = (run.reflections ?? []).at(-1);
+function RealityMirrorBand({ reflections }: { reflections: MissionRun["reflections"] }) {
+  const reflection = reflections.at(-1);
   if (!reflection) return null;
   return (
-    <section className="reality-mirror" data-testid="reality-mirror">
+    <section
+      className="reality-mirror workspace-band workspace-band-reflection"
+      id="reality-reflection"
+      data-testid="reality-mirror"
+      tabIndex={-1}
+    >
       <header>
         <span><BrainCircuit size={16} /> REALITY MIRROR / SIBLING COMPARISON</span>
         <b>{Math.round(reflection.confidence * 100)}% EVIDENCE COVERAGE</b>
@@ -474,29 +506,42 @@ function RealityMirrorBand({ run }: { run: MissionRun }) {
   );
 }
 
-function MemoryAscentBand({ run }: { run: MissionRun }) {
-  const seals = run.memoryIntegrity ?? [];
-  const interventions = run.interventions ?? [];
+function MemoryAscentBand({
+  realities,
+  seals,
+  interventions
+}: {
+  realities: Reality[];
+  seals: MissionRun["memoryIntegrity"];
+  interventions: MissionRun["interventions"];
+}) {
   if (!seals.length) return null;
   return (
-    <section className="memory-ascent" data-testid="memory-ascent">
+    <section
+      className="memory-ascent workspace-band workspace-band-memory"
+      id="reality-memory-ascent"
+      data-testid="memory-ascent"
+      tabIndex={-1}
+    >
       <header><ArrowUpFromLine size={16} /><span><b>MEMORY ASCENT</b><small>Every Kick is judged before knowledge moves upward</small></span></header>
       <div>
         {seals.map((seal) => {
-          const source = run.realities.find((reality) => reality.id === seal.realityId);
-          const parent = run.realities.find((reality) => reality.id === seal.parentRealityId);
+          const source = realities.find((reality) => reality.id === seal.realityId);
+          const parent = realities.find((reality) => reality.id === seal.parentRealityId);
           const intervention = interventions.find((entry) => entry.realityId === seal.realityId);
           return (
             <article className={`memory-ascent-row is-${seal.verdict}`} key={seal.id}>
-              <span><strong>{source?.name ?? "Dream"}</strong><small>Depth {source?.depth ?? "?"}</small></span>
+              <span><strong>{source ? realityDisplayName(source) : "Dream"}</strong><small>Depth {source?.depth ?? "?"}</small></span>
               <ChevronRight size={14} />
-              <span><strong>{seal.verdict === "verified" ? "Totem admitted memory" : "Totem quarantined memory"}</strong><small>{seal.checks.filter((check) => check.status === "passed").length} / {seal.checks.length} checks passed</small></span>
+              <span><strong>{seal.verdict === "verified" ? "Totem Check admitted memory" : "Totem Check quarantined memory"}</strong><small>{seal.checks.filter((check) => check.status === "passed").length} / {seal.checks.length} checks passed</small></span>
               <ChevronRight size={14} />
               <span>
-                <strong>{seal.verdict === "verified" ? parent?.name ?? "Parent Reality" : "No parent change"}</strong>
+                <strong>{seal.verdict === "verified"
+                  ? parent ? realityDisplayName(parent) : "Parent"
+                  : "No parent change"}</strong>
                 <small>
                   {intervention?.assessment
-                    ? `Injected Subject: ${intervention.assessment.outcome}${intervention.containedAt ? " / mutation contained" : ""}`
+                    ? `Adversarial Subject: ${intervention.assessment.outcome}${intervention.containedAt ? " / mutation contained" : ""}`
                     : seal.verdict === "verified" ? "Knowledge propagated" : "Unsafe assumption contained"}
                 </small>
               </span>
@@ -549,7 +594,7 @@ function MissionActionDock({
             ? "Return the timeline to Live to continue"
             : ceilingReached
               ? "Observed SDK token ceiling reached; form a new Mission with a higher ceiling before execution"
-              : snapshot.operation?.label ?? next?.label ?? "Reality stabilised"}
+              : canonicalProductCopy(snapshot.operation?.label ?? next?.label ?? "Reality stabilised")}
         </strong>
         <div><i style={{ width: `${progress}%` }} /></div>
       </div>
@@ -567,7 +612,7 @@ function MissionActionDock({
         onClick={() => next && onAction(next.id)}
         disabled={blocked || !isKick}
       >
-        <ArrowUpFromLine size={17} /> {isKick ? "Kick and return memory" : "Kick"}
+        <ArrowUpFromLine size={17} /> {isKick ? "Kick: return memory" : "Kick"}
       </button>
       <button
         type="button"
@@ -630,11 +675,7 @@ function MissionRunView({
   // Browser state may outlive a schema migration during local development.
   const interventions = run.interventions ?? [];
   const memoryIntegrity = run.memoryIntegrity ?? [];
-  const intervention = interventions.find((entry) => entry.realityId === reality.id)
-    ?? interventions.at(-1);
   const interventionContract = run.definition.intervention;
-  const integritySeal = memoryIntegrity.find((entry) => entry.realityId === reality.id)
-    ?? memoryIntegrity.at(-1);
   const usedTokens = run.observedTokens ?? observedMissionTokens(run.events);
   const totalEvents = missionEventCount(run);
   const autopilotMode = missionAutopilot(run).mode;
@@ -736,7 +777,7 @@ function MissionRunView({
     }
     if (action === "kick") {
       setWakeStage("collecting");
-      setWakeRealityName(reality.name);
+      setWakeRealityName(realityDisplayName(reality));
     }
     setBusy(true);
     setError(null);
@@ -876,6 +917,40 @@ function MissionRunView({
     () => timelineIndex === null ? run.events : run.events.slice(0, timelineIndex + 1),
     [run.events, timelineIndex]
   );
+  const replaying = timelineIndex !== null;
+  const replayActiveId = replayActiveRealityId(
+    replayedRealities,
+    visibleEvents,
+    run.activeRealityId
+  );
+  const projectedInterventions = replayInterventions(
+    interventions,
+    visibleEvents,
+    replaying
+  );
+  const projectedMemoryIntegrity = replayMemoryIntegrity(
+    memoryIntegrity,
+    visibleEvents,
+    replaying
+  );
+  const projectedAnchorResults = replayAnchorResults(
+    run.proofResults,
+    visibleEvents,
+    replaying
+  );
+  const projectedFinalDiff = replayFinalDiff(run.finalDiff, visibleEvents, replaying);
+  const projectedReflections = replayReflections(
+    run.reflections ?? [],
+    visibleEvents,
+    replaying
+  );
+  const projectedOutcome = replayOutcome(run.outcome, visibleEvents, replaying);
+  const projectedIntervention = projectedInterventions.find((entry) =>
+    entry.realityId === replayActiveId
+  ) ?? projectedInterventions.at(-1);
+  const projectedIntegritySeal = projectedMemoryIntegrity.find((entry) =>
+    entry.realityId === replayActiveId
+  ) ?? projectedMemoryIntegrity.at(-1);
   const activeOperation: PresentedRealityOperation | null = snapshot.operation
     ? {
         ...snapshot.operation,
@@ -884,9 +959,28 @@ function MissionRunView({
           : "codex"
       }
     : null;
-  const replaying = timelineIndex !== null;
-  const phaseSteps = missionPhaseSteps(run);
-  const graphRealities = collapsedDreams && root ? [root] : replayedRealities;
+  const displayedOperation = replaying ? null : activeOperation;
+  const phaseSteps = missionPhaseSteps(run, replayedRealities, visibleEvents, replaying);
+  const replayedRoot = replayedRealities.find((entry) => entry.depth === 0);
+  const graphRealities = collapsedDreams && replayedRoot ? [replayedRoot] : replayedRealities;
+  const displayedStatus = replaying
+    ? visibleEvents.some((event) => event.type === "reality.stabilised")
+      ? "STABILISED"
+      : visibleEvents.slice().reverse().find((event) =>
+          event.type === "reality.fractured" || event.type === "reality.recovered"
+        )?.type === "reality.fractured"
+        ? "FRACTURED"
+        : visibleEvents.some((event) => event.type === "verification.started")
+          ? "VERIFYING"
+          : visibleEvents.some((event) => event.type !== "reality.created")
+            ? "EXPLORING"
+            : "CREATING"
+    : statusLabel(run.status);
+
+  useEffect(() => {
+    if (timelineIndex !== null && replayActiveId) setSelectedRealityId(replayActiveId);
+  }, [replayActiveId, timelineIndex]);
+
   return (
     <main className="app-shell mission-run">
       <RealityTopbar
@@ -894,7 +988,8 @@ function MissionRunView({
         model={runtime.model}
         authSource={runtime.authSource}
         environment={`CODEX SDK ${runtime.sdkVersion}`}
-        realityCount={run.realities.length}
+        realityCount={replayedRealities.length}
+        replaying={replaying}
         actions={(
           <>
             <a className="mission-link" href="/missions" title="Mission Control">
@@ -916,54 +1011,56 @@ function MissionRunView({
       />
 
       <RealityPhaseHeader
-        eyebrow={`GENERALIZED MISSION / ${statusLabel(run.status)}`}
+        eyebrow={`${replaying ? "TIMELINE REPLAY" : "GENERALIZED MISSION"} / ${displayedStatus}`}
         title={run.definition.name}
         steps={phaseSteps}
       />
 
       <RealityJourneyBand
-        realities={run.realities}
-        events={run.events}
-        stabilised={run.status === "stabilised"}
+        realities={replayedRealities}
+        events={visibleEvents}
+        stabilised={visibleEvents.some((event) => event.type === "reality.stabilised")}
       />
 
       <section className="mission-context-band" data-testid="mission-context">
         <p>{run.definition.mission}</p>
         <dl>
           <div><dt>MODEL</dt><dd>{runtime.model}</dd></div>
-          <div><dt>OBSERVED SDK TOKENS</dt><dd>{usedTokens.toLocaleString()} / {run.definition.tokenBudget.toLocaleString()}</dd></div>
-          <div><dt>DEPTH BUDGET</dt><dd>{Math.max(...run.realities.map((entry) => entry.depth))} / {run.definition.maxDreamDepth}</dd></div>
+          <div><dt>OBSERVED SDK TOKENS</dt><dd>{(replaying ? observedMissionTokens(visibleEvents) : usedTokens).toLocaleString()} / {run.definition.tokenBudget.toLocaleString()}</dd></div>
+          <div><dt>DEPTH BUDGET</dt><dd>{Math.max(0, ...replayedRealities.map((entry) => entry.depth))} / {run.definition.maxDreamDepth}</dd></div>
         </dl>
       </section>
 
-      <MissionAutoModeBar
-        run={run}
-        busy={busy}
-        onControl={(command) => void controlAutopilot(command)}
-        onApproveInterventionBudget={(tokenBudget) =>
-          void approveInterventionBudget(tokenBudget)}
-      />
+      {!replaying && (
+        <MissionAutoModeBar
+          run={run}
+          busy={busy}
+          onControl={(command) => void controlAutopilot(command)}
+          onApproveInterventionBudget={(tokenBudget) =>
+            void approveInterventionBudget(tokenBudget)}
+        />
+      )}
 
-      {error && (
+      {error && !replaying && (
         <div className="mission-error">
           <XCircle size={16} />
-          <span><b>Reality fracture</b>{error}</span>
+          <span><b>Reality fractured</b>{canonicalProductCopy(error)}</span>
         </div>
       )}
 
-      {activeOperation && (
+      {displayedOperation && (
         <OperationMonitor
-          operation={activeOperation}
+          operation={displayedOperation}
           realities={run.realities}
           events={run.events}
           now={now}
         />
       )}
 
-      <WakeTransition stage={wakeStage} realityName={wakeRealityName} />
+      {!replaying && <WakeTransition stage={wakeStage} realityName={wakeRealityName} />}
 
       <MissionOutcomePanel
-        run={run}
+        run={{ ...run, outcome: projectedOutcome }}
         collapsed={collapsedDreams}
         onToggle={() => {
           setCollapsedDreams((current) => !current);
@@ -976,90 +1073,117 @@ function MissionRunView({
         realities={run.realities}
         index={timelineIndex}
         now={now}
-        onChange={setTimelineIndex}
+        onChange={(index) => {
+          setTimelineIndex(index);
+          if (index !== null) {
+            setCollapsedDreams(false);
+            setRevealCode(false);
+          }
+        }}
       />
-
-      <RealityMirrorBand run={run} />
-      <MemoryAscentBand run={run} />
-
-      {(intervention || integritySeal || memoryIntegrity.length === 0) && (
-        <section className="mission-guardrail-band">
-          {intervention && interventionContract && (
-            <article className={`mission-intervention intervention-${intervention.status}`} data-testid="intervention-ledger">
-              <div className="mission-intervention-heading">
-                <span>
-                  <strong><ShieldAlert size={14} /> {interventionContract.subject.name} / {interventionContract.subject.role}</strong>
-                  <small>INJECTED SUBJECT / {intervention.containedAt ? "CONTAINED" : intervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
-                </span>
-                <b>{interventionContract.maxChangedFiles} FILES / {interventionContract.maxPatchLines} LINES</b>
-              </div>
-              {intervention.status === "armed" && <p>No mutation has run. The operator-owned contract is armed for an explicit action.</p>}
-              {intervention.status === "sealed" && <p>{intervention.changedFileCount ?? 0} changed file{intervention.changedFileCount === 1 ? "" : "s"} sealed. Cause and paths remain hidden until Kick.</p>}
-              {intervention.status === "rejected" && <p>{intervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>}
-              {intervention.status === "rejected" && intervention.lastAttemptTokens !== undefined && (
-                <dl>
-                  <div><dt>ATTEMPT USED</dt><dd>{intervention.lastAttemptTokens.toLocaleString()} tokens</dd></div>
-                  <div><dt>APPROVED CEILING</dt><dd>{interventionContract.tokenBudget.toLocaleString()} tokens</dd></div>
-                  <div><dt>APPROVALS</dt><dd>{intervention.budgetApprovals?.length ?? 0} recorded</dd></div>
-                </dl>
-              )}
-              {intervention.status === "revealed" && intervention.report && intervention.assessment && (
-                <p>
-                  {intervention.assessment.outcome.toUpperCase()}: {intervention.report.summary}
-                  {intervention.containedAt && (
-                    <> The Dream baseline was restored before memory ascent; {intervention.excludedArtefactPaths?.length ?? 0} injected artefact path{intervention.excludedArtefactPaths?.length === 1 ? " was" : "s were"} excluded.</>
-                  )}
-                </p>
-              )}
-            </article>
-          )}
-          <article
-            className={`mission-integrity integrity-${integritySeal?.verdict ?? "pending"}`}
-            data-testid="memory-integrity"
-          >
-            <div className="mission-intervention-heading">
-              <span>
-                <strong><Fingerprint size={14} /> {integritySeal?.verdict === "verified" ? "Memory verified" : integritySeal?.verdict === "quarantined" ? "Memory quarantined" : "Parent policy armed"}</strong>
-                <small>{integritySeal ? `${integritySeal.policyVersion.toUpperCase()} / ${integritySeal.checks.filter((check) => check.status === "passed").length} OF ${integritySeal.checks.length} CHECKS PASSED` : "NO MEMORY HAS CROSSED A KICK"}</small>
-              </span>
-              <b>{integritySeal ? `${integritySeal.descendantSealIds.length} DESCENDANT SEALS` : `${reality.anchors.length} REALITY ANCHORS`}</b>
-            </div>
-            {integritySeal && (
-              <div className="mission-integrity-checks">
-                {integritySeal.checks.map((check) => (
-                  <span className={`integrity-check is-${check.status}`} key={check.name} title={check.summary}>
-                    {check.status === "passed" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
-                    {check.name.replaceAll("-", " ")}
-                  </span>
-                ))}
-              </div>
-            )}
-          </article>
-        </section>
-      )}
 
       <RealityWorkspace
         realities={replayedRealities}
         sourceRealities={run.realities}
         events={visibleEvents}
-        activeRealityId={run.activeRealityId}
+        activeRealityId={replayActiveId}
         selectedRealityId={selectedRealityId}
         onSelectReality={setSelectedRealityId}
         inspectorTab={inspectorTab}
         onInspectorTab={setInspectorTab}
-        operation={activeOperation}
+        operation={displayedOperation}
         now={now}
-        pulseRealityId={pulseRealityId}
+        pulseRealityId={replaying ? null : pulseRealityId}
         graphRealities={graphRealities}
-        memoryIntegrity={memoryIntegrity}
-        anchorResults={run.proofResults}
-        finalDiff={run.finalDiff}
+        memoryIntegrity={projectedMemoryIntegrity}
+        anchorResults={projectedAnchorResults}
+        finalDiff={projectedFinalDiff}
         revealCode={revealCode}
         onToggleCode={() => setRevealCode((current) => !current)}
-        hasMoreEvents={hasMoreEvents}
+        hasMoreEvents={replaying ? false : hasMoreEvents}
         loadingMoreEvents={loadingMoreEvents}
         onLoadMoreEvents={() => void loadEarlierEvents()}
-        totalEventCount={totalEvents}
+        totalEventCount={replaying ? visibleEvents.length : totalEvents}
+        requirementsSupplement={(
+          <article className="mission-parent-policy" data-testid="mission-parent-policy">
+            <span><Fingerprint size={15} /></span>
+            <div>
+              <small>PARENT POLICY / ARMED BEFORE DREAMING</small>
+              <strong>{run.definition.memoryPolicy.replaceAll("-", " ")}</strong>
+              <p>{run.definition.runtimeLaws[0] ?? "Only validated, evidence-backed memory may move upward to its parent."}</p>
+            </div>
+          </article>
+        )}
+        reflectionContent={<RealityMirrorBand reflections={projectedReflections} />}
+        integrityContent={(
+          <>
+            <header className="mission-chapter-heading">
+              <span><Fingerprint size={18} /></span>
+              <div><small>TOTEM CHECK</small><strong>Integrity verdict and sealed adversarial intervention</strong></div>
+              <b>{projectedMemoryIntegrity.length} SEALED MEMORIES</b>
+            </header>
+            <div className="mission-guardrail-band">
+              {projectedIntervention && interventionContract && (
+                <article className={`mission-intervention intervention-${projectedIntervention.status}`} data-testid="intervention-ledger">
+                  <div className="mission-intervention-heading">
+                    <span>
+                      <strong><ShieldAlert size={14} /> {interventionContract.subject.name} / {interventionContract.subject.role}</strong>
+                      <small>ADVERSARIAL SUBJECT / {projectedIntervention.containedAt ? "CONTAINED" : projectedIntervention.status.toUpperCase()} / REVEAL AFTER DIAGNOSIS</small>
+                    </span>
+                    <b>{interventionContract.maxChangedFiles} FILES / {interventionContract.maxPatchLines} LINES</b>
+                  </div>
+                  {projectedIntervention.status === "armed" && <p>No mutation has run. The operator-owned contract is armed for an explicit action.</p>}
+                  {projectedIntervention.status === "sealed" && <p>{projectedIntervention.changedFileCount ?? 0} changed file{projectedIntervention.changedFileCount === 1 ? "" : "s"} sealed. Cause and paths remain hidden until Kick.</p>}
+                  {projectedIntervention.status === "rejected" && <p>{projectedIntervention.rejectionReason ?? "The mutation breached its contract and the Dream was restored."}</p>}
+                  {projectedIntervention.status === "rejected" && projectedIntervention.lastAttemptTokens !== undefined && (
+                    <dl>
+                      <div><dt>ATTEMPT USED</dt><dd>{projectedIntervention.lastAttemptTokens.toLocaleString()} tokens</dd></div>
+                      <div><dt>APPROVED CEILING</dt><dd>{interventionContract.tokenBudget.toLocaleString()} tokens</dd></div>
+                      <div><dt>APPROVALS</dt><dd>{projectedIntervention.budgetApprovals?.length ?? 0} recorded</dd></div>
+                    </dl>
+                  )}
+                  {projectedIntervention.status === "revealed" && projectedIntervention.report && projectedIntervention.assessment && (
+                    <p>
+                      {projectedIntervention.assessment.outcome.toUpperCase()}: {projectedIntervention.report.summary}
+                      {projectedIntervention.containedAt && (
+                        <> The Dream baseline was restored before memory ascent; {projectedIntervention.excludedArtefactPaths?.length ?? 0} injected artefact path{projectedIntervention.excludedArtefactPaths?.length === 1 ? " was" : "s were"} excluded.</>
+                      )}
+                    </p>
+                  )}
+                </article>
+              )}
+              <article
+                className={`mission-integrity integrity-${projectedIntegritySeal?.verdict ?? "pending"}`}
+                data-testid="memory-integrity"
+              >
+                <div className="mission-intervention-heading">
+                  <span>
+                    <strong><Fingerprint size={14} /> {projectedIntegritySeal?.verdict === "verified" ? "Memory verified" : projectedIntegritySeal?.verdict === "quarantined" ? "Memory quarantined" : "Parent policy armed"}</strong>
+                    <small>{projectedIntegritySeal ? `${projectedIntegritySeal.policyVersion.toUpperCase()} / ${projectedIntegritySeal.checks.filter((check) => check.status === "passed").length} OF ${projectedIntegritySeal.checks.length} CHECKS PASSED` : "NO MEMORY HAS CROSSED A KICK"}</small>
+                  </span>
+                  <b>{projectedIntegritySeal ? `${projectedIntegritySeal.descendantSealIds.length} DESCENDANT SEALS` : `${replayedRealities.find((entry) => entry.id === replayActiveId)?.anchors.length ?? reality.anchors.length} REALITY ANCHORS`}</b>
+                </div>
+                {projectedIntegritySeal && (
+                  <div className="mission-integrity-checks">
+                    {projectedIntegritySeal.checks.map((check) => (
+                      <span className={`integrity-check is-${check.status}`} key={check.name} title={check.summary}>
+                        {check.status === "passed" ? <CheckCircle2 size={12} /> : <XCircle size={12} />}
+                        {check.name.replaceAll("-", " ")}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </article>
+            </div>
+          </>
+        )}
+        memoryAscentContent={(
+          <MemoryAscentBand
+            realities={replayedRealities}
+            seals={projectedMemoryIntegrity}
+            interventions={projectedInterventions}
+          />
+        )}
       />
 
       <AdminDrawer
@@ -1078,7 +1202,7 @@ function MissionRunView({
       {dreamGateOpen && pendingProposal && (
         <DreamGate
           proposal={pendingProposal}
-          owner={reality.name}
+          owner={realityDisplayName(reality)}
           onCancel={() => setDreamGateOpen(false)}
           onConfirm={() => void confirmDream()}
         />
@@ -1330,9 +1454,9 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
       });
       const body = await readJson<MissionSnapshot & { error?: string }>(
         response,
-        "Could not form the waking Reality."
+        "Could not create the Mission."
       );
-      if (!response.ok) throw new Error(body.error ?? "Could not form the waking Reality.");
+      if (!response.ok) throw new Error(body.error ?? "Could not create the Mission.");
       setSnapshot(body);
       router.push(`/missions/${encodeURIComponent(body.run.id)}`, { scroll: true });
       await loadIndex();
@@ -1393,7 +1517,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
         <header className="mission-composer-header">
           <div>
             <span className="eyebrow">MISSION CONTROL / TRUSTED LOCAL MODE</span>
-            <h1>Form a waking Reality</h1>
+            <h1>Create a Mission</h1>
             <p>Define the world Codex may change and the parent-owned proofs it cannot negotiate.</p>
           </div>
           <div className="mission-trust-warning">
@@ -1406,14 +1530,14 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
         {runtime && runtime.mode !== "real" && (
           <div className="mission-error">
             <SquareTerminal size={16} />
-            <span><b>Real mode required</b>Run <code>npm run dev:real</code>. Forming a mission never starts Codex; only an explicit Reality action does.</span>
+            <span><b>Real mode required</b>Run <code>npm run dev:real</code>. Creating a Mission never starts Codex; only an explicit Reality action does.</span>
           </div>
         )}
 
         <div className="mission-composer-grid">
           <section className="mission-form">
             <div className="mission-section-title">
-              <span><CircleDot size={16} /> WAKING WORLD</span>
+              <span><CircleDot size={16} /> REALITY / ROOT</span>
               <b>NO CODEX USAGE ON CREATE</b>
             </div>
             {targets.map((target) => (
@@ -1445,7 +1569,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
             </label>
             <label className="mission-field-wide">
               <span>Mission</span>
-              <textarea required value={composer.mission} onChange={(event) => setComposer({ ...composer, mission: event.target.value })} placeholder="What must the waking implementation achieve?" />
+              <textarea required value={composer.mission} onChange={(event) => setComposer({ ...composer, mission: event.target.value })} placeholder="What must Reality achieve?" />
             </label>
             <label>
               <span>Scope</span>
@@ -1508,7 +1632,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
                 checked={composer.interventionEnabled}
                 onChange={(event) => setComposer({ ...composer, interventionEnabled: event.target.checked })}
               />
-              <span>Inject one bounded controlled Subject at Dream depth {composer.interventionTargetDepth}</span>
+              <span>Inject one bounded Adversarial Subject at Dream depth {composer.interventionTargetDepth}</span>
             </label>
             {composer.interventionEnabled && (
               <>
@@ -1658,7 +1782,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
                   dreamStrategy: event.target.value as MissionDreamStrategy
                 })}
               >
-                <option value="competing-siblings">Compare sibling realities</option>
+                <option value="competing-siblings">Compare sibling Dreams</option>
                 <option value="single-chain">Follow one nested chain</option>
               </select>
             </label>
@@ -1702,7 +1826,7 @@ export function MissionComposer({ initialMissionId }: { initialMissionId?: strin
               disabled={busy || targetBusy || runtime?.mode !== "real"}
               onClick={() => void formMission()}
             >
-              <GitBranch size={17} /> {busy ? "Forming Reality" : "Form waking Reality"}
+              <GitBranch size={17} /> {busy ? "Creating Mission" : "Create Mission"}
             </button>
           </section>
 

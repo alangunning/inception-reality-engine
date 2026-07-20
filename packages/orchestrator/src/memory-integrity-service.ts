@@ -145,7 +145,7 @@ export class MemoryIntegrityService {
         status: childAnchorFingerprint === parentAnchorFingerprint ? "passed" : "failed",
         summary: childAnchorFingerprint === parentAnchorFingerprint
           ? "Parent-owned Reality Anchors retained their exact identity and commands."
-          : "A child Reality no longer matches its parent-owned Reality Anchors."
+          : "A Dream no longer matches its parent-owned Reality Anchors."
       },
       {
         name: "evidence-lineage",

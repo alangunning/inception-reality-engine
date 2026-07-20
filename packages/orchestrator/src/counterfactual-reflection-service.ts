@@ -111,10 +111,10 @@ export class CounterfactualReflectionService {
     const proofsPassed = run.proofResults.filter((proof) => proof.status === "passed").length;
     const changedFiles = changedFileCount(run.finalDiff);
     const preventedRisk = quarantined.length
-      ? `${quarantined.length} unverified ${quarantined.length === 1 ? "memory was" : "memories were"} quarantined before synthesis could change the waking implementation.`
+      ? `${quarantined.length} unverified ${quarantined.length === 1 ? "Memory was" : "Memories were"} quarantined before synthesis could change Reality's implementation.`
       : detectedInterventions
-        ? `${detectedInterventions} sealed controlled ${detectedInterventions === 1 ? "fault was" : "faults were"} independently detected before memory crossed its Kick boundary; only verified conclusions reached the waking implementation.`
-      : `${verified.length} returned ${verified.length === 1 ? "memory was" : "memories were"} integrity-checked before ${proofsPassed} parent-owned ${proofsPassed === 1 ? "proof" : "proofs"} admitted the implementation.`;
+        ? `${detectedInterventions} sealed adversarial ${detectedInterventions === 1 ? "fault was" : "faults were"} independently detected before Memory crossed its Kick boundary; only verified conclusions reached Reality's implementation.`
+        : `${verified.length} returned ${verified.length === 1 ? "memory was" : "memories were"} integrity-checked before ${proofsPassed} parent-owned ${proofsPassed === 1 ? "proof" : "proofs"} admitted the implementation.`;
 
     return MissionOutcomeSchema.parse({
       title: `${run.definition.name} stabilised`,

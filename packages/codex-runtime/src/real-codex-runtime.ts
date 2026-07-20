@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import { Codex, type Thread, type ThreadOptions } from "@openai/codex-sdk";
 import {
   AdversarialInterventionReportSchema,
@@ -35,7 +37,32 @@ import {
 } from "./codex-execution-environment";
 import { CodexSubjectRegistryTrace } from "./codex-subject-registry";
 
-const CODEX_SDK_VERSION = "0.144.6";
+function installedCodexSdkVersion(): string {
+  let directory = process.cwd();
+  for (let depth = 0; depth < 8; depth += 1) {
+    const manifestPath = path.join(
+      directory,
+      "node_modules",
+      "@openai",
+      "codex-sdk",
+      "package.json"
+    );
+    try {
+      const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8")) as {
+        version?: unknown;
+      };
+      if (typeof manifest.version === "string") return manifest.version;
+    } catch {
+      // Workspace scripts may start below the repository root.
+    }
+    const parent = path.dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+  return "unknown";
+}
+
+const CODEX_SDK_VERSION = installedCodexSdkVersion();
 export const DEFAULT_CODEX_MODEL = "gpt-5.6-sol";
 
 export function configuredCodexModel(): string {
@@ -87,6 +114,15 @@ function integer(value: unknown): number | undefined {
   return typeof value === "number" && Number.isInteger(value) ? value : undefined;
 }
 
+function runtimeFailurePriority(detail: string): number {
+  if (/invalid peer certificate|UnknownIssuer|certificate verify failed/i.test(detail)) return 100;
+  if (/quota exceeded|usage limit|billing details|flagged for possible cybersecurity risk/i.test(detail)) return 90;
+  if (/AuthRequired|invalid_token|missing or invalid access token/i.test(detail)) return 80;
+  if (/thread-store internal error|Operation not permitted/i.test(detail)) return 70;
+  if (/stream disconnected|error sending request|reconnecting/i.test(detail)) return 10;
+  return 40;
+}
+
 function parseStructuredJson<T>(
   raw: string,
   contract: "InvestigationReportSchema" | "AdversarialInterventionReportSchema" | "SynthesisReportSchema",
@@ -112,7 +148,14 @@ function parseStructuredJson<T>(
 }
 
 interface CommandFailure {
-  failureKind: "test" | "environment" | "configuration" | "missing-tool" | "build" | "command";
+  failureKind:
+    | "test"
+    | "test-harness"
+    | "environment"
+    | "configuration"
+    | "missing-tool"
+    | "build"
+    | "command";
   diagnostic: string;
 }
 
@@ -136,10 +179,35 @@ function classifyCommandFailure(command: string | undefined, output: unknown): C
       diagnostic: "The command reached an incompatible or unloadable project configuration."
     };
   }
-  if (/command not found|cannot find (?:module|package)|module_not_found/i.test(text)) {
+  if (
+    /command not found|cannot find (?:module|package)|module_not_found|ModuleNotFoundError|No module named/i.test(
+      text
+    )
+  ) {
     return {
       failureKind: "missing-tool",
       diagnostic: "A required executable or package was unavailable in this Reality."
+    };
+  }
+  if (/No such file or directory|can't open file/i.test(text)) {
+    return {
+      failureKind: "configuration",
+      diagnostic: "A referenced file or directory was not present in this Reality."
+    };
+  }
+  if (
+    /\b(?:pytest|unittest|tests?[/\\]|test[_-])/i.test(command ?? "")
+    && /Test suite failed to run|FAILED \(errors?=\d+\)|ERROR:\s+test_|Traceback \(most recent call last\)/is.test(
+      text
+    )
+    && !/AssertionError/i.test(text)
+  ) {
+    const count = text.match(/errors?=(\d+)/i)?.[1];
+    return {
+      failureKind: "test-harness",
+      diagnostic: count
+        ? `The local test harness raised ${count} error${count === "1" ? "" : "s"} before assertions completed.`
+        : "The local test harness errored before assertions completed."
     };
   }
   if (/Failed Tests|AssertionError|(?:tests?|assertions?).{0,40}\bfailed\b/i.test(text)) {
@@ -454,6 +522,8 @@ export function toSafeCodexRuntimeEvent(rawEvent: unknown, realityName: string, 
         : status === "failed"
           ? failure.failureKind === "test"
             ? `Test evidence returned${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`
+            : failure.failureKind === "test-harness"
+              ? `Test harness failed${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`
             : `Command failed${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`
           : `Command returned${exitCode === undefined ? "" : ` with exit ${exitCode}`}.`,
       metadata: {
@@ -641,17 +711,16 @@ export class RealCodexRuntime implements CodexRuntime {
     const scope = reality.constitution.scope ?? reality.name;
     const operationLabel = `${scope} source review`;
     const diagnosisRequired = (reality.constitution.runtimeLaws ?? []).some((law) =>
-      law.includes("sealed controlled intervention")
-      || law.includes("sealed adversarial intervention")
+      law.includes("sealed adversarial intervention")
     );
     const prompt = `${buildDreamPrompt(reality)}
 
 ${buildSubjectOrchestrationPrompt(reality)}
 
 TASK
-Inspect the local source for the defined repository-maintenance task covering ${scope}, then run decisive local tests inside this Reality. Do not contact a running service, external target, account, or network system. In a waking Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
+Inspect the local source for the defined repository-maintenance task covering ${scope}, then run decisive local tests inside this Reality. Do not contact a running service, external target, account, or network system. In the root Reality, preserve the baseline implementation until counterfactual evidence returns; in a Dream, you may change code and create tests to experience the premise.
 ${reality.depth >= 2 ? "This nested Dream must create a real regression test that encodes the inherited invariant, execute it against the current implementation, and retain the failing test file in the worktree before returning. A prose-only or simulated artefact is invalid." : ""}
-${diagnosisRequired ? "This Reality contains a sealed controlled intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
+${diagnosisRequired ? "This Reality contains a sealed adversarial intervention. Do not inspect Git reflogs, unreachable commits, or .inception control files. Diagnose only the observable implementation, behavior, tests, and evidence. Return adversarialDiagnosis with the suspected fault class, changed files, evidence titles, confidence, and remaining uncertainty." : ""}
 Every active Subject must be represented by one subjectReports entry using its exact id, name, and role. Return only structured evidence, Subject findings, belief changes, Dream proposals when uncertainty remains, and changed file paths. Set synthetic=true for simulated evidence.
 ${reality.constitution.dreamStrategy === "competing-siblings"
     ? "Return dreamProposal and alternativeDreamProposal as two materially different, bounded, defensive counterfactuals that can test competing explanations. Neither may request external interaction."
@@ -736,7 +805,7 @@ ${reality.constitution.dreamStrategy === "competing-siblings"
 
 ${buildSubjectOrchestrationPrompt(subjectReality)}
 
-SEALED CONTROLLED RESILIENCE INTERVENTION
+SEALED ADVERSARIAL SUBJECT INTERVENTION
 Introduce exactly one minimal, reversible local fault that tests this defensive hypothesis:
 ${contract.hypothesis}
 
@@ -745,12 +814,12 @@ Allowed path patterns: ${contract.allowedPaths.join(", ")}
 Protected path patterns: ${contract.protectedPaths.join(", ")}
 Hard limits: at most ${contract.maxChangedFiles} changed files, ${contract.maxPatchLines} patch lines, ${contract.tokenBudget} tokens, and ${contract.maxMinutes} minutes.
 
-Only the named controlled-intervention Subject may edit. Do not modify Git metadata, .inception control files, immutable proof definitions, protected paths, dependency lockfiles unless explicitly allowed, or anything outside this Reality worktree. Do not commit. Do not add explanatory comments, filenames, notes, or tests that reveal the injected cause. The altered implementation must remain diagnosable from observable behavior and ordinary code evidence.
+Only the named Adversarial Subject may edit. Do not modify Git metadata, .inception control files, immutable proof definitions, protected paths, dependency lockfiles unless explicitly allowed, or anything outside this Reality worktree. Do not commit. Do not add explanatory comments, filenames, notes, or tests that reveal the injected cause. The altered implementation must remain diagnosable from observable behavior and ordinary code evidence.
 
 Return only AdversarialInterventionReportSchema JSON. Set contractId to "${contract.id}", realityId to "${reality.id}", and subjectId to "${contract.subject.id}". Report exact changed paths and expected observable symptoms without raw reasoning.`;
     const { thread, events, finalResponse } = await this.streamStructured(
       subjectReality,
-      "Sealed controlled resilience intervention",
+      "Sealed Adversarial Subject intervention",
       prompt,
       outputSchema,
       onEvent,
@@ -867,7 +936,7 @@ RETURNED MEMORIES
 ${memory}
 
 SYNTHESIS TASK
-Apply the validated, generalisable memories to the waking implementation in this worktree. Preserve immutable anchors and public API semantics. Retain or strengthen every returned test artefact, run every parent-owned proof command plus the complete relevant test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
+Apply the validated, generalisable Memories to Reality's implementation in this worktree. Preserve immutable Anchors and public API semantics. Retain or strengthen every returned test artefact, run every parent-owned proof command plus the complete relevant test suite, and resolve failures caused by the implementation. Do not weaken or delete a test to make it pass.
 ${repairContext ? `\nREPAIR CONTEXT\n${repairContext}\nRepair the proof failure and rerun the complete suite.` : ""}
 Return only the structured synthesis report after the implementation and tests are complete. Set realityId exactly to "${reality.id}", list every applied memory Reality ID, changed file, retained artefact, and unresolved risk.`;
     const { thread, events, finalResponse } = await this.streamStructured(
@@ -1017,7 +1086,13 @@ Return only the structured synthesis report after the implementation and tests a
             && typeof event.metadata.detail === "string"
           ) {
             if (event.metadata.detail === lastRuntimeFailure) continue;
-            lastRuntimeFailure = event.metadata.detail;
+            if (
+              !lastRuntimeFailure
+              || runtimeFailurePriority(event.metadata.detail)
+                >= runtimeFailurePriority(lastRuntimeFailure)
+            ) {
+              lastRuntimeFailure = event.metadata.detail;
+            }
           }
           await emit(event);
         }
@@ -1028,6 +1103,31 @@ Return only the structured synthesis report after the implementation and tests a
       await emissionQueue;
       return { thread, events, finalResponse };
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const staleResume = Boolean(
+        reality.codexThreadId
+        && !forceNewThread
+        && (
+          /(?:thread|rollout|session).{0,80}(?:not found|missing|unavailable|could not be resumed)/i.test(
+            `${lastRuntimeFailure ?? ""} ${message}`
+          )
+          || (!lastRuntimeFailure && /Codex Exec exited with (?:code|signal)/i.test(message))
+        )
+      );
+      if (staleResume) {
+        await emissionQueue;
+        return await this.streamStructured(
+          { ...reality, codexThreadId: undefined },
+          scope,
+          prompt,
+          outputSchema,
+          onEvent,
+          subjectTrace,
+          registryTrace,
+          true,
+          timeoutMilliseconds
+        );
+      }
       throw normaliseCodexExecutionError(error, lastRuntimeFailure, this.authSource);
     } finally {
       if (timeout) clearTimeout(timeout);

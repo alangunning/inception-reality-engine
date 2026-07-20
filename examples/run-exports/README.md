@@ -8,7 +8,7 @@ used as judging evidence, replay fixtures, and future import fixtures.
 `password-reset-real-stabilised-2026-07-20.json` is a completed real-Codex run
 of the Demo Mission. It contains four isolated Realities, three validated Wake
 Reports, safe operational events, memory-integrity results, immutable anchor
-results, and the final waking Git diff.
+results, and the final Reality Git diff.
 
 The export deliberately excludes credentials, raw model responses, unrestricted
 SDK payloads, and hidden reasoning. It retains Codex thread IDs and absolute

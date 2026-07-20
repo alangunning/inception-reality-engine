@@ -6,7 +6,7 @@
 
 ## Purpose
 
-Reality Engine is a developer tool for decisions that a coding agent should not make directly in the waking repository. It turns a material uncertainty into an isolated child Reality, lets Codex and bounded Subjects experience that premise, and returns only validated evidence and artefacts. The parent decides what generalises and proves the result against immutable requirements.
+Reality Engine is a developer tool for decisions that a coding agent should not make directly in the protected repository. It turns a material uncertainty into an isolated Dream, lets Codex and bounded Subjects experience that premise, and returns only validated evidence and artefacts. Reality decides what generalises and proves the result against immutable requirements.
 
 The people who pay for an agent mistake are the engineers reviewing an oversized patch, the team whose main branch is contaminated, and users affected by incomplete security or product invariants. Reality Engine reduces that risk through filesystem isolation, explicit uncertainty, reproducible counterfactual tests, structured memory, and parent-owned proof gates.
 
@@ -19,7 +19,7 @@ flowchart LR
   API --> Orchestrator[Reality orchestrators]
   Orchestrator --> Domain[Zod-validated domain]
   Orchestrator --> Runtime[Codex runtime port]
-  Runtime --> SDK["@openai/codex-sdk 0.144.6"]
+  Runtime --> SDK["@openai/codex-sdk"]
   SDK --> CLI[Codex CLI / GPT-5.6]
   Orchestrator --> Worktrees[Git worktree manager]
   Orchestrator --> Repository[Prisma or portable SQLite]
@@ -115,19 +115,19 @@ classDiagram
 ```
 
 - **Reality:** an isolated world with one Codex thread and one Git worktree.
-- **Dream:** a child Reality created only from an explicit uncertainty.
+- **Dream:** a counterfactual child world created only from an explicit Uncertainty.
 - **Subject:** one direct Codex subagent with an identity-bound charter inside a Reality.
 - **Wake Report:** validated memory containing beliefs, experiences, invariants, artefacts, and uncertainty.
-- **Memory Integrity Seal / Reality Totem:** orchestrator-owned admission record binding one Wake Report to its source state, parent anchors, evidence, artefacts, descendant seals, and intervention verdict.
+- **Memory Integrity Seal / Totem Check:** orchestrator-owned admission record binding one Wake Report to its source state, parent Anchors, evidence, artefacts, descendant seals, and intervention verdict.
 - **Reality Anchor:** immutable parent-owned proof; a child inherits it but cannot mutate it.
 - **Kick:** the transition that stops exploration and requests a Wake Report.
-- **Sealed intervention:** optional operator-bounded controlled mutation applied before investigator Subjects enter; its private ledger is revealed only after diagnosis, then its changed paths are rolled back and excluded before memory is sealed.
+- **Sealed intervention:** optional operator-bounded adversarial mutation applied before investigator Subjects enter; its private ledger is revealed only after diagnosis, then its changed paths are rolled back and excluded before Memory is sealed.
 
 ## Reality Graph and Reflection
 
 ```mermaid
 flowchart LR
-  R0[Waking Reality] --> A[Dream A]
+  R0[Reality - ROOT] --> A[Dream A]
   R0 --> B[Competing Dream B]
   A --> A1[Nested Dream A.1]
   A --> A2[Nested Dream A.2]
@@ -141,7 +141,7 @@ flowchart LR
   M -->|disagreements retained| U[Remaining uncertainty]
 ```
 
-The topology is a real parent-child graph layout, not a depth meter. Every sibling and nested Reality remains selectable and replayable, branches collapse independently, and bounded Subjects appear beneath the Reality where their native child thread ran. Under `competing-siblings`, Codex proposes two materially different worlds at every explorable Reality; the orchestrator recursively creates siblings within the configured depth and sibling budgets, compares their evidence and invariants in a `DreamReflection`, and limits synthesis to conclusions shared across those worlds. Disagreements remain visible rather than being averaged away. The password-reset Demo Mission uses one parent Dream with two depth-two siblings so the canonical recording proves breadth while keeping real-mode cost bounded.
+The topology is a real parent-child graph layout, not a depth meter. Every sibling Dream and Nested Dream remains selectable and replayable, branches collapse independently, and bounded Subjects appear beneath the Dream where their native child thread ran. Under `competing-siblings`, Codex proposes two materially different worlds at every explorable node; the orchestrator recursively creates Dreams within the configured depth and sibling budgets, compares their evidence and invariants in a `DreamReflection`, and limits synthesis to conclusions shared across those worlds. Disagreements remain visible rather than being averaged away. The password-reset Demo Mission uses one parent Dream with two depth-two siblings so the canonical recording proves breadth while keeping real-mode cost bounded.
 
 Dream proposals are idempotent within their owning Reality. A proposal moves from `open` to `dreaming` to `resolved` when its child returns. If the configured depth, sibling, or run budget ends first, stabilisation changes it to `deferred`, presented as **retained uncertainty**. A stabilised Reality therefore never presents an unexplored proposal as an active next action, and a retried investigation cannot duplicate the same logical proposal in that Reality.
 
@@ -160,7 +160,7 @@ Dream proposals are idempotent within their owning Reality. A proposal moves fro
 
 Real mode is intentionally powerful. Its Codex thread options use `danger-full-access`, `approvalPolicy: never`, network access, live web search, and the Reality worktree as the working directory. This is a trusted local execution model, not a hosted multi-tenant service.
 
-`CodexExecutionEnvironment` separates authentication, model metadata, and resumable session state from configuration. It exposes the user's existing CLI `auth.json`, model cache, session directory, and SQLite state through an ignored project runtime home, while excluding the user's personal `config.toml`, plugins, and MCP servers. This keeps SDK startup deterministic, preserves persisted Reality thread IDs and pinned-model metadata, and does not reduce model or worktree capabilities. Operators can explicitly widen the boundary with `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` when a Mission depends on authenticated personal integrations.
+`CodexExecutionEnvironment` separates authentication, model metadata, and resumable session state from personal configuration. It copies the user's current CLI authentication and model cache into an ignored project runtime home, then keeps the SDK's writable session directory and SQLite state local to that runtime. The user's `config.toml`, plugins, MCP servers, unrelated sessions, and global CLI version remain outside the default boundary. This keeps SDK startup deterministic, preserves Reality-owned thread IDs across application restarts, and prevents global CLI upgrades or home-directory permissions from corrupting a run. Operators can explicitly widen the boundary with `INCEPTION_CODEX_INHERIT_USER_CONFIG=true` when a Mission depends on authenticated personal integrations.
 
 ## Data and Trust
 
@@ -171,7 +171,7 @@ All Codex responses cross a Zod boundary before persistence. SDK events are proj
 
 The registry adapter reads only thread identity, task path, worktree, timestamps, terminal event types, and an exact `SUBJECT_ID` marker extracted from the first prompt when a parent charter exists. It discards all other prompt content and does not read or persist Subject response bodies or reasoning. When a Reality has no pre-chartered Subjects, Codex may still delegate bounded independent work. Each opportunistic Subject must use the identity returned by the current turn's native collaboration path. The runtime binds that report to a completed native child before the orchestrator creates a returned Subject in the Reality.
 
-Mission inspection is a Git transaction. The orchestrator checkpoints the Reality before Codex enters it, persists the primary SDK thread as soon as `thread.started` arrives, and rolls back on runtime or contract failure. A successful waking inspection also restores the checkpoint so evidence may enter the waking Reality while implementation changes wait for Dream synthesis. Dream inspections retain validated world-local changes.
+Mission inspection is a Git transaction. The orchestrator checkpoints the Reality before Codex enters it, persists the primary SDK thread as soon as `thread.started` arrives, and rolls back on runtime or contract failure. A successful root inspection also restores the checkpoint so evidence may enter Reality while implementation changes wait for Dream synthesis. Dream inspections retain validated world-local changes.
 
 Zod validation establishes structure, not truth. Every Kick therefore runs `MemoryIntegrityService` before the parent receives memory:
 
@@ -185,7 +185,7 @@ Zod validation establishes structure, not truth. Every Kick therefore runs `Memo
 8. require verified seals and unchanged Git sources for all returned descendant memories;
 9. compare any sealed intervention with the investigator diagnosis.
 
-For a sealed intervention, comparison happens while the controlled mutation is still observable. The orchestrator compares the model report with Git's actual changed-file list in every runtime mode, then captures only non-injected investigator artefacts, restores the pre-intervention Git checkpoint, removes every injected path from the Wake Report, and seals that sanitized source. A partial diagnosis quarantines the report; an exact diagnosis admits knowledge, never the planted mutation. The canonical Account enumeration Dream exercises this path with one bounded request-boundary fault and an independently created response-equivalence test.
+For a sealed intervention, comparison happens while the adversarial mutation is still observable. The orchestrator compares the model report with Git's actual changed-file list in every runtime mode, then captures only non-injected investigator artefacts, restores the pre-intervention Git checkpoint, removes every injected path from the Wake Report, and seals that sanitized source. A partial diagnosis quarantines the report; an exact diagnosis admits knowledge, never the planted mutation. The canonical Account enumeration Dream exercises this path with one bounded request-boundary fault and an independently created response-equivalence test.
 
 The final password-reset proof uses an injectable `RateLimitStore`. Two service instances consume one shared in-memory store in the fourth immutable anchor, proving that identifier budgets survive process boundaries. A production adapter must implement the same atomic `consume` contract with Redis or a database.
 
@@ -219,7 +219,7 @@ This prevents test resets from deleting live worktrees. If a persisted Reality l
 
 Prisma is the production adapter and SQLite is the portable fallback. Both persist validated Reality state, append-only Mission events, demo sessions, run archives, and Mission runs. Mission snapshots retain a bounded recent window while cursor APIs page through the durable history; SSE pushes each validated event incrementally and schedules a debounced state reconciliation instead of reloading the run for every progress signal.
 
-The password-reset Demo Mission and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, branching Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, Dream confirmation, staged Kick, memory ascent, Reality Mirror, waking outcome, integrity seals, immutable proofs, inspectable event feed, and final diff. Mission Control exposes them through one capability-aware library contract. The Demo Mission has a stable route and supports open, export, and reset, but not deletion. User-created Mission deletion is scoped to that Mission's worktrees and branches. Password-reset archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
+The password-reset Demo Mission and generalized runs share the same application shell and presentation primitives: live-status header, phase tracker, Admin runtime controls, fixed action dock, branching Reality graph, inspector, timeline, uncertainty/Subject/evidence ledgers, Dream confirmation, staged Kick, Memory ascent, Reality Mirror, Reality outcome, integrity seals, immutable proofs, inspectable event feed, and final diff. Mission Control exposes them through one capability-aware library contract. The Demo Mission has a stable route and supports open, export, and reset, but not deletion. User-created Mission deletion is scoped to that Mission's worktrees and branches. Password-reset archives reopen through the Admin drawer as read-only snapshots; SSE subscription and action controls are suspended until the operator returns to the current live Reality.
 
 ## Architecture Decisions
 

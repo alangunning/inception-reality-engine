@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { copyFile, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 
@@ -395,5 +395,54 @@ export class GitMissionWorkspaceFactory {
         `inception-mission-${safeMissionId}`
       )
     };
+  }
+
+  async cleanupAll(): Promise<number> {
+    const storageRoot = await realpath(this.storageRoot).catch(() =>
+      path.resolve(this.storageRoot)
+    );
+    const missionDirectories = await readdir(storageRoot, { withFileTypes: true })
+      .catch(() => []);
+    let removed = 0;
+
+    for (const missionDirectory of missionDirectories) {
+      if (!missionDirectory.isDirectory()) continue;
+      const missionId = safeBranchPart(missionDirectory.name);
+      const missionRoot = path.join(storageRoot, missionDirectory.name);
+      const worktreeRoot = path.join(missionRoot, "worktrees");
+      const worktreeDirectories = await readdir(worktreeRoot, { withFileTypes: true })
+        .catch(() => []);
+      const repositories = new Set<string>();
+
+      for (const worktreeDirectory of worktreeDirectories) {
+        if (!worktreeDirectory.isDirectory()) continue;
+        const worktreePath = path.join(worktreeRoot, worktreeDirectory.name);
+        try {
+          const { stdout } = await execFileAsync(
+            "git",
+            ["rev-parse", "--git-common-dir"],
+            { cwd: worktreePath }
+          );
+          const commonDirectory = path.resolve(worktreePath, stdout.trim());
+          if (path.basename(commonDirectory) === ".git") {
+            repositories.add(path.dirname(commonDirectory));
+          }
+        } catch {
+          // An unregistered stale directory is removed with the owned Mission root.
+        }
+      }
+
+      for (const repository of repositories) {
+        removed += await new GitWorktreeManager(
+          repository,
+          worktreeRoot,
+          `inception-mission-${missionId}`
+        ).cleanupAll();
+      }
+      await rm(missionRoot, { recursive: true, force: true });
+    }
+
+    await rm(storageRoot, { recursive: true, force: true });
+    return removed;
   }
 }

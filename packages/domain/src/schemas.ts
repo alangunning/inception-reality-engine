@@ -440,6 +440,8 @@ export const MissionDreamStrategySchema = z.enum([
   "competing-siblings"
 ]);
 
+export const DEFAULT_INTERVENTION_TOKEN_BUDGET = 500_000;
+
 export const MissionInterventionContractSchema = z.object({
   id: z.string(),
   enabled: z.literal(true),

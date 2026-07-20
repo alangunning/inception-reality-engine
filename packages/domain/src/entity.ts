@@ -161,7 +161,7 @@ export class RealityEntity {
 
   replaceAnchors(anchors: RealityAnchor[]): this {
     if (this.state.kind !== "waking") {
-      throw new Error("Child Realities cannot mutate parent-owned anchors.");
+      throw new Error("Dreams cannot mutate parent-owned anchors.");
     }
     if (anchors.some((anchor) => anchor.ownerRealityId !== this.state.id)) {
       throw new Error("A Reality may update only anchors that it owns.");

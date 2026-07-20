@@ -33,7 +33,7 @@ function worlds() {
   const root = RealityEntity.create({
     depth: 0,
     kind: "waking",
-    name: "Waking",
+    name: "Reality",
     premise: constitution.premise,
     constitution,
     inheritedAnchors: [{

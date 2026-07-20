@@ -34,4 +34,5 @@ export interface MissionWorkspace {
 
 export interface MissionWorkspaceFactoryPort {
   open(repositoryPath: string, missionId: string): Promise<MissionWorkspace>;
+  cleanupAll?(): Promise<number>;
 }

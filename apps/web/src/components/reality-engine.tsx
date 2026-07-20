@@ -44,8 +44,9 @@ import {
   X,
   XCircle
 } from "lucide-react";
-import type {
-  AdversarialInterventionLedger,
+import {
+  DEFAULT_INTERVENTION_TOKEN_BUDGET,
+  type AdversarialInterventionLedger,
   AnchorResult,
   DreamProposal,
   MemoryIntegritySeal,
@@ -56,6 +57,29 @@ import type {
   WakeReport
 } from "@inception/domain";
 import type { ActiveRealityOperation, DemoAction, DemoSnapshot } from "@inception/orchestrator";
+import {
+  replayActiveRealityId,
+  replayAnchorResults,
+  replayFinalDiff,
+  replayInterventions,
+  replayMemoryIntegrity,
+  replayRegressionResult
+} from "./replay-projection";
+import {
+  canonicalProductCopy,
+  canonicalProductValue,
+  productEventLabel,
+  realityDisplayName
+} from "./product-terminology";
+export {
+  replayActiveRealityId,
+  replayAnchorResults,
+  replayFinalDiff,
+  replayInterventions,
+  replayMemoryIntegrity,
+  replayOutcome,
+  replayReflections
+} from "./replay-projection";
 
 type LoadingState = "idle" | "acting" | "resetting";
 export type InspectorTab = "world" | "constitution" | "runtime";
@@ -259,9 +283,9 @@ const stages = [
 
 function statusLabel(status: Reality["status"]): string {
   const labels: Record<Reality["status"], string> = {
-    forming: "Forming",
+    forming: "Creating",
     exploring: "Exploring",
-    waking: "Waking",
+    waking: "Returning memory",
     kicked: "Memory returned",
     stabilised: "Reality stabilised"
   };
@@ -274,7 +298,7 @@ function shortId(value?: string): string {
 }
 
 function phaseTitle(phase: number): string {
-  if (phase === 0) return "A waking world, one untested belief";
+  if (phase === 0) return "Reality holds one untested belief";
   if (phase <= 1) return "Uncertainty made explicit";
   if (phase <= 4) return "Adversarial world in motion";
   if (phase <= 6) return "A decisive nested experiment";
@@ -387,8 +411,14 @@ export function replayRealities(realities: Reality[], events: RealityEvent[], ti
   );
   const subjectIds = new Set(
     visibleEvents
-      .filter((event) => event.type === "subject.entered")
-      .map((event) => event.payload.subjectId)
+      .filter((event) => event.type === "subject.entered" || event.type === "subject.started")
+      .map((event) => {
+        const metadata = event.payload.metadata;
+        return event.payload.subjectId
+          ?? (metadata !== null && typeof metadata === "object" && "subjectId" in metadata
+            ? metadata.subjectId
+            : undefined);
+      })
       .filter((id): id is string => typeof id === "string")
   );
   const surfacedProposals = new Set(
@@ -403,13 +433,90 @@ export function replayRealities(realities: Reality[], events: RealityEvent[], ti
     .map((reality) => {
       const realityEvents = visibleEvents.filter((event) => event.realityId === reality.id);
       const lastEvent = realityEvents.at(-1);
-      const hasMemory = realityEvents.some((event) => event.type === "memory.returned");
+      const hasMemory = realityEvents.some((event) =>
+        event.type === "memory.returned"
+        || event.type === "memory.verified"
+        || event.type === "memory.quarantined"
+      );
       const returnedSubjectIds = new Set(
         realityEvents
-          .filter((event) => event.type === "subject.returned")
-          .map((event) => event.payload.subjectId)
+          .filter((event) => event.type === "subject.returned" || event.type === "subject.completed")
+          .map((event) => {
+            const metadata = event.payload.metadata;
+            return event.payload.subjectId
+              ?? (metadata !== null && typeof metadata === "object" && "subjectId" in metadata
+                ? metadata.subjectId
+                : undefined);
+          })
           .filter((id): id is string => typeof id === "string")
       );
+      const threadBound = realityEvents.some((event) => {
+        if (event.type === "codex.thread.bound") return true;
+        const metadata = event.payload.metadata;
+        return event.type === "codex.progress"
+          && metadata !== null
+          && typeof metadata === "object"
+          && "threadId" in metadata;
+      });
+      const anchors = reality.anchors.map((anchor) => {
+        const result = realityEvents.slice().reverse().find((event) =>
+          (event.type === "anchor.passed" || event.type === "anchor.failed")
+          && event.payload.anchorId === anchor.id
+        );
+        return {
+          ...anchor,
+          status: result?.type === "anchor.passed"
+            ? "passed" as const
+            : result?.type === "anchor.failed"
+              ? "failed" as const
+              : "pending" as const,
+          output: result ? anchor.output : undefined
+        };
+      });
+      const proposals = reality.proposals
+        .filter((proposal) => surfacedProposals.has(proposal.title))
+        .map((proposal) => {
+          const child = realities.find((candidate) =>
+            candidate.parentId === reality.id
+            && (candidate.name === proposal.title || candidate.premise === proposal.premise)
+          );
+          const childCreated = child && visibleEvents.some((event) =>
+            event.type === "dream.created" && event.realityId === child.id
+          );
+          const childReturned = child && visibleEvents.some((event) =>
+            event.realityId === child.id
+            && (event.type === "memory.returned" || event.type === "memory.quarantined")
+          );
+          const deferred = visibleEvents.some((event) =>
+            event.type === "uncertainty.deferred"
+            && (event.payload.proposalId === proposal.id || event.payload.title === proposal.title)
+          );
+          return {
+            ...proposal,
+            status: deferred
+              ? "deferred" as const
+              : childReturned
+                ? "resolved" as const
+                : childCreated
+                  ? "dreaming" as const
+                  : "open" as const
+          };
+        });
+      const implementationState = realityEvents.some((event) => event.type === "synthesis.completed")
+        ? reality.worldState.implementationState
+        : realityEvents.some((event) => event.type === "intervention.contained")
+          ? "Adversarial intervention contained"
+          : realityEvents.some((event) => event.type === "memory.returned")
+            ? "Validated memory returned"
+            : realityEvents.some((event) => event.type === "intervention.sealed")
+              ? "Adversarial intervention sealed"
+              : realityEvents.some((event) => event.type === "inspection.completed")
+                ? "Codex inspection complete"
+                : realityEvents.some((event) => event.type === "codex.progress")
+                  ? "Codex inspection in progress"
+                  : reality.kind === "waking"
+                    ? "Reality baseline preserved"
+                    : "Parent baseline isolated";
       const status: Reality["status"] = realityEvents.some((event) => event.type === "reality.stabilised")
         ? "stabilised"
         : hasMemory
@@ -427,18 +534,23 @@ export function replayRealities(realities: Reality[], events: RealityEvent[], ti
           simulatedMinutes: lastEvent?.dreamTime ?? 0,
           currentFocus: lastEvent?.summary ?? "Establishing the world",
           summary: lastEvent?.summary ?? reality.premise,
-          status: statusLabel(status)
+          status: statusLabel(status),
+          implementationState
         },
         evidence: reality.evidence.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
         beliefs: reality.beliefs.filter((entry) => new Date(entry.createdAt).getTime() <= cutoff),
-        proposals: reality.proposals.filter((proposal) => surfacedProposals.has(proposal.title)),
+        proposals,
         subjects: reality.subjects
           .filter((subject) => subjectIds.has(subject.id))
           .map((subject) => ({
             ...subject,
             status: returnedSubjectIds.has(subject.id) ? "returned" as const : "entered" as const
           })),
-        wakeReport: hasMemory ? reality.wakeReport : undefined
+        anchors,
+        wakeReport: realityEvents.some((event) => event.type === "memory.returned")
+          ? reality.wakeReport
+          : undefined,
+        codexThreadId: threadBound ? reality.codexThreadId : undefined
       };
     });
 }
@@ -495,6 +607,7 @@ export function RealityTopbar({
   authSource,
   environment,
   realityCount,
+  replaying = false,
   actions
 }: {
   codexMode: "mock" | "real";
@@ -502,6 +615,7 @@ export function RealityTopbar({
   authSource?: "cli" | "api-key" | "none";
   environment: string;
   realityCount: number;
+  replaying?: boolean;
   actions: ReactNode;
 }) {
   return (
@@ -512,7 +626,10 @@ export function RealityTopbar({
       </div>
       <div className="topbar-controls">
         <div className="topbar-status" data-testid="topbar-status" role="status" aria-label="Reality Engine status">
-          <span className="stream-status"><Radio size={13} /> LIVE MEMORY STREAM</span>
+          <span className="stream-status">
+            {replaying ? <History size={13} /> : <Radio size={13} />}
+            {replaying ? "TIMELINE REPLAY" : "LIVE MEMORY STREAM"}
+          </span>
           <span>
             <BrainCircuit size={13} /> {codexMode.toUpperCase()} CODEX / {model.toUpperCase()}
             {codexMode === "real"
@@ -524,7 +641,7 @@ export function RealityTopbar({
               : ""}
           </span>
           <span><Layers3 size={13} /> {environment.toUpperCase()}</span>
-          <span><Network size={13} /> {realityCount} REALITIES</span>
+          <span><Network size={13} /> {realityCount} {realityCount === 1 ? "REALITY" : "REALITIES"}</span>
         </div>
         <nav className="topbar-actions" data-testid="topbar-actions" aria-label="Reality Engine actions">
           {actions}
@@ -570,9 +687,29 @@ export function RealityJourneyBand({
   events: RealityEvent[];
   stabilised: boolean;
 }) {
-  const hasDream = realities.some((reality) => reality.depth > 0);
-  const hasSubjects = realities.some((reality) => reality.subjects.length > 0)
-    || events.some((event) => event.type.startsWith("subject."));
+  const dreamCount = realities.filter((reality) => reality.depth > 0).length;
+  const anchorCount = realities.find((reality) => reality.depth === 0)?.anchors.length ?? 0;
+  const subjectCount = realities.reduce((total, reality) => total + reality.subjects.length, 0);
+  const evidenceCount = realities.reduce((total, reality) => total + reality.evidence.length, 0);
+  const returnedMemoryCount = realities.filter((reality) => Boolean(reality.wakeReport)).length;
+  const judgedMemoryCount = new Set(
+    events
+      .filter((event) => event.type === "memory.verified" || event.type === "memory.quarantined")
+      .map((event) =>
+        typeof event.payload.sealId === "string"
+          ? event.payload.sealId
+          : event.realityId
+      )
+  ).size;
+  const hasInvestigation = realities.some((reality) =>
+    reality.proposals.length > 0
+    || reality.subjects.length > 0
+    || reality.evidence.length > 0
+  ) || events.some((event) =>
+    event.type.startsWith("subject.")
+    || event.type === "uncertainty.discovered"
+    || event.type === "evidence.discovered"
+  );
   const hasKick = events.some((event) => event.type === "kick.triggered");
   const hasMemory = events.some((event) =>
     event.type === "memory.returned"
@@ -580,30 +717,108 @@ export function RealityJourneyBand({
     || event.type === "reflection.created"
   );
   const journey = [
-    { label: "Waking requirements", detail: "Parent truth", icon: <LockKeyhole size={15} />, reached: true },
-    { label: "Dreams explore", detail: "Isolated worlds", icon: <MoonStar size={15} />, reached: hasDream },
-    { label: "Subjects test", detail: "Independent roles", icon: <UsersRound size={15} />, reached: hasSubjects },
-    { label: "Totem judges", detail: "Kick boundary", icon: <Fingerprint size={15} />, reached: hasKick },
-    { label: "Memory changes Reality", detail: "Proven outcome", icon: <ArrowUpFromLine size={15} />, reached: hasMemory || stabilised }
+    {
+      label: "Realities",
+      detail: `${realities.length} ${realities.length === 1 ? "world" : "worlds"} / ${dreamCount} ${dreamCount === 1 ? "Dream" : "Dreams"}`,
+      target: "reality-topology",
+      icon: <Network size={15} />,
+      reached: true
+    },
+    {
+      label: "Anchors",
+      detail: `${anchorCount} parent-owned ${anchorCount === 1 ? "requirement" : "requirements"}`,
+      target: "reality-requirements",
+      icon: <LockKeyhole size={15} />,
+      reached: true
+    },
+    {
+      label: "Investigation",
+      detail: `${subjectCount} Subjects / ${evidenceCount} evidence`,
+      target: "reality-investigation",
+      icon: <UsersRound size={15} />,
+      reached: hasInvestigation
+    },
+    {
+      label: "Totem Check",
+      detail: judgedMemoryCount
+        ? `${judgedMemoryCount} ${judgedMemoryCount === 1 ? "memory" : "memories"} judged`
+        : "Awaiting first Kick",
+      target: "reality-integrity",
+      icon: <Fingerprint size={15} />,
+      reached: hasKick
+    },
+    {
+      label: "Memories",
+      detail: `${returnedMemoryCount} ${returnedMemoryCount === 1 ? "report" : "reports"} returned`,
+      target: "reality-memories",
+      icon: <ArrowUpFromLine size={15} />,
+      reached: hasMemory || stabilised
+    }
   ];
-  const firstUnreached = journey.findIndex((stage) => !stage.reached);
-  const current = stabilised
-    ? journey.length - 1
-    : firstUnreached < 0 ? journey.length - 1 : firstUnreached;
+  const [viewedTarget, setViewedTarget] = useState("reality-topology");
+
+  useEffect(() => {
+    let frame = 0;
+    const updateViewedTarget = () => {
+      frame = 0;
+      const offset = window.innerWidth <= 760 ? 282 : 230;
+      const candidates = journey
+        .map((stage) => document.getElementById(stage.target))
+        .filter((element): element is HTMLElement => Boolean(element));
+      const visible = candidates.reduce<HTMLElement | null>((active, element) => {
+        if (element.getBoundingClientRect().top <= offset) return element;
+        return active;
+      }, candidates[0] ?? null);
+      if (visible) setViewedTarget(visible.id);
+    };
+    const scheduleUpdate = () => {
+      if (!frame) frame = window.requestAnimationFrame(updateViewedTarget);
+    };
+    updateViewedTarget();
+    window.addEventListener("scroll", scheduleUpdate, { passive: true });
+    window.addEventListener("resize", scheduleUpdate);
+    window.addEventListener("hashchange", scheduleUpdate);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", scheduleUpdate);
+      window.removeEventListener("resize", scheduleUpdate);
+      window.removeEventListener("hashchange", scheduleUpdate);
+    };
+  }, []);
 
   return (
-    <section className="reality-journey" data-testid="reality-journey" aria-label="Current Reality journey">
+    <nav className="reality-journey" data-testid="reality-journey" aria-label="Reality workspace chapters">
       {journey.map((stage, index) => (
-        <div
-          className={`${stage.reached ? "is-reached" : ""} ${index === current ? "is-current" : ""}`}
+        <a
+          className={`${stage.reached ? "is-reached" : ""} ${viewedTarget === stage.target ? "is-viewing" : ""}`}
+          href={`#${stage.target}`}
           key={stage.label}
+          aria-label={`Open ${stage.label} chapter: ${stage.detail}`}
+          aria-current={viewedTarget === stage.target ? "location" : undefined}
+          title={`${stage.label}: ${stage.detail}`}
+          onClick={(event) => {
+            const target = document.getElementById(stage.target);
+            if (!target) return;
+            event.preventDefault();
+            window.history.replaceState(null, "", `#${stage.target}`);
+            const offset = window.innerWidth <= 760 ? 270 : 218;
+            window.scrollTo({
+              top: Math.max(0, window.scrollY + target.getBoundingClientRect().top - offset),
+              behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"
+            });
+            target.focus({ preventScroll: true });
+            setViewedTarget(stage.target);
+          }}
         >
-          <span>{stage.icon}</span>
-          <p><strong>{stage.label}</strong><small>{stage.detail}</small></p>
-          {index < journey.length - 1 && <ChevronRight size={13} aria-hidden="true" />}
-        </div>
+          <span className="journey-icon">{stage.icon}</span>
+          <p>
+            <strong><em>{String(index + 1).padStart(2, "0")}</em>{stage.label}</strong>
+            <small>{stage.detail}</small>
+          </p>
+          <ChevronRight className="journey-arrow" size={13} aria-hidden="true" />
+        </a>
       ))}
-    </section>
+    </nav>
   );
 }
 
@@ -617,7 +832,7 @@ export function WakeTransition({
   if (!stage) return null;
   const stages = [
     { id: "collecting", label: "Collecting lived evidence" },
-    { id: "sealing", label: "Reality Totem checking memory" },
+    { id: "sealing", label: "Totem Check validating memory" },
     { id: "returning", label: "Validated memory returning upward" }
   ] as const;
   const activeIndex = stages.findIndex((entry) => entry.id === stage);
@@ -688,7 +903,7 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
             key={depth}
           >
             <span>LEVEL {depth}</span>
-            <b>{depth === 0 ? "Waking" : depth === 1 ? "Dream" : "Nested dream"}</b>
+            <b>{depth === 0 ? "Reality" : depth === 1 ? "Dream" : "Nested Dream"}</b>
           </div>
         ))}
         <svg
@@ -742,14 +957,14 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
                 aria-pressed={selected}
               >
                 <span className="node-kicker">
-                  <span>L{reality.depth}</span>
+                  <span>{reality.depth === 0 ? "ROOT" : `L${reality.depth}`}</span>
                   {operation?.realityId === reality.id
                     ? <b><Radio size={10} /> CODEX ACTIVE</b>
                     : locus
                       ? <b><Radio size={10} /> LOCUS</b>
                       : <b>{statusLabel(reality.status)}</b>}
                 </span>
-                <strong>{reality.name}</strong>
+                <strong>{realityDisplayName(reality)}</strong>
                 <small>{reality.worldState.currentFocus}</small>
                 <span className="node-stats">
                   <span
@@ -775,7 +990,7 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
                     onSelect(reality.id);
                   }}
                   aria-expanded={!branchCollapsed}
-                  aria-label={`${branchCollapsed ? "Expand" : "Collapse"} ${reality.name} branch`}
+                  aria-label={`${branchCollapsed ? "Expand" : "Collapse"} ${realityDisplayName(reality)} branch`}
                   title={`${branchCollapsed ? "Expand" : "Collapse"} ${descendantCount} descendant ${descendantCount === 1 ? "Reality" : "Realities"}`}
                 >
                   {branchCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
@@ -783,7 +998,7 @@ export function RealityGraph({ realities, locusId, selectedId, pulseId, operatio
                 </button>
               )}
               {reality.subjects.length > 0 && (
-                <div className="graph-subjects" aria-label={`Subjects in ${reality.name}`}>
+                <div className="graph-subjects" aria-label={`Subjects in ${realityDisplayName(reality)}`}>
                   {reality.subjects.slice(0, 4).map((subject) => (
                     <button
                       type="button"
@@ -830,8 +1045,10 @@ export function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
     <aside className="world-inspector">
       <div className="inspector-title">
         <div>
-          <span className="eyebrow">INSPECTED REALITY / L{reality.depth}</span>
-          <h2>{reality.name}</h2>
+          <span className="eyebrow">
+            {reality.depth === 0 ? "CURRENT REALITY / ROOT" : `CURRENT DREAM / L${reality.depth}`}
+          </span>
+          <h2>{realityDisplayName(reality)}</h2>
         </div>
         <span className={`state-badge state-${reality.status}`}>{statusLabel(reality.status)}</span>
       </div>
@@ -875,9 +1092,9 @@ export function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
             </div>
           )}
           <dl className="definition-list">
-            <div><dt>Premise</dt><dd>{reality.premise}</dd></div>
-            <div><dt>World state</dt><dd>{reality.worldState.summary}</dd></div>
-            <div><dt>Implementation</dt><dd>{reality.worldState.implementationState}</dd></div>
+            <div><dt>Premise</dt><dd>{canonicalProductCopy(reality.premise)}</dd></div>
+            <div><dt>World state</dt><dd>{canonicalProductCopy(reality.worldState.summary)}</dd></div>
+            <div><dt>Implementation</dt><dd>{canonicalProductCopy(reality.worldState.implementationState)}</dd></div>
           </dl>
           <div className="reality-health" aria-label="Evidence-derived Reality signals">
             <span className="health-heading"><TimerReset size={14} /> REALITY SIGNALS</span>
@@ -898,24 +1115,24 @@ export function WorldInspector({ reality, locus, tab, operation, now, onTab }: {
 
       {tab === "constitution" && (
         <div className="inspector-body">
-          <p className="mission-copy">{reality.constitution.mission}</p>
+          <p className="mission-copy">{canonicalProductCopy(reality.constitution.mission)}</p>
           <div className="contract-group">
             <span>CONSTRAINTS</span>
             {reality.constitution.constraints.map((constraint) => (
-              <p key={constraint}><LockKeyhole size={13} />{constraint}</p>
+              <p key={constraint}><LockKeyhole size={13} />{canonicalProductCopy(constraint)}</p>
             ))}
           </div>
           <div className="contract-group">
             <span>PARENT TRUTHS</span>
             {reality.constitution.parentTruths.map((truth) => (
-              <p key={truth}><Check size={13} />{truth}</p>
+              <p key={truth}><Check size={13} />{canonicalProductCopy(truth)}</p>
             ))}
           </div>
           {!!reality.constitution.runtimeLaws?.length && (
             <div className="contract-group">
               <span>WORLD-SPECIFIC LAWS / {reality.constitution.timeDilation ?? 1}x TIME</span>
               {reality.constitution.runtimeLaws.map((law) => (
-                <p key={law}><CircleDot size={13} />{law}</p>
+                <p key={law}><CircleDot size={13} />{canonicalProductCopy(law)}</p>
               ))}
             </div>
           )}
@@ -958,7 +1175,7 @@ export function MemoryReport({
     <article className="memory-report">
       <header>
         <span className="memory-level">L{reality.depth}</span>
-        <div><small>MEMORY RETURNED</small><h3>{reality.name}</h3></div>
+        <div><small>MEMORY RETURNED</small><h3>{realityDisplayName(reality)}</h3></div>
         <span className="validated-badge">
           {seal?.verdict === "verified" ? <Fingerprint size={13} /> : <ShieldCheck size={13} />}
           {seal?.verdict === "verified" ? "INTEGRITY SEALED" : "VALIDATED"}
@@ -966,7 +1183,7 @@ export function MemoryReport({
       </header>
       {seal && (
         <div className="memory-integrity-strip" data-testid="canonical-memory-seal">
-          <span><Fingerprint size={13} /><b>REALITY TOTEM</b>{seal.checks.filter((check) => check.status === "passed").length}/{seal.checks.length} policy checks</span>
+          <span><Fingerprint size={13} /><b>TOTEM CHECK</b>{seal.checks.filter((check) => check.status === "passed").length}/{seal.checks.length} policy checks</span>
           <code>{seal.reportDigest.slice(0, 16)} / {seal.descendantSealIds.length} descendant seal{seal.descendantSealIds.length === 1 ? "" : "s"}</code>
         </div>
       )}
@@ -974,7 +1191,7 @@ export function MemoryReport({
         <div className="memory-belief">
           <div><span>ENTERED BELIEVING</span><p>{changed.from}</p></div>
           <ArrowRight size={18} />
-          <div><span>WOKE BELIEVING / MODEL-REPORTED {Math.round(changed.confidence * 100)}%</span><p>{changed.to}</p></div>
+          <div><span>RETURNED BELIEVING / MODEL-REPORTED {Math.round(changed.confidence * 100)}%</span><p>{changed.to}</p></div>
         </div>
       )}
       <div className="memory-columns">
@@ -1007,12 +1224,12 @@ function CanonicalInterventionLedger({
 }) {
   if (!interventions.length) return null;
   return (
-    <section className="canonical-intervention-ledger" data-testid="canonical-intervention-ledger">
+    <div className="canonical-intervention-ledger" data-testid="canonical-intervention-ledger">
       <SectionHeading
         icon={<Fingerprint size={18} />}
-        eyebrow="REALITY TOTEM / CONTROLLED SUBJECT"
+        eyebrow="TOTEM CHECK / ADVERSARIAL SUBJECT"
         title="Planted-memory containment"
-        meta={<span className="count-label">{interventions.length} controlled intervention</span>}
+        meta={<span className="count-label">{interventions.length} adversarial intervention</span>}
       />
       <div className="canonical-intervention-list">
         {interventions.map((intervention) => {
@@ -1021,14 +1238,14 @@ function CanonicalInterventionLedger({
           const contained = Boolean(intervention.containedAt);
           const outcome = intervention.assessment?.outcome;
           const statusLabel = intervention.status === "armed"
-            ? "CONTROLLED SUBJECT / ARMED"
+            ? "ADVERSARIAL SUBJECT / ARMED"
             : intervention.status === "injecting"
-              ? "INJECTED SUBJECT / ENTERED"
+              ? "ADVERSARIAL SUBJECT / ENTERED"
               : intervention.status === "sealed"
-                ? "INJECTED SUBJECT / SEALED"
+                ? "ADVERSARIAL SUBJECT / SEALED"
                 : intervention.status === "rejected"
-                  ? "CONTROLLED SUBJECT / REJECTED"
-                  : "INJECTED SUBJECT / REVEALED";
+                  ? "ADVERSARIAL SUBJECT / REJECTED"
+                  : "ADVERSARIAL SUBJECT / REVEALED";
           return (
             <article className={`canonical-intervention intervention-${intervention.status}`} key={intervention.id}>
               <header>
@@ -1036,15 +1253,15 @@ function CanonicalInterventionLedger({
                   <Fingerprint size={16} />
                   <b>{statusLabel}</b>
                 </span>
-                <strong>{reality?.name ?? "Nested Reality"}</strong>
+                <strong>{reality ? realityDisplayName(reality) : "Nested Dream"}</strong>
                 <em>{contained ? "CONTAINED" : intervention.status.toUpperCase()}</em>
               </header>
               <div className="canonical-intervention-story">
                 <div>
                   <small>SUBJECT</small>
-                  <b>Mal / controlled resilience engineer</b>
+                  <b>Mal / bounded adversarial engineer</b>
                   <p>{revealed
-                    ? "The Totem compared the investigator diagnosis with the private mutation ledger."
+                    ? "The Totem Check compared the investigator diagnosis with the private mutation ledger."
                     : "The reversible mutation remains hidden until investigator evidence returns at the Kick."}</p>
                 </div>
                 <ArrowRight size={17} />
@@ -1061,7 +1278,7 @@ function CanonicalInterventionLedger({
                   <b>{contained ? "0 INJECTED FILES ENTERED REALITY" : "GATE ARMED"}</b>
                   <p>{contained
                     ? `${intervention.changedFileCount ?? 0} planted change rolled back; independent test artefacts were retained.`
-                    : "No Wake Report can ascend before reveal, rollback, and integrity sealing."}</p>
+                    : "No Memory can ascend before reveal, rollback, and integrity sealing."}</p>
                 </div>
               </div>
               {contained && (
@@ -1069,7 +1286,9 @@ function CanonicalInterventionLedger({
                   <span><CheckCircle2 size={13} /> {intervention.changedFileCount ?? 0} planted change contained</span>
                   <span><ShieldCheck size={13} /> 0 injected files entered Reality</span>
                   {intervention.subjectThreadId && (
-                    <code title="Native controlled Subject thread">{intervention.subjectThreadId}</code>
+                    <code title="Native Adversarial Subject thread">
+                      {canonicalProductCopy(intervention.subjectThreadId)}
+                    </code>
                   )}
                 </footer>
               )}
@@ -1077,7 +1296,7 @@ function CanonicalInterventionLedger({
           );
         })}
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -1143,8 +1362,8 @@ export function OperationMonitor({ operation, realities, events, now }: {
         <span className="operation-elapsed"><Clock3 size={14} /> {formatElapsed(now - new Date(operation.startedAt).getTime())}</span>
       </div>
       <div className="operation-identity">
-        <span>{operation.label.toUpperCase()}</span>
-        <strong>{reality?.name ?? "Current Reality"}</strong>
+        <span>{canonicalProductCopy(operation.label).toUpperCase()}</span>
+        <strong>{reality ? realityDisplayName(reality) : "Current Reality"}</strong>
         <small>Started {formatClock(operation.startedAt)}</small>
       </div>
       <div className="operation-counters" aria-label="Operation telemetry">
@@ -1159,7 +1378,9 @@ export function OperationMonitor({ operation, realities, events, now }: {
           {formatClock(latest?.occurredAt ?? operation.startedAt)}
         </time>
         <span>
-          <strong>{latest?.summary ?? `${operation.label} is preparing ${reality?.name ?? "the current Reality"}.`}</strong>
+          <strong>{latest
+            ? canonicalProductCopy(latest.summary)
+            : `${canonicalProductCopy(operation.label)} is preparing ${reality ? realityDisplayName(reality) : "the current Reality"}.`}</strong>
           {latestMetadata.diagnostic && <small className="event-diagnostic">{latestMetadata.diagnostic}</small>}
           {latest
             ? metadataDetail(latestMetadata) && <small>{metadataDetail(latestMetadata)}</small>
@@ -1222,9 +1443,9 @@ export function EventFeed({
         const reality = realities.find((candidate) => candidate.id === event.realityId);
         const metadata = safeEventMetadata(event);
         return [
-          event.summary,
+          canonicalProductCopy(event.summary),
           event.type,
-          reality?.name,
+          reality ? realityDisplayName(reality) : undefined,
           metadata.stage,
           metadata.status,
           metadataDetail(metadata),
@@ -1295,7 +1516,7 @@ export function EventFeed({
             key={event.id}
             onClick={() => setSelectedEventId(event.id)}
             aria-haspopup="dialog"
-            aria-label={`Inspect event: ${event.summary}`}
+            aria-label={`Inspect event: ${canonicalProductCopy(event.summary)}`}
           >
             <time dateTime={event.occurredAt}>
               <b>{formatClock(event.occurredAt)}</b>
@@ -1304,17 +1525,17 @@ export function EventFeed({
             <span className={`event-mark event-${event.type.split(".")[0]}`} />
             <div className="event-copy">
               <span className="event-context">
-                <b>{metadata.stage ?? event.type.replace(".", " / ")}</b>
+                <b>{productEventLabel(event.type, metadata.stage)}</b>
                 {metadata.status && (
                   <i className={`event-status event-status-${metadata.status}`}>
                     {metadata.failureKind === "test" ? "test evidence" : metadata.status}
                   </i>
                 )}
               </span>
-              <strong>{event.summary}</strong>
-              {metadata.diagnostic && <p className="event-diagnostic">{metadata.diagnostic}</p>}
-              {detail && <code>{detail}</code>}
-              <small>{reality?.name ?? "Reality"}</small>
+              <strong>{canonicalProductCopy(event.summary)}</strong>
+              {metadata.diagnostic && <p className="event-diagnostic">{canonicalProductCopy(metadata.diagnostic)}</p>}
+              {detail && <code>{canonicalProductCopy(detail)}</code>}
+              <small>{reality ? realityDisplayName(reality) : "Reality"}</small>
             </div>
             <ChevronRight className="event-open" size={14} aria-hidden="true" />
           </button>
@@ -1390,8 +1611,8 @@ function EventDetailDialog({
     realityId: event.realityId,
     dreamTime: event.dreamTime,
     occurredAt: event.occurredAt,
-    payload: Object.fromEntries(payloadEntries),
-    metadata
+    payload: canonicalProductValue(Object.fromEntries(payloadEntries)),
+    metadata: canonicalProductValue(metadata)
   };
 
   return (
@@ -1408,7 +1629,7 @@ function EventDetailDialog({
         <header>
           <div>
             <span className="eyebrow">VALIDATED REALITY EVENT</span>
-            <h2 id="event-detail-title">{metadata.stage ?? event.type.replace(".", " / ")}</h2>
+            <h2 id="event-detail-title">{productEventLabel(event.type, metadata.stage)}</h2>
           </div>
           <button type="button" onClick={onClose} aria-label="Close event details" title="Close">
             <X size={17} />
@@ -1419,14 +1640,14 @@ function EventDetailDialog({
           <section className="event-detail-summary">
             <span className={`event-mark event-${event.type.split(".")[0]}`} />
             <div>
-              <small>{metadata.status ?? event.type}</small>
-              <strong>{event.summary}</strong>
-              {metadata.diagnostic && <p>{metadata.diagnostic}</p>}
+              <small>{metadata.status ?? productEventLabel(event.type)}</small>
+              <strong>{canonicalProductCopy(event.summary)}</strong>
+              {metadata.diagnostic && <p>{canonicalProductCopy(metadata.diagnostic)}</p>}
             </div>
           </section>
 
           <dl className="event-detail-facts">
-            <div><dt>REALITY</dt><dd>{reality?.name ?? "Unknown Reality"}</dd></div>
+            <div><dt>REALITY</dt><dd>{reality ? realityDisplayName(reality) : "Unknown Reality"}</dd></div>
             <div><dt>EXACT TIME</dt><dd>{new Date(event.occurredAt).toLocaleString()}</dd></div>
             <div><dt>AGE</dt><dd>{relativeAge(now, event.occurredAt)}</dd></div>
             <div>
@@ -1450,7 +1671,7 @@ function EventDetailDialog({
                 {executionEvidence.map(([label, value]) => (
                   <div key={label}>
                     <dt>{label}</dt>
-                    <dd><code>{value}</code></dd>
+                    <dd><code>{canonicalProductCopy(value)}</code></dd>
                   </div>
                 ))}
               </dl>
@@ -1596,7 +1817,7 @@ export function AdminDrawer({
   const cleanup = async () => {
     const confirmed = mission
       ? window.confirm(`Delete Mission "${mission.name}" and clean up every Mission-owned worktree and branch? Other saved Missions and the password-reset Demo Mission are not changed.`)
-      : window.confirm("Full reset stops active Codex CLI executions, archives the validated run log, deletes active Reality state, removes registered and orphaned worktrees, prunes Inception branches, and starts a clean waking Reality. Continue?");
+      : window.confirm("Full reset stops active Codex CLI executions, archives the validated run log, deletes active Reality state, removes registered and orphaned worktrees, prunes Inception branches, and creates a clean Reality. Continue?");
     if (!confirmed) return;
     setBusy("resetting");
     setAdminError(null);
@@ -1655,8 +1876,8 @@ export function AdminDrawer({
 
   const resetSavedMission = async (saved: SavedMissionSummary) => {
     const detail = saved.kind === "demo"
-      ? "The current validated run will be archived and the Demo Mission waking Reality will be formed again."
-      : "A clean waking Reality will be formed from the same definition, then the previous Mission worktrees and history will be removed.";
+      ? "The current validated run will be archived and the Demo Mission Reality will be created again."
+      : "A clean Reality will be created from the same definition, then the previous Mission worktrees and history will be removed.";
     if (!window.confirm(`Reset Mission "${saved.name}"? ${detail}`)) return;
     setBusy("managing-mission");
     setAdminError(null);
@@ -1950,7 +2171,7 @@ export function AdminDrawer({
           <p>
             {mission
               ? "Deletes this saved Mission and removes its isolated Reality worktrees and branches. Other Missions and the password-reset Demo Mission remain unchanged."
-              : "Stops Codex, archives safe telemetry, deletes active state, removes all Inception worktrees and branches, then forms one clean waking Reality."}
+              : "Stops Codex, archives safe telemetry, deletes active state, removes all Inception worktrees and branches, then creates one clean Reality."}
           </p>
           <button type="button" onClick={cleanup} disabled={busy !== "idle"}>
             <Trash2 size={15} /> {busy === "resetting"
@@ -2048,7 +2269,7 @@ export function RealityTimeline({ events, realities, index, now, onChange }: {
         <History size={16} />
         <span>
           <small>{playing ? "ADAPTIVE REPLAY / HIGH-SIGNAL PACING" : index === null ? "LIVE REALITY TIMELINE" : "REPLAYING VALIDATED EXPERIENCE"}</small>
-          <strong>{selected?.summary ?? "Waking Reality formed"}</strong>
+          <strong>{selected ? canonicalProductCopy(selected.summary) : "Reality created"}</strong>
         </span>
         <button
           type="button"
@@ -2139,7 +2360,7 @@ export function DreamGate({ proposal, owner, onCancel, onConfirm }: {
           <p>{proposal.expectedInsight ?? proposal.rationale}</p>
         </div>
         <footer>
-          <button type="button" onClick={onCancel}>Keep waking Reality</button>
+          <button type="button" onClick={onCancel}>Keep Reality unchanged</button>
           <button type="button" className="confirm-dream" onClick={onConfirm}>
             <MoonStar size={16} /> Confirm and create Dream
           </button>
@@ -2149,11 +2370,12 @@ export function DreamGate({ proposal, owner, onCancel, onConfirm }: {
   );
 }
 
-function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset }: {
+function ActionDock({ snapshot, operation, loading, replaying, phase, onAction, onReset }: {
   snapshot: PresentedDemoSnapshot;
   operation: PresentedRealityOperation | null;
   loading: LoadingState;
   replaying: boolean;
+  phase: number;
   onAction: (action: DemoAction) => void;
   onReset: () => void;
 }) {
@@ -2162,12 +2384,12 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
     || operation !== null
     || replaying
     || snapshot.session.autopilot.mode === "running";
-  const progress = snapshot.session.phase * 10;
+  const progress = phase * 10;
   const isDream = next?.kind === "dream";
   const isKick = next?.kind === "kick";
   const isRetryingKick = isKick && next.retry;
   const isStandard = next && !isDream && !isKick;
-  const complete = snapshot.session.phase === 10 && !next;
+  const complete = phase === 10 && !next;
   const runsCodex = (operation?.executor ?? next?.executor) === "codex";
   const runtimeLabel = runsCodex
     ? snapshot.runtime.codexMode === "real" ? "STARTS REAL CODEX CLI IN THE ACTIVE WORKTREE" : "RUNS DEMO CODEX RUNTIME"
@@ -2189,10 +2411,12 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
   return (
     <div className={`action-dock ${complete ? "is-complete" : ""}`} data-testid="action-dock">
       <div className="dock-progress">
-        <span><b>{snapshot.session.phase}</b> / 10</span>
+        <span><b>{phase}</b> / 10</span>
         <small>{replaying ? "REPLAY MODE / LIVE REALITY PAUSED" : `NEXT MOVE / ${runtimeLabel}`}</small>
         <strong data-testid="next-move">
-          {replaying ? "Return the timeline to Live to continue" : operation?.label ?? next?.label ?? "Reality stabilised"}
+          {replaying
+            ? "Return the timeline to Live to continue"
+            : canonicalProductCopy(operation?.label ?? next?.label ?? "Reality stabilised")}
         </strong>
         <div><i style={{ width: `${progress}%` }} /></div>
       </div>
@@ -2200,10 +2424,10 @@ function ActionDock({ snapshot, operation, loading, replaying, onAction, onReset
         <RotateCcw size={16} /> Full reset
       </button>
       <button type="button" className={`dream-command ${isDream ? "is-next" : ""}`} data-testid="dream-action" onClick={() => next && onAction(next.id)} disabled={busy || !isDream}>
-        <MoonStar size={17} /> {isDream ? next.label : "Dream"}
+        <MoonStar size={17} /> {isDream ? canonicalProductCopy(next.label) : "Dream"}
       </button>
       <button type="button" className={`kick-command ${isKick ? "is-next" : ""}`} data-testid="kick-action" onClick={() => next && onAction(next.id)} disabled={busy || !isKick}>
-        <ArrowUpFromLine size={17} /> {isRetryingKick ? "Retry Kick and return memory" : isKick ? "Kick and return memory" : "Kick"}
+        <ArrowUpFromLine size={17} /> {isRetryingKick ? "Retry Kick: return memory" : isKick ? "Kick: return memory" : "Kick"}
       </button>
       <button
         type="button"
@@ -2245,7 +2469,7 @@ function DemoAutoModeBar({
     )
   );
   const currentBudget = rejectedIntervention?.budgetApprovals?.at(-1)?.approvedTokenBudget
-    ?? 16_000;
+    ?? DEFAULT_INTERVENTION_TOKEN_BUDGET;
   const suggestedBudget = Math.min(
     500_000,
     Math.ceil(Math.max(
@@ -2254,6 +2478,7 @@ function DemoAutoModeBar({
     ) / 1_000) * 1_000
   );
   const budgetRecovery = guidedReal && paused && Boolean(rejectedIntervention);
+  const sameHardCeilingRetry = currentBudget === 500_000;
   const [approvedBudget, setApprovedBudget] = useState(suggestedBudget);
 
   useEffect(() => {
@@ -2276,7 +2501,7 @@ function DemoAutoModeBar({
                 ? "Advancing one bounded, validated Reality action at a time"
                 : "Advancing the Demo Mission for a consistent recording"
               : budgetRecovery
-                ? "Controlled Subject exceeded its approved token ceiling"
+                ? "Adversarial Subject exceeded its approved token ceiling"
                 : paused
                   ? state.pauseReason ?? "Guided Reality path paused"
                   : state.mode === "completed"
@@ -2323,14 +2548,16 @@ function DemoAutoModeBar({
             <strong>{rejectedIntervention.lastAttemptTokens !== undefined
               ? `${rejectedIntervention.lastAttemptTokens.toLocaleString()} used / ${currentBudget.toLocaleString()} approved`
               : `Prior attempt exceeded the ${currentBudget.toLocaleString()} approved ceiling`}</strong>
-            <p>The nested Dream baseline was restored. No Codex usage resumes until you approve a new ceiling.</p>
+            <p>{sameHardCeilingRetry
+              ? "The nested Dream baseline was restored. Retry uses a fresh coordinator context at the existing hard ceiling."
+              : "The nested Dream baseline was restored. No Codex usage resumes until you approve a new ceiling."}</p>
           </span>
           <label>
-            <small>NEW RETRY CEILING</small>
+            <small>{sameHardCeilingRetry ? "HARD RETRY CEILING" : "NEW RETRY CEILING"}</small>
             <input
               aria-label="Approved Demo intervention token ceiling"
               type="number"
-              min={currentBudget + 1_000}
+              min={sameHardCeilingRetry ? currentBudget : currentBudget + 1_000}
               max={500_000}
               step={1_000}
               value={approvedBudget}
@@ -2341,9 +2568,16 @@ function DemoAutoModeBar({
             type="button"
             className="is-primary"
             onClick={() => onApproveInterventionBudget(approvedBudget)}
-            disabled={busy || approvedBudget <= currentBudget || approvedBudget > 500_000}
+            disabled={
+              busy
+              || (!sameHardCeilingRetry && approvedBudget <= currentBudget)
+              || (sameHardCeilingRetry && approvedBudget !== currentBudget)
+              || approvedBudget > 500_000
+            }
           >
-            <ShieldCheck size={14} /> Approve {approvedBudget.toLocaleString()} and retry
+            <ShieldCheck size={14} /> {sameHardCeilingRetry
+              ? `Retry at ${approvedBudget.toLocaleString()}`
+              : `Approve ${approvedBudget.toLocaleString()} and retry`}
           </button>
         </div>
       )}
@@ -2374,7 +2608,11 @@ export function RealityWorkspace({
   hasMoreEvents = false,
   loadingMoreEvents = false,
   onLoadMoreEvents,
-  totalEventCount = events.length
+  totalEventCount = events.length,
+  requirementsSupplement,
+  reflectionContent,
+  integrityContent,
+  memoryAscentContent
 }: {
   realities: Reality[];
   sourceRealities?: Reality[];
@@ -2399,6 +2637,10 @@ export function RealityWorkspace({
   loadingMoreEvents?: boolean;
   onLoadMoreEvents?: () => void;
   totalEventCount?: number;
+  requirementsSupplement?: ReactNode;
+  reflectionContent?: ReactNode;
+  integrityContent?: ReactNode;
+  memoryAscentContent?: ReactNode;
 }) {
   const selectedReality = realities.find((reality) => reality.id === selectedRealityId)
     ?? realities.find((reality) => reality.id === activeRealityId)
@@ -2409,7 +2651,7 @@ export function RealityWorkspace({
   const proposals = realities.flatMap((reality) =>
     reality.proposals.map((proposal) => ({
       ...proposal,
-      owner: reality.name,
+      owner: realityDisplayName(reality),
       ownerId: reality.id
     }))
   );
@@ -2455,14 +2697,21 @@ export function RealityWorkspace({
       })) ?? [];
 
   return (
-    <div data-testid="reality-workspace">
-      <section className="topology-workspace">
+    <div className="reality-workspace" data-testid="reality-workspace">
+      <section
+        className="topology-workspace workspace-band workspace-band-topology"
+        id="reality-topology"
+        tabIndex={-1}
+      >
         <div className="map-section">
           <SectionHeading
             icon={<Network size={18} />}
             eyebrow="REALITY TOPOLOGY"
             title="Counterfactual world graph"
-            meta={<span className="locus-key"><Radio size={11} /> LOCUS: {sourceRealities.find((entry) => entry.id === activeRealityId)?.name}</span>}
+            meta={<span className="locus-key"><Radio size={11} /> LOCUS: {(() => {
+              const locus = sourceRealities.find((entry) => entry.id === activeRealityId);
+              return locus ? realityDisplayName(locus) : "Reality";
+            })()}</span>}
           />
           <div
             className={`topology-state ${operation ? "is-active" : activeProposal ? "is-proposed" : ""}`}
@@ -2481,14 +2730,17 @@ export function RealityWorkspace({
               </small>
               <strong>
                 {operation
-                  ? `${operation.label} is running inside ${sourceRealities.find((entry) => entry.id === operation.realityId)?.name ?? "the current Reality"}; no child Reality has been created.`
+                  ? `${canonicalProductCopy(operation.label)} is running inside ${(() => {
+                    const operationReality = sourceRealities.find((entry) => entry.id === operation.realityId);
+                    return operationReality ? realityDisplayName(operationReality) : "the current Reality";
+                  })()}; no Dream has been created.`
                   : activeProposal
                     ? `${activeProposal.title} is awaiting confirmation before its thread and worktree enter the graph.`
                     : hiddenRealityCount > 0
-                      ? `${hiddenRealityCount} returned Dream ${hiddenRealityCount === 1 ? "node is" : "nodes are"} collapsed; validated memories remain in the Waking Reality.`
+                      ? `${hiddenRealityCount} returned Dream ${hiddenRealityCount === 1 ? "node is" : "nodes are"} collapsed; validated memories remain in Reality.`
                     : dreamCount === 0
-                      ? "No Dream launched; the Waking Reality is idle."
-                      : "Every node is a formed Reality with its own Codex thread and Git worktree."}
+                      ? "No Dream launched; Reality is idle."
+                      : "Every node is a created Reality with its own Codex thread and Git worktree."}
               </strong>
             </span>
           </div>
@@ -2501,7 +2753,7 @@ export function RealityWorkspace({
             onSelect={onSelectReality}
           />
           <div className="map-footer">
-            <span><i className="key-waking" /> Waking Reality</span>
+            <span><i className="key-waking" /> Reality <b>ROOT</b></span>
             <span><i className="key-dream" /> Dream</span>
             <span><i className="key-memory" /> Memory path</span>
             <small>
@@ -2521,7 +2773,51 @@ export function RealityWorkspace({
         />
       </section>
 
-      <section className="world-ledger">
+      <section
+        className="requirements-workspace workspace-band workspace-band-requirements"
+        id="reality-requirements"
+        tabIndex={-1}
+      >
+        <SectionHeading
+          icon={<LockKeyhole size={18} />}
+          eyebrow="REALITY REQUIREMENTS"
+          title="Parent-owned invariants"
+          meta={<span className="count-label">{displayedAnchors.length} anchors</span>}
+        />
+        <div className={`requirements-layout ${requirementsSupplement ? "has-supplement" : "is-anchor-only"}`}>
+          <div className="anchor-list">
+            {displayedAnchors.map((anchor) => (
+              <article className={`anchor-row anchor-${anchor.status}`} key={anchor.anchorId}>
+                <span>{anchor.status === "passed" ? <Check size={15} /> : anchor.status === "failed" ? <X size={15} /> : <LockKeyhole size={14} />}</span>
+                <div>
+                  <h3>{anchor.name}</h3>
+                  <p>{anchor.status === "passed" ? "Immutable requirement survived synthesis." : anchor.status === "failed" ? "Reality implementation violated this Anchor." : "Hidden from child mutation; awaiting synthesis."}</p>
+                  {anchor.command && <small>{anchor.command} / {anchor.durationMs}ms</small>}
+                </div>
+              </article>
+            ))}
+            {regressionResult && (
+              <article className={`anchor-row anchor-${regressionResult.status}`} data-testid="regression-proof">
+                <span>{regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
+                <div>
+                  <h3>Inherited regression suite</h3>
+                  <p>{regressionResult.status === "passed"
+                    ? `${regressionResult.testFiles.length} test artefacts agree with the Reality implementation.`
+                    : "A returned or discovered test still contradicts the Reality implementation."}</p>
+                  <small>{regressionResult.command} / {regressionResult.durationMs}ms</small>
+                </div>
+              </article>
+            )}
+          </div>
+          {requirementsSupplement}
+        </div>
+      </section>
+
+      <section
+        className="world-ledger workspace-band workspace-band-investigation"
+        id="reality-investigation"
+        tabIndex={-1}
+      >
         <div className="ledger-column">
           <SectionHeading
             icon={<Search size={18} />}
@@ -2552,7 +2848,6 @@ export function RealityWorkspace({
                     <b>estimate: {proposal.costClass ?? "unscored"} cost</b>
                   </span>
                 </div>
-                <ChevronRight size={16} />
               </article>
             )) : <EmptyState icon={<MoonStar size={19} />}>No uncertainty has been made concrete.</EmptyState>}
           </div>
@@ -2561,7 +2856,7 @@ export function RealityWorkspace({
         <div className="ledger-column">
           <SectionHeading
             icon={<UsersRound size={18} />}
-            eyebrow={`SUBJECTS / ${selectedReality.name}`}
+            eyebrow={`SUBJECTS / ${realityDisplayName(selectedReality)}`}
             title="Bounded investigations"
             meta={<span className="count-label">{selectedReality.subjects.length} subjects</span>}
           />
@@ -2579,7 +2874,7 @@ export function RealityWorkspace({
         <div className="ledger-column">
           <SectionHeading
             icon={<FlaskConical size={18} />}
-            eyebrow={`EVIDENCE / ${selectedReality.name}`}
+            eyebrow={`EVIDENCE / ${realityDisplayName(selectedReality)}`}
             title="Experienced facts"
             meta={<span className="count-label">{selectedReality.evidence.length} items</span>}
           />
@@ -2592,7 +2887,7 @@ export function RealityWorkspace({
                 ? sourceRealities.find((reality) => reality.id === wakeSource || reality.name === wakeSource)
                 : null;
               const title = evidence.title.startsWith("Memory inherited from ")
-                ? `Memory returned from ${sourceReality?.name ?? "child Reality"}`
+                ? `Memory returned from ${sourceReality ? realityDisplayName(sourceReality) : "Dream"}`
                 : evidence.title;
               return (
                 <article className="evidence-row" key={evidence.id}>
@@ -2610,7 +2905,41 @@ export function RealityWorkspace({
         </div>
       </section>
 
-      <section className="memory-workspace">
+      {reflectionContent}
+
+      <section
+        className="integrity-workspace workspace-band workspace-band-integrity"
+        id="reality-integrity"
+        tabIndex={-1}
+      >
+        {integrityContent ?? (
+          <>
+            <SectionHeading
+              icon={<Fingerprint size={18} />}
+              eyebrow="TOTEM CHECK"
+              title="Memory integrity gate"
+              meta={<span className="count-label">{memoryIntegrity.length} sealed memories</span>}
+            />
+            <CanonicalInterventionLedger
+              interventions={interventions}
+              realities={sourceRealities}
+            />
+            {!interventions.length && (
+              <EmptyState icon={<Fingerprint size={19} />}>
+                Parent policy is armed. No memory has crossed a Kick yet.
+              </EmptyState>
+            )}
+          </>
+        )}
+      </section>
+
+      {memoryAscentContent}
+
+      <section
+        className="memory-workspace workspace-band workspace-band-memory"
+        id="reality-memories"
+        tabIndex={-1}
+      >
         <SectionHeading
           icon={<BrainCircuit size={18} />}
           eyebrow="MEMORIES"
@@ -2624,7 +2953,7 @@ export function RealityWorkspace({
           </div>
           <span className="belief-route"><i /><ArrowRight size={18} /><i /></span>
           <div>
-            <span>CURRENT WAKING BELIEF / MODEL-REPORTED {Math.round((finalBelief?.confidence ?? 0) * 100)}%</span>
+            <span>CURRENT REALITY BELIEF / MODEL-REPORTED {Math.round((finalBelief?.confidence ?? 0) * 100)}%</span>
             <p>{finalBelief?.statement ?? "Awaiting returned memory."}</p>
           </div>
         </div>
@@ -2638,67 +2967,32 @@ export function RealityWorkspace({
                   key={reality.id}
                 />
               ))
-            : <EmptyState icon={<ArrowUpFromLine size={19} />}>Kick a Dream to return a validated Wake Report.</EmptyState>}
+            : <EmptyState icon={<ArrowUpFromLine size={19} />}>Kick a Dream to return Memory.</EmptyState>}
         </div>
       </section>
 
-      <CanonicalInterventionLedger
-        interventions={interventions}
-        realities={sourceRealities}
-      />
-
-      <section className="proof-workspace">
-        <div className="proof-column anchor-proof">
-          <SectionHeading
-            icon={<LockKeyhole size={18} />}
-            eyebrow="REALITY ANCHORS"
-            title="Parent-owned invariants"
-            meta={<span className="count-label">{displayedAnchors.length} anchors</span>}
-          />
-          <div className="anchor-list">
-            {displayedAnchors.map((anchor) => (
-              <article className={`anchor-row anchor-${anchor.status}`} key={anchor.anchorId}>
-                <span>{anchor.status === "passed" ? <Check size={15} /> : anchor.status === "failed" ? <X size={15} /> : <LockKeyhole size={14} />}</span>
-                <div>
-                  <h3>{anchor.name}</h3>
-                  <p>{anchor.status === "passed" ? "Immutable requirement survived synthesis." : anchor.status === "failed" ? "Waking implementation violated this anchor." : "Hidden from child mutation; awaiting synthesis."}</p>
-                  {anchor.command && <small>{anchor.command} / {anchor.durationMs}ms</small>}
-                </div>
-              </article>
-            ))}
-            {regressionResult && (
-              <article className={`anchor-row anchor-${regressionResult.status}`} data-testid="regression-proof">
-                <span>{regressionResult.status === "passed" ? <Check size={15} /> : <X size={15} />}</span>
-                <div>
-                  <h3>Inherited regression suite</h3>
-                  <p>{regressionResult.status === "passed"
-                    ? `${regressionResult.testFiles.length} test artefacts agree with the waking implementation.`
-                    : "A returned or discovered test still contradicts the waking implementation."}</p>
-                  <small>{regressionResult.command} / {regressionResult.durationMs}ms</small>
-                </div>
-              </article>
-            )}
-          </div>
-        </div>
-        <div className="proof-column event-proof">
-          <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
-          <EventFeed
-            events={events}
-            realities={realities}
-            now={now}
-            hasMore={hasMoreEvents}
-            loadingMore={loadingMoreEvents}
-            onLoadMore={onLoadMoreEvents}
-            totalCount={totalEventCount}
-          />
-        </div>
+      <section
+        className="event-workspace workspace-band workspace-band-events"
+        id="reality-events"
+        tabIndex={-1}
+      >
+        <SectionHeading icon={<Radio size={18} />} eyebrow="REALITY EVENTS" title="Safe experience stream" meta={<span className="stream-pulse" />} />
+        <EventFeed
+          events={events}
+          realities={realities}
+          now={now}
+          hasMore={hasMoreEvents}
+          loadingMore={loadingMoreEvents}
+          onLoadMore={onLoadMoreEvents}
+          totalCount={totalEventCount}
+        />
       </section>
 
       {finalDiff && (
-        <section className="diff-workspace">
+        <section className="diff-workspace workspace-band workspace-band-diff" id="reality-diff" tabIndex={-1}>
           <SectionHeading
             icon={<FileDiff size={18} />}
-            eyebrow="WAKING IMPLEMENTATION"
+            eyebrow="REALITY IMPLEMENTATION"
             title="Final Git diff"
             meta={(
               <span className="diff-actions">
@@ -2840,7 +3134,7 @@ export function RealityEngine() {
     setLocalOperation({
       id: `local-${Date.now()}`,
       action,
-      label: next?.label ?? action,
+      label: canonicalProductCopy(next?.label ?? action),
       executor: next?.executor ?? "orchestrator",
       realityId: snapshot?.session.activeRealityId ?? "",
       startedAt: new Date().toISOString()
@@ -2849,7 +3143,9 @@ export function RealityEngine() {
     setError(null);
     if (action === "wake_nested" || action === "wake_parent") {
       setWakeStage("collecting");
-      setWakeRealityName(snapshot?.activeReality?.name);
+      setWakeRealityName(snapshot?.activeReality
+        ? realityDisplayName(snapshot.activeReality)
+        : undefined);
     }
     try {
       const response = await fetch("/api/demo/action", {
@@ -2926,7 +3222,7 @@ export function RealityEngine() {
   };
 
   const reset = async () => {
-    if (!window.confirm("Full reset archives the validated run log, deletes active Reality state, and removes its Git worktrees before forming a clean waking Reality. Continue?")) return;
+    if (!window.confirm("Full reset archives the validated run log, deletes active Reality state, and removes its Git worktrees before creating a clean Reality. Continue?")) return;
     setLoading("resetting");
     setError(null);
     try {
@@ -2959,19 +3255,43 @@ export function RealityEngine() {
       : [],
     [snapshot, timelineIndex]
   );
+  const replaying = timelineIndex !== null;
   const displayedPhase = timelineIndex === null
     ? snapshot?.session.phase ?? 0
     : replayPhase(visibleEvents, snapshot?.realities ?? []);
+  const replayActiveId = snapshot
+    ? replayActiveRealityId(
+        replayedRealities,
+        visibleEvents,
+        snapshot.session.activeRealityId ?? replayedRealities[0]?.id ?? ""
+      )
+    : "";
   const selectedReality = replayedRealities.find((reality) => reality.id === selectedRealityId)
-    ?? replayedRealities.find((reality) => reality.id === snapshot?.session.activeRealityId)
+    ?? replayedRealities.find((reality) => reality.id === replayActiveId)
     ?? replayedRealities[0]
     ?? null;
   const root = replayedRealities.find((reality) => reality.depth === 0) ?? null;
+  const projectedMemoryIntegrity = snapshot
+    ? replayMemoryIntegrity(snapshot.session.memoryIntegrity, visibleEvents, replaying)
+    : [];
+  const projectedInterventions = snapshot
+    ? replayInterventions(snapshot.session.interventions, visibleEvents, replaying)
+    : [];
+  const projectedAnchorResults = snapshot
+    ? replayAnchorResults(snapshot.session.anchorResults, visibleEvents, replaying)
+    : [];
+  const projectedRegressionResult = snapshot
+    ? replayRegressionResult(snapshot.session.regressionResult, visibleEvents, replaying)
+    : undefined;
+  const projectedFinalDiff = snapshot
+    ? replayFinalDiff(snapshot.session.finalDiff, visibleEvents, replaying)
+    : "";
   const memories = useMemo(
     () => snapshot?.realities.flatMap((reality) => reality.wakeReport ? [{ reality, report: reality.wakeReport }] : []) ?? [],
     [snapshot?.realities]
   );
   const activeOperation = snapshot?.operation ?? localOperation;
+  const displayedOperation = replaying ? null : activeOperation;
   const passedAnchorCount = snapshot?.session.anchorResults.filter((anchor) => anchor.status === "passed").length ?? 0;
   const verifiedMemoryCount = snapshot?.session.memoryIntegrity.filter((seal) => seal.verdict === "verified").length ?? 0;
   const outcomeSubjectCount = snapshot?.realities.reduce((total, reality) => total + reality.subjects.length, 0) ?? 0;
@@ -3015,12 +3335,16 @@ export function RealityEngine() {
     return () => window.clearInterval(timer);
   }, [activeOperation?.id]);
 
+  useEffect(() => {
+    if (timelineIndex !== null && replayActiveId) setSelectedRealityId(replayActiveId);
+  }, [replayActiveId, timelineIndex]);
+
   if (!snapshot || !selectedReality) {
     return (
       <main className="loading-screen">
         <div className="loading-mark"><Layers3 size={38} /><span /><span /></div>
         <h1>Inception</h1>
-        <p>{error ?? "Forming the waking Reality..."}</p>
+        <p>{error ?? "Creating Reality..."}</p>
       </main>
     );
   }
@@ -3032,7 +3356,8 @@ export function RealityEngine() {
         model={snapshot.runtime.model}
         authSource={snapshot.runtime.authSource}
         environment={snapshot.runtime.persistence === "prisma" ? "PRISMA" : "PORTABLE SQLITE"}
-        realityCount={snapshot.realities.length}
+        realityCount={replayedRealities.length}
+        replaying={replaying}
         actions={(
           <>
             {snapshot.runtime.codexMode === "real" && (
@@ -3067,18 +3392,20 @@ export function RealityEngine() {
       />
 
       <RealityJourneyBand
-        realities={snapshot.realities}
-        events={snapshot.events}
-        stabilised={snapshot.session.phase === 10}
+        realities={replayedRealities}
+        events={visibleEvents}
+        stabilised={visibleEvents.some((event) => event.type === "reality.stabilised")}
       />
 
-      <DemoAutoModeBar
-        snapshot={snapshot}
-        busy={loading !== "idle" || Boolean(activeOperation)}
-        onControl={(command) => void controlDemoAutopilot(command)}
-        onApproveInterventionBudget={(tokenBudget) =>
-          void approveDemoInterventionBudget(tokenBudget)}
-      />
+      {!replaying && (
+        <DemoAutoModeBar
+          snapshot={snapshot}
+          busy={loading !== "idle" || Boolean(activeOperation)}
+          onControl={(command) => void controlDemoAutopilot(command)}
+          onApproveInterventionBudget={(tokenBudget) =>
+            void approveDemoInterventionBudget(tokenBudget)}
+        />
+      )}
 
       {loadedArchive && (
         <section className="archive-view-banner" data-testid="archive-view-banner">
@@ -3093,12 +3420,12 @@ export function RealityEngine() {
         </section>
       )}
 
-      {error && <div className="error-banner"><XCircle size={17} /><span><b>Reality fracture</b>{error}</span><button onClick={() => setError(null)} aria-label="Dismiss error"><X size={15} /></button></div>}
+      {error && !replaying && <div className="error-banner"><XCircle size={17} /><span><b>Reality fractured</b>{canonicalProductCopy(error)}</span><button onClick={() => setError(null)} aria-label="Dismiss error"><X size={15} /></button></div>}
 
       {displayedPhase === 10 && (
         <section className="outcome-summary" data-testid="outcome-summary">
           <div className="outcome-intro">
-            <span className="eyebrow">WAKING OUTCOME</span>
+            <span className="eyebrow">REALITY OUTCOME</span>
             <h2>Password reset survives coordinated abuse without exposing account state</h2>
             <p>{memories.length} returned memories changed one process-local IP control into a generic response and shared IP, identifier, and global budgets while preserving token expiry.</p>
           </div>
@@ -3111,7 +3438,7 @@ export function RealityEngine() {
             <ArrowRight size={14} aria-hidden="true" />
             <span><b>{passedAnchorCount}</b><small>parent proofs</small></span>
             <ArrowRight size={14} aria-hidden="true" />
-            <span><b>{changedFileCount}</b><small>waking files</small></span>
+            <span><b>{changedFileCount}</b><small>Reality files</small></span>
           </div>
           <div className="outcome-results" aria-label="Security outcome">
             <div>
@@ -3140,7 +3467,7 @@ export function RealityEngine() {
               setCollapsedDreams((current) => !current);
               if (!collapsedDreams && root) setSelectedRealityId(root.id);
             }} data-testid="collapse-dreams">
-              <Minimize2 size={15} /> {collapsedDreams ? "Reveal lived Realities" : "Collapse Dreams into waking Reality"}
+              <Minimize2 size={15} /> {collapsedDreams ? "Reveal lived Realities" : "Collapse Dreams into Reality"}
             </button>
             <span title={memories.flatMap(({ report }) => report.invariants).join(" / ")}>
               <BrainCircuit size={14} /> {memories.reduce((total, memory) => total + memory.report.invariants.length, 0)} inherited truths
@@ -3149,43 +3476,49 @@ export function RealityEngine() {
         </section>
       )}
 
-      {activeOperation && (
+      {displayedOperation && (
         <OperationMonitor
-          operation={activeOperation}
+          operation={displayedOperation}
           realities={snapshot.realities}
           events={snapshot.events}
           now={now}
         />
       )}
 
-      <WakeTransition stage={wakeStage} realityName={wakeRealityName} />
+      {!replaying && <WakeTransition stage={wakeStage} realityName={wakeRealityName} />}
 
       <RealityTimeline
         events={snapshot.events}
         realities={snapshot.realities}
         index={timelineIndex}
         now={now}
-        onChange={setTimelineIndex}
+        onChange={(index) => {
+          setTimelineIndex(index);
+          if (index !== null) {
+            setCollapsedDreams(false);
+            setRevealCode(false);
+          }
+        }}
       />
 
       <RealityWorkspace
         realities={replayedRealities}
         sourceRealities={snapshot.realities}
         events={visibleEvents}
-        activeRealityId={snapshot.session.activeRealityId ?? root?.id ?? ""}
+        activeRealityId={replayActiveId}
         selectedRealityId={selectedReality.id}
         onSelectReality={setSelectedRealityId}
         inspectorTab={inspectorTab}
         onInspectorTab={setInspectorTab}
-        operation={activeOperation}
+        operation={displayedOperation}
         now={now}
-        pulseRealityId={pulseRealityId}
+        pulseRealityId={replaying ? null : pulseRealityId}
         graphRealities={graphRealities}
-        memoryIntegrity={snapshot.session.memoryIntegrity}
-        interventions={snapshot.session.interventions}
-        anchorResults={snapshot.session.anchorResults}
-        regressionResult={snapshot.session.regressionResult}
-        finalDiff={snapshot.session.finalDiff}
+        memoryIntegrity={projectedMemoryIntegrity}
+        interventions={projectedInterventions}
+        anchorResults={projectedAnchorResults}
+        regressionResult={projectedRegressionResult}
+        finalDiff={projectedFinalDiff}
         revealCode={revealCode}
         onToggleCode={() => setRevealCode((current) => !current)}
       />
@@ -3211,7 +3544,9 @@ export function RealityEngine() {
       {pendingDreamAction && pendingProposal && (
         <DreamGate
           proposal={pendingProposal}
-          owner={snapshot.activeReality?.name ?? "Current Reality"}
+          owner={snapshot.activeReality
+            ? realityDisplayName(snapshot.activeReality)
+            : "Current Reality"}
           onCancel={() => setPendingDreamAction(null)}
           onConfirm={() => {
             const action = pendingDreamAction;
@@ -3227,6 +3562,7 @@ export function RealityEngine() {
           operation={activeOperation}
           loading={loading}
           replaying={timelineIndex !== null}
+          phase={displayedPhase}
           onAction={requestAction}
           onReset={reset}
         />

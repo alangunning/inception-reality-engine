@@ -2,15 +2,17 @@
 
 **Product version:** 0.1.0
 **Documentation status:** Hackathon submission candidate
-**Last reviewed:** 2026-07-19
+**Last reviewed:** 2026-07-20
 
 | Document | Judge question answered |
 | --- | --- |
+| [Submission package](./SUBMISSION.md) | What description, video narration, evidence, URLs, and final checks should be submitted? |
 | [Product brief](./PRODUCT.md) | Why does this matter, who is it for, and how should the Dream metaphor be understood? |
-| [Demo runbook](../DEMO_RUNBOOK.md) | Which current buttons, narration, and recovery steps produce the three-minute story? |
+| [Product terminology](./TERMINOLOGY.md) | Which canonical terms must the UX, events, diagrams, and narration use? |
+| [Demo runbook](../DEMO_RUNBOOK.md) | How is a clean real run prepared, evaluated, and recovered before recording? |
 | [Judging guide](./JUDGING.md) | How can I run, evaluate, and score it quickly? |
 | [Architecture](./ARCHITECTURE.md) | What is the system, where are its boundaries, and what is real? |
-| [Runtime flows](./RUNTIME_FLOWS.md) | How do inspection, nested Dreams, Subjects, waking, synthesis, and proof work? |
+| [Runtime flows](./RUNTIME_FLOWS.md) | How do inspection, Nested Dreams, Subjects, Memory return, synthesis, and proof work? |
 | [Codex collaboration](./CODEX_COLLABORATION.md) | How were GPT-5.6 and Codex used to build and run it? |
 | [Operations](./OPERATIONS.md) | How do auth, usage, logs, cleanup, and supported platforms work? |
 | [Security](../SECURITY.md) | What is the trust model for unrestricted real mode? |

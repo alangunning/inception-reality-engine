@@ -14,12 +14,12 @@ sequenceDiagram
   participant C as CodexRuntime
   participant S as Codex Subjects
   participant G as Git worktrees
-  participant T as Reality Totem
+  participant T as Totem Check
   participant P as Proof gate
 
   Judge->>UI: Ask Codex to audit password-reset security
   UI->>O: inspect
-  O->>C: inspect waking Reality
+  O->>C: inspect Reality
   C-->>O: validated InvestigationReport + uncertainty
   Judge->>UI: Create Under coordinated attack Dream
   O->>G: fork parent state
@@ -57,15 +57,15 @@ sequenceDiagram
   T-->>O: verified descendant chain
   Judge->>UI: Synthesise
   O->>G: promote returned artefacts
-  O->>C: apply memories in waking thread
+  O->>C: apply Memories in Reality thread
   Judge->>UI: Run immutable anchors
   O->>P: execute anchors and inherited regression
   P-->>O: proof results
   Judge->>UI: Stabilise
-  O-->>UI: final diff, beliefs, memories, nested Reality graph
+  O-->>UI: final diff, beliefs, Memories, Reality graph
 ```
 
-The nested attack artefact is not prewritten in real mode. The nested Reality must create a real test in its own worktree, retain it, and execute it. The orchestrator requires the pre-synthesis test to fail, proving that the counterfactual exposed a real missing invariant.
+The nested attack artefact is not prewritten in real mode. The Nested Dream must create a real test in its own worktree, retain it, and execute it. The orchestrator requires the pre-synthesis test to fail, proving that the counterfactual exposed a real missing invariant.
 
 The canonical Demo Mission follows one parent Dream into two materially distinct depth-two siblings. The enumeration sibling also proves both directions of memory admission: Mal's planted mutation is experienced and contained, while Arthur's independent response-equivalence test is allowed to ascend. General Missions using `competing-siblings` request two proposals at every explorable Reality, traverse the bounded graph depth-first, and create a Reality Mirror after each sibling set returns.
 
@@ -90,7 +90,7 @@ The safe event stream exposes Subject name, role, state, collaboration evidence 
 
 ```mermaid
 flowchart LR
-  R0[Waking worktree] -->|tracked diff + untracked evidence| R1[Dream worktree]
+  R0[Reality worktree - ROOT] -->|tracked diff + untracked evidence| R1[Dream worktree]
   R1 -->|tracked diff + untracked evidence| R2[Nested Dream worktree]
   R2 -->|validated artefacts only| W2[Wake Report]
   W2 --> T2[Integrity seal L2]
@@ -121,7 +121,7 @@ sequenceDiagram
     Note over M,C: No install, server, traffic, or Codex call
   end
   Developer->>M: Define mission, premise, proofs, depth, Subjects
-  M->>O: Form waking Reality
+  M->>O: Create Mission and Reality
   O->>G: Create isolated root worktree
   Note over O,C: No Codex call yet
   loop Until depth budget or uncertainty resolved
@@ -130,7 +130,7 @@ sequenceDiagram
     O->>C: Review local source for the bounded maintenance task
     C-->>O: thread.started; persist resumable Reality thread
     C-->>O: Evidence, belief changes, Dream proposal
-    alt Waking inspection or rejected contract
+    alt Root inspection or rejected contract
       O->>G: Restore checkpoint
     else Validated Dream inspection
       O->>G: Retain world-local changes
@@ -141,7 +141,7 @@ sequenceDiagram
       Developer->>O: Run sealed intervention
       O->>G: Retain rollback checkpoint
       O->>C: Resume the Reality's persisted coordinator thread
-      C->>S: spawn exact controlled resilience Subject
+      C->>S: spawn exact Adversarial Subject
       S-->>C: one bounded reversible mutation
       O->>G: validate diff and seal private commit
     end
@@ -150,7 +150,7 @@ sequenceDiagram
   C-->>O: Validated Wake Report
   O->>O: Reveal and score any sealed intervention diagnosis
   O->>G: Restore intervention baseline and retain only safe investigator artefacts
-  O->>O: Verify Reality Totem and descendant seals
+  O->>O: Run Totem Check with descendant seals
   alt Any integrity check fails
     O-->>M: Memory quarantined; uncertainty reopened
   else Integrity verified
@@ -170,11 +170,11 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
   actor Developer
-  participant P as Parent Reality
+  participant P as Parent Reality or Dream
   participant A as Dream A
   participant B as Dream B
   participant M as Reality Mirror
-  participant W as Waking Reality
+  participant W as Reality - ROOT
 
   P->>A: Create first counterfactual from proposal A
   A-->>P: Kick with verified memory A
@@ -186,15 +186,15 @@ sequenceDiagram
   M-->>W: Retain disagreement as remaining uncertainty
 ```
 
-The UI lays every parent, sibling, and descendant out as a scrollable graph. A returned-memory animation follows the exact child-to-parent edge; the Reality Mirror shows what survived both worlds before waking synthesis.
+The UI lays every parent, sibling, and descendant out as a scrollable graph. A returned-Memory animation follows the exact child-to-parent edge; the Reality Mirror shows what survived both worlds before synthesis in Reality.
 
 ## Explicit Auto Modes
 
 - **Recording autopilot** runs only in deterministic mock mode and only after **Start recording auto**. It supports pause, resume, and stop.
 - **Guided real auto** is available in both the canonical password-reset Demo Mission and generalized Missions. It is persisted server-side and bounded by actions, wall time, Dream depth, and the applicable observed token ceiling.
-- Guided real auto pauses before a Dream, controlled intervention, proof failure, quarantine, safety refusal, fracture, or budget boundary.
+- Guided real auto pauses before a Dream, adversarial intervention, proof failure, quarantine, safety refusal, fracture, or budget boundary.
 - A server restart converts a persisted `running` controller into `paused`; opening a page can never resume Codex implicitly.
-- Returning one sibling keeps the parent at the same phase while another proposal remains open; the parent can wake only after every selected sibling has returned or the configured budget explicitly retains the remaining uncertainty.
+- Returning one sibling keeps the parent at the same phase while another proposal remains open; the parent can be kicked only after every selected sibling has returned or the configured budget explicitly retains the remaining uncertainty.
 
 ## Refresh and Failure Recovery
 
@@ -213,11 +213,11 @@ flowchart TD
   W[Schema-valid Wake Reports] --> T{Current integrity seals and lineage match?}
   T -->|No| X[Quarantine memory / reopen uncertainty]
   T -->|Yes| M[Admitted memories]
-  M --> S[Synthesis in waking worktree]
+  M --> S[Synthesis in Reality worktree]
   S --> A[Run parent-owned anchors]
   A --> R[Run returned regression artefacts]
   R --> P{Every proof passes?}
-  P -->|No| F[Reality fracture / repair action]
+  P -->|No| F[Reality fractured / repair action]
   F --> S
   P -->|Yes| Z[Reality stabilised]
 ```

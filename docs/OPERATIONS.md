@@ -33,7 +33,9 @@ This reuses the judge's Codex CLI login at `${CODEX_HOME:-~/.codex}/auth.json`. 
 npm run record:demo
 ```
 
-The runtime links that auth file and existing CLI session state into `.inception/codex-home`, but does not inherit the user's `config.toml`, plugins, or MCP servers. This prevents an unrelated or expired MCP login from stopping `codex exec` before a Reality begins while allowing persisted Reality thread IDs to resume. Authentication defaults to `auto`: an explicit `CODEX_API_KEY`, otherwise valid CLI auth, otherwise `OPENAI_API_KEY`. Set `INCEPTION_CODEX_AUTH_MODE=cli` or `api` to override that choice. Credential contents are never committed, persisted in application data, emitted as events, included in Wake Reports, or exported in run logs.
+The runtime copies CLI authentication and current model metadata into the ignored `.inception/codex-home`, while keeping all writable session and SQLite state inside that project-owned directory. It does not inherit the user's `config.toml`, plugins, MCP servers, or unrelated session database. This prevents an unrelated integration, incompatible global CLI state, or unwritable home directory from stopping the SDK runtime while preserving each Reality thread across application restarts. Authentication defaults to `auto`: an explicit `CODEX_API_KEY`, otherwise valid CLI auth, otherwise `OPENAI_API_KEY`. Set `INCEPTION_CODEX_AUTH_MODE=cli` or `api` to override that choice. Credential contents are never committed, persisted in application data, emitted as events, included in Wake Reports, or exported in run logs.
+
+Reality Engine does not check or pin the judge's globally installed Codex CLI version. The project SDK uses its own npm-installed compatible Codex executable and reports that resolved SDK version at runtime; the global installation supplies authentication through `~/.codex/auth.json`. This keeps a clone reproducible without coupling it to whichever Codex CLI release is installed on the machine.
 
 For a Mission that deliberately depends on personal Codex integrations, set `INCEPTION_CODEX_INHERIT_USER_CONFIG=true`. Authenticate every enabled MCP first; its startup policy then applies to Reality executions.
 
@@ -46,9 +48,10 @@ For a Mission that deliberately depends on personal Codex integrations, set `INC
 - The operation band reports runtime, elapsed wall time, safe milestones, commands, tools, files, and token evidence.
 - Subjective Dream time advances only when the orchestrator records a completed experience milestone. Operator idle time never advances it; the UI shows base milestone minutes, the Reality's dilation factor, resulting world-time, and live wall-clock operation time separately.
 - The Mission setting defaults to an 8,000,000 observed SDK token ceiling. Codex reports authoritative input/output usage at turn completion; an over-ceiling report is rejected, its worktree transaction is rolled back, and new actions remain stopped.
+- Adversarial interventions default to the 500,000 observed-token hard ceiling because the reported turn usage includes the SDK's model context as well as the bounded Subject's output. The ceiling remains configurable, and any over-ceiling intervention is rolled back before its Memory can move upward to its parent.
 - The observed ceiling is not a provider spend cap because the SDK does not expose incremental per-turn token cancellation. Use ChatGPT workspace or OpenAI API project spend controls for billing enforcement.
-- Waking inspection keeps full Codex write/test capability inside the isolated worktree, then restores its checkpoint so knowledge returns before implementation.
-- A controlled intervention is always rolled back at Kick. Injected paths are excluded before the Wake Report is sealed, so diagnosed bad code cannot become a returned artefact.
+- Root inspection keeps full Codex write/test capability inside the isolated worktree, then restores its checkpoint so knowledge returns before implementation.
+- An adversarial intervention is always rolled back at Kick. Injected paths are excluded before the Wake Report is sealed, so diagnosed bad code cannot become a returned artefact.
 - Rejected inspection turns retain their resumable SDK thread ID, safe validation path/code, and rollback event without persisting raw model output.
 - The curated VAmPI action is a bounded local source-maintenance task. If the model safety classifier still declines it, the run fractures without admitting a report or synthesising code; the recording-mode password-reset Demo Mission remains fully runnable without a model call.
 
@@ -61,9 +64,9 @@ Admin **Stop all Codex CLI**:
 3. terminates those processes;
 4. leaves persisted Reality state and worktrees available for diagnosis.
 
-Admin **Full reset and cleanup** archives the current safe log, stops Codex, deletes the password-reset Demo Mission state, removes Demo Mission-owned worktrees/branches, prunes Git metadata, and forms a clean waking Reality.
+Admin **Full reset and cleanup** archives the current safe log, stops Codex, deletes the password-reset Demo Mission state, removes Demo Mission-owned worktrees/branches, prunes Git metadata, and creates a clean Reality.
 
-The Admin **Mission Library** is available from Mission Control and every active Mission. The built-in password-reset Demo Mission can be opened, exported, and reset, but never deleted. User-created Missions can also be deleted individually or in bulk. Reset forms a replacement before removing previous user-created Mission history. User-created Mission reset and deletion remove only Mission-owned worktrees and branches; they never alter the password-reset Demo Mission.
+The Admin **Mission Library** is available from Mission Control and every active Mission. The built-in password-reset Demo Mission can be opened, exported, and reset, but never deleted. User-created Missions can also be deleted individually or in bulk. Reset forms a replacement before removing previous user-created Mission history. User-created Mission reset and deletion remove only Mission-owned worktrees and branches; they never alter the password-reset Demo Mission. Bulk deletion also scans the owned `.inception/missions` storage root, so an orphaned worktree left behind after database loss is removed on the next cleanup.
 
 Playwright cleanup uses its own root and prefix. No cleanup path should delete a worktree it does not own.
 
@@ -80,7 +83,7 @@ The Admin drawer exports the active Demo Mission run, user-created Mission, or a
 - file paths, tool names, token counts, model binding, and selected authentication source;
 - Subject name, role, child thread ID, collaboration tool, and terminal state;
 - validation failures and recovery events;
-- beliefs, evidence, Wake Reports, Reality Totem seals, source/report digests, descendant lineage, anchors, and final proof results.
+- beliefs, evidence, Wake Reports, Totem Check seals, source/report digests, descendant lineage, Anchors, and final proof results.
 
 They exclude raw reasoning, unrestricted SDK event payloads, raw Subject messages, credentials, and raw model responses.
 

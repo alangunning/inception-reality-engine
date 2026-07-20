@@ -35,7 +35,7 @@ try {
   }
   await worktrees.cleanupAll();
   await repository.deleteAll();
-  console.log("Reality reset. Start the app to create a new waking Reality.");
+  console.log("Reality reset. Start the app to create a new Reality.");
 } finally {
   repository.close();
 }

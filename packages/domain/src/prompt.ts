@@ -20,7 +20,7 @@ export function buildDreamPrompt(reality: Reality): string {
 - The operator supplied this local Git repository and authorized defensive source review, local testing, remediation, and regression prevention.
 - Work only with repository source and synthetic local test data. Do not contact a running service, external target, account, credential, or network system.
 - The outcome is defensive: identify, prevent, or remediate the bounded defect. Do not add unnecessary exploitation detail.
-- This authorization boundary is immutable in every child Reality and Subject thread.
+- This authorization boundary is immutable in every Dream and Subject thread.
 
 `
     : "";
@@ -37,7 +37,7 @@ Constraints:
 ${reality.constitution.constraints.map((item) => `- ${item}`).join("\n")}
 Parent truths:
 ${reality.constitution.parentTruths.map((item) => `- ${item}`).join("\n")}
-Time dilation: ${reality.constitution.timeDilation ?? 1}x waking time
+Time dilation: ${reality.constitution.timeDilation ?? 1}x Reality time
 World-specific runtime laws:
 ${runtimeLaws}
 Memory admission policy: ${reality.constitution.memoryPolicy ?? "verified-reports-and-artefacts"}

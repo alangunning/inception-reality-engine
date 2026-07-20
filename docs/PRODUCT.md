@@ -19,20 +19,20 @@ The cost falls on:
 
 ## The Product
 
-Reality Engine turns one material uncertainty into isolated counterfactual software worlds. Codex may edit, test, and delegate freely inside each world, while the waking repository remains unchanged. A Dream returns only a structured Wake Report: what it believed, what it experienced, what changed, which conclusions generalise, which artefacts reproduce the finding, and what remains uncertain.
+Reality Engine turns one material uncertainty into isolated counterfactual software worlds. Codex may edit, test, and delegate freely inside each world, while Reality remains unchanged. A Dream returns only structured Memory: what it believed, what it experienced, what changed, which conclusions generalise, which artefacts reproduce the finding, and what remains uncertain. A Zod-validated Wake Report is the technical contract underlying that Memory.
 
-The parent does not trust a memory because it is well written. The Reality Totem binds it to evidence, source state, immutable requirements, artefacts, descendant memories, and any controlled intervention. Invalid or unsupported memory is quarantined automatically. Admitted memories can be synthesised only after competing worlds are compared, and the waking implementation must still pass parent-owned proofs.
+The parent does not trust Memory because it is well written. The Totem Check binds it to evidence, source state, immutable requirements, artefacts, descendant Memories, and any sealed adversarial intervention. Invalid or unsupported Memory is quarantined automatically. Admitted Memories can be synthesised only after competing worlds are compared, and Reality's implementation must still pass parent-owned proofs.
 
 ## The Mental Model
 
 | Product term | Meaning |
 | --- | --- |
 | **Reality** | One premise, constitution, history, Codex thread, and isolated worktree |
-| **Dream** | A child Reality created to experience one uncertainty |
+| **Dream** | A counterfactual child world created to experience one Uncertainty |
 | **Subject** | A bounded Codex subagent investigating inside one Reality |
-| **Kick** | Stop exploration and request a validated Wake Report |
+| **Kick** | Stop exploration and request structured Memory |
 | **Memory** | Evidence-backed knowledge and safe artefacts proposed to a parent |
-| **Reality Totem** | Automatic parent-owned memory-integrity gate |
+| **Totem Check** | Automatic parent-owned memory-integrity gate |
 | **Reality Anchor** | Immutable requirement or proof a Dream cannot rewrite |
 | **Reality Mirror** | Comparison of sibling Dreams: shared truth and disagreement |
 
@@ -44,15 +44,15 @@ A depth counter shows effort; a Reality graph shows alternatives. Each node in R
 
 The Reality Mirror does not average sibling conclusions. It admits shared invariants, preserves disagreements as uncertainty, and shows the evidence coverage behind each conclusion. This prevents one persuasive Dream from silently becoming the truth.
 
-## Controlled Adversarial Subject
+## Adversarial Subject
 
-The optional controlled resilience Subject tests whether other Subjects can detect a sealed, code-level fault without being told what changed. The operator owns its allowed paths, protected paths, fault classes, patch size, time, token budget, target depth, and rollback checkpoint.
+The optional Adversarial Subject tests whether other Subjects can detect a sealed, code-level fault without being told what changed. The operator owns its allowed paths, protected paths, fault classes, patch size, time, token budget, target depth, and rollback checkpoint.
 
 At Kick:
 
 1. investigators report while the mutation is observable;
 2. the private intervention ledger is revealed;
-3. the Reality Totem compares diagnosis with the actual mutation;
+3. the Totem Check compares diagnosis with the actual mutation;
 4. the orchestrator captures only independent investigator artefacts;
 5. the pre-intervention checkpoint is restored;
 6. every injected path is removed from the Wake Report;
@@ -62,13 +62,13 @@ An exact diagnosis admits the knowledge that generalises, never the planted code
 
 ## Product Experience
 
-- collapsible parent-child graph with every nested and sibling Reality plus its bounded Subject nodes;
+- collapsible parent-child graph with every Nested Dream and sibling Dream plus its bounded Subject nodes;
 - current premise, constitution, runtime, worktree, and Codex thread;
 - uncertainty, Subject, evidence, belief, memory, proof, and diff ledgers;
 - live timestamped event stream with search, filtering, sorting, and event detail;
 - plan snapshots and auditable native Subject lifecycle without hidden reasoning;
 - simulated Dream time and replayable timeline for a three-minute explanation;
-- staged Wake sequence: collect, seal, contain, return;
+- staged Memory return: collect, seal, contain, return;
 - Reality Mirror for shared invariants and explicit disagreements;
 - bounded recording and guided-real auto modes that never start on page load;
 - separate Admin controls for processes, logs, reset, cleanup, and saved Missions.
@@ -84,9 +84,9 @@ The canonical completed run presents:
 - **Integrity:** one planted boundary mutation is rolled back and zero injected files ascend.
 - **Proof:** four parent requirements plus returned regression artefacts pass.
 
-Every run also records memories verified or quarantined, controlled faults detected or missed, injected artefacts excluded, waking files changed, unresolved disagreements, retained post-budget uncertainty, and exact evidence/source lineage for each admitted conclusion.
+Every run also records Memories verified or quarantined, adversarial faults detected or missed, injected artefacts excluded, Reality files changed, unresolved disagreements, retained post-budget uncertainty, and exact evidence/source lineage for each admitted conclusion.
 
-The product claim is therefore inspectable: it should show which unsafe change was prevented, which requirement survived every world, and which tested improvement reached the waking repository.
+The product claim is therefore inspectable: it should show which unsafe change was prevented, which requirement survived every world, and which tested improvement reached Reality.
 
 ## Product Boundaries
 

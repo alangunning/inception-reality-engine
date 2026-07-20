@@ -26,7 +26,15 @@ export const CodexRuntimeEventMetadataSchema = z.object({
   inputTokens: z.number().int().nonnegative().optional(),
   outputTokens: z.number().int().nonnegative().optional(),
   reasoningTokens: z.number().int().nonnegative().optional(),
-  failureKind: z.enum(["test", "environment", "configuration", "missing-tool", "build", "command"]).optional(),
+  failureKind: z.enum([
+    "test",
+    "test-harness",
+    "environment",
+    "configuration",
+    "missing-tool",
+    "build",
+    "command"
+  ]).optional(),
   diagnostic: z.string().min(1).max(180).optional(),
   model: z.string().min(1).max(80).optional(),
   sdkVersion: z.string().min(1).max(40).optional(),

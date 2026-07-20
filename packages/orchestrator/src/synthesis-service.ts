@@ -35,7 +35,7 @@ export class SynthesisService {
       evidenceIds
     });
     entity
-      .advanceTime(18, "Integrating returned memories", "Dream knowledge has been incorporated into the waking implementation.")
+      .advanceTime(18, "Integrating returned memories", "Dream knowledge has been incorporated into Reality's implementation.")
       .setImplementationState("Layered abuse controls ready for anchor verification")
       .setStatus("exploring", "Reality integrating memories");
     return entity.snapshot();

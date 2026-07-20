@@ -9,6 +9,7 @@
 - Git commands and worktree lifecycle are isolated in `packages/worktree-manager`.
 - The Next.js app is an adapter and presentation layer; it must not contain domain rules.
 - Use the product language: **Creating dream**, **Subject entered**, **Memory returned**, **Reality stabilised**.
+- Follow `docs/TERMINOLOGY.md`: the protected root is **Reality** with a **ROOT** badge, and memory integrity is a **Totem Check**.
 - Never expose hidden model reasoning. Persist only events, evidence, artefacts, decisions, belief changes, and validated summaries.
 
 ## Architecture boundaries
@@ -18,7 +19,7 @@
 3. `packages/codex-runtime` implements the Codex port and may import `@openai/codex-sdk`.
 4. `packages/worktree-manager` implements filesystem and Git isolation.
 5. `apps/web` wires adapters together and renders the experience.
-6. A child Reality may inherit parent evidence and anchors, but it may not mutate parent-owned anchors.
+6. A Dream may inherit parent evidence and anchors, but it may not mutate parent-owned anchors.
 7. One Codex thread and one Git worktree are associated with each Reality.
 8. Prisma is the production persistence adapter; the portable SQLite adapter may be used only to keep the deterministic demo functional when client generation is unavailable.
 

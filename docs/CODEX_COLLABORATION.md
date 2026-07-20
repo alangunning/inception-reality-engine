@@ -31,7 +31,7 @@ The human owner made the decisions that define the product:
 - retain the timeline replay because it improves comprehension and compresses a three-minute demo;
 - treat schema validation as necessary but insufficient, adding automatic memory-integrity seals and descendant lineage before synthesis;
 - use a pinned VAmPI training target for the general security demo while keeping clone, execution, and Codex usage explicit;
-- bound the controlled resilience Subject with operator-owned paths, fault classes, budgets, automatic rollback, injected-artefact exclusion, and quarantine rather than allowing unrelated mutation;
+- bound the Adversarial Subject with operator-owned paths, fault classes, budgets, automatic rollback, injected-artefact exclusion, and quarantine rather than allowing unrelated mutation;
 - make sibling counterfactuals and their disagreements visible in a branching Reality graph instead of reducing the engine to a depth counter;
 - recommend real Codex for judge evaluation while preserving deterministic mock mode for a repeatable recording;
 - keep Admin stop/reset controls outside the narrative UI;

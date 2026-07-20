@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { SECURE_PASSWORD_RESET_IMPLEMENTATION } from "../src/demo-fixture";
 
 describe("password-reset Demo fixture", () => {
-  it("keeps the waking source vulnerable until synthesis applies the secure implementation", () => {
+  it("keeps the Reality source vulnerable until synthesis applies the secure implementation", () => {
     const startingSource = fs.readFileSync(
       path.resolve("demo/password-reset/src/password-reset.ts"),
       "utf8"

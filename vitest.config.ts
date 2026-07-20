@@ -12,7 +12,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["packages/**/*.test.ts"],
+    include: ["packages/**/*.test.ts", "apps/web/src/**/*.test.ts"],
     exclude: ["demo/**", "node_modules/**", ".inception/**"]
   }
 });

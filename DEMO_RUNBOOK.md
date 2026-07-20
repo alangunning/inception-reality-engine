@@ -2,7 +2,12 @@
 
 **Runbook version:** 0.1.0
 **Target:** Desktop or tablet Chromium
-**Last verified against UI:** 2026-07-19
+**Last verified against UI:** 2026-07-20
+
+The authoritative Devpost description and word-for-word submitted-video
+narration live in [OpenAI Build Week Submission](./docs/SUBMISSION.md). This
+runbook owns runtime preparation, the manual live evaluation path, and
+recovery. Do not combine its live-action timings with the edited replay script.
 
 ## Choose The Runtime
 
@@ -34,30 +39,40 @@ Page load, refresh, Admin, Mission creation, and timeline replay do not call Cod
 1. Open `/missions/password-reset` or click **Demo Mission** in the header.
 2. Confirm the header reports **Live memory stream** and the expected runtime.
 3. Confirm the action dock shows phase `0 / 10` and **Run Codex audit**.
-4. Confirm the Reality graph contains only **Waking Reality**.
+4. Confirm the graph contains only **Reality** with a **ROOT** badge.
 5. Keep the timeline on **Live**.
 
-For a consistent mock recording, click **Start recording auto**. In live mode, click **Start guided auto** to advance bounded real Codex actions. Guided auto pauses before each new Dream premise and after failed immutable proof so the operator can inspect the evidence, then explicitly **Resume**. Both controllers can be paused or stopped and neither starts merely because the page opened. For a narrated manual recording, use the steps below.
+For a consistent mock recording, click **Start recording auto**. In live mode, click **Start guided auto** to advance bounded real Codex actions. Guided auto pauses before each new Dream premise and after failed immutable proof so the operator can inspect the evidence, then explicitly **Resume**. Both controllers can be paused or stopped and neither starts merely because the page opened. For manual live evaluation, use the steps below.
 
-## Three-Minute Sequence
+## Manual Live Evaluation Sequence
 
-### 0:00 - Establish The Waking Reality
+This action-complete walkthrough is for preparation and judge-led live
+evaluation. A real run may take substantially longer than three minutes. The
+submitted video must use the completed-run replay and narration in
+`docs/SUBMISSION.md`.
+
+The button names below use the canonical deterministic titles. A real GPT-5.6
+run may return different concise Dream titles. Follow the displayed premise,
+parent-child position, and evidence outcome rather than relying on an exact
+generated name.
+
+### Establish Reality
 
 Show:
 
 - the initial belief;
 - parent-owned hidden anchors;
-- the single waking graph node;
+- the single ROOT graph node;
 - the idle operation band and zero observed usage.
 
-Say: “Reality Engine lets Codex experience risky assumptions in isolated software worlds before they can change the waking repository.”
+Say: “Reality Engine lets Codex experience risky assumptions in isolated software worlds before they can change the protected repository.”
 
 The **Next move** band reads **Ask Codex to audit and improve password-reset security**. Click **Run Codex audit**.
 
 In live mode, point to the bound Reality thread, worktree, elapsed time, SDK token evidence, and timestamped milestones. Do not wait on a generic spinner; follow the operation band and Reality Events.
 The wall clock measures the active Codex operation. Subjective Dream time advances only at completed experience milestones and multiplies those minutes by the current Reality's dilation; waiting for narration or the next click does not change it.
 
-### 0:25 - Turn Uncertainty Into A Dream
+### Turn Uncertainty Into A Dream
 
 Show the proposal asking whether coordinated sources can bypass per-IP protection.
 
@@ -65,7 +80,7 @@ Click **Create Dream: Under coordinated attack**. Review the premise, expected i
 
 Say: “A Dream is a real child world with its own Codex thread and Git worktree, not another chat panel.”
 
-### 0:45 - Enter Bounded Subjects
+### Enter Bounded Subjects
 
 The **Next move** band describes entering attacker, investigator, and test-engineer Subjects. Click **Enter Subjects**, then click **Run Codex investigation**.
 
@@ -77,37 +92,37 @@ Show the resulting evidence:
 - per-IP counters do not impose an identifier-level budget;
 - the initial belief loses confidence.
 
-### 1:10 - Compare Nested Realities
+### Compare Nested Dreams
 
 Click **Create nested Dream: Rotating IP swarm**, review the narrower counterfactual, and click **Confirm and create Dream**.
 
-Say: “The uncertainty discovered inside one Dream becomes a deeper isolated Reality.”
+Say: “The uncertainty discovered inside one Dream becomes a deeper isolated Nested Dream.”
 
-Click **Kick and return memory**. During the staged Wake, call out:
+Click **Kick: return memory**. During the staged return, call out:
 
 1. lived evidence collected;
-2. Reality Totem checking identity, source, anchors, evidence, artefacts, and lineage;
+2. Totem Check validating identity, source, Anchors, evidence, artefacts, and lineage;
 3. validated memory returning upward.
 
-Show the failing `rotating-ip.attack.spec.ts` artefact and the memory path on the graph. The parent retains the competing proposal rather than waking early.
+Show the failing `rotating-ip.attack.spec.ts` artefact and the Memory path on the graph. The parent retains the competing proposal rather than returning early.
 
 Create **Account enumeration oracle**. Before its Kick, run **Run sealed intervention**:
 
-1. Mal enters as a native controlled Subject with one allowed source path, one fault class, a line/token/time ceiling, and a rollback checkpoint;
+1. Mal enters as a native Adversarial Subject with one allowed source path, one fault class, a line/token/time ceiling, and a rollback checkpoint;
 2. the intervention changes one request-boundary condition while its private ledger remains sealed;
 3. Arthur diagnoses the observable regression without seeing that ledger;
-4. the Reality Totem reveals the exact planted change at Kick;
+4. the Totem Check reveals the exact planted change at Kick;
 5. the orchestrator restores the checkpoint and retains only the independent response-equivalence test.
 
-Pause on **1 planted change contained / 0 injected files entered Reality**, then show the native Subject thread in the intervention ledger or its event detail. Collapse and re-expand the **Under coordinated attack** branch once to show that both child Realities and their memory paths remain independently inspectable.
+Pause on **1 planted change contained / 0 injected files entered Reality**, then show the native Subject thread in the intervention ledger or its event detail. Collapse and re-expand the **Under coordinated attack** branch once to show that both Nested Dreams and their Memory paths remain independently inspectable.
 
 Kick **Under coordinated attack** only after both nested memories return.
 
-### 1:55 - Change Reality Only Through Proof
+### Change Reality Only Through Proof
 
 Click **Synthesise memories**.
 
-Show that returned knowledge changes the waking implementation while the Dream worktrees remain isolated. Click **Run anchor tests** and pause on:
+Show that returned knowledge changes Reality's implementation while the Dream worktrees remain isolated. Click **Run anchor tests** and pause on:
 
 - Enumeration-safe response;
 - Token expiry preserved;
@@ -117,27 +132,32 @@ Show that returned knowledge changes the waking implementation while the Dream w
 
 If proof fails in live mode, the engine offers **Repair proof** and cannot stabilise. On the successful path, click **Stabilise Reality**.
 
-### 2:25 - Close On The Differentiator
+### Close On The Differentiator
 
 Show:
 
-- the complete nested Reality graph and exact return paths;
+- the complete Reality graph and exact Memory return paths;
 - two sibling depth-two counterfactuals and graph-attached Subject nodes;
 - Memories before/after;
-- Reality Totem seals and inherited lineage;
+- Totem Check results and inherited lineage;
 - final proof results;
-- **Reveal code** for the waking Git diff;
+- **Reveal code** for the Reality Git diff;
 - timestamped, searchable events with inspectable metadata;
 - the Reality Timeline **Play** control replaying high-signal milestones at adaptive pacing and returning to **Live** after the final stabilisation hold;
 - the measured outcome: **12/12** deliveries before, **3/12** after, **1** planted mutation rolled back, **0** injected files ascended, **4/4** parent requirements passed.
 
-Say: “Good evidence and tested artefacts can wake into Reality. Unsupported assumptions, stale lineage, and planted changes are quarantined before they cross a Kick boundary.”
+Say: “Good evidence and tested artefacts can return to Reality. Unsupported assumptions, stale lineage, and planted changes are quarantined before they cross a Kick boundary.”
 
-If time permits, open **Mission Control** and show the generalized VAmPI preset, editable proofs and Subject charters, sibling-Dream strategy, and bounded controlled Subject. Do not prepare or run it during the three-minute canonical recording.
+If time permits, open **Mission Control** and show the generalized VAmPI preset, editable proofs and Subject charters, sibling-Dream strategy, and bounded Adversarial Subject. Do not prepare or run it during the three-minute canonical recording.
 
-## Replay Evidence Shot
+## Submitted Replay Preparation
 
-On the completed live run, press **Play** in the Reality Timeline. Each milestone receives an evidence-sensitive dwell rather than a constant slider speed. Press the eye icon to pause and inspect the current milestone, then resume playback. Open:
+Use the exact shot order and narration in
+[OpenAI Build Week Submission](./docs/SUBMISSION.md#three-minute-video). On the
+completed clean live run, press **Play** in the Reality Timeline. Each
+milestone receives an evidence-sensitive dwell rather than a constant slider
+speed. Press the eye icon to pause and inspect the current milestone, then
+resume playback. Open:
 
 1. the model-binding event to show `gpt-5.6-sol` and the SDK version;
 2. a Reality thread event to show the persisted thread, worktree, and Git branch;
@@ -156,7 +176,7 @@ For process and filesystem cleanup:
 2. choose **Stop all Codex CLI** if an operation is active;
 3. choose **Full reset and cleanup** and confirm.
 
-The reset archives safe telemetry, removes only Demo Mission-owned Reality/worktree state, prunes owned branches, and forms a clean waking Reality. The equivalent terminal command is:
+The reset archives safe telemetry, removes only Demo Mission-owned Reality/worktree state, prunes owned branches, and creates a clean Reality. The equivalent terminal command is:
 
 ```bash
 npm run demo:reset
@@ -168,6 +188,6 @@ User-created Missions are reset or deleted separately from the Admin Mission Lib
 
 - Say **model-reported estimate** for belief confidence, Dream impact, token estimate, and cost.
 - Say **observed SDK token ceiling**, not provider billing cap.
-- Say **validated** for schema conformance and **verified** only after Reality Totem/proof checks.
+- Say **validated** for schema conformance and **verified** only after Totem Check and proof checks.
 - Mock recording events are deterministic equivalents; native Subject thread evidence is a live-mode claim.
 - Never show `auth.json`, API keys, raw Codex output, raw Subject messages, or hidden reasoning.

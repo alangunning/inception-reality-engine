@@ -15,9 +15,9 @@ export interface PreparedCodexExecutionEnvironment {
   configuration: "isolated" | "inherited";
   authMode: "auto" | "cli" | "api";
   authSource: "cli" | "api-key" | "none";
-  cliAuthLinked: boolean;
-  sessionStateLinked: boolean;
-  modelMetadataLinked: boolean;
+  cliAuthPrepared: boolean;
+  sessionStateIsolated: boolean;
+  modelMetadataSynced: boolean;
 }
 
 function enabled(value: string | undefined): boolean {
@@ -58,74 +58,36 @@ function cliAuthReady(authFile: string): boolean {
   }
 }
 
-function destinationReady(source: string, destination: string): boolean {
-  let stat: fs.Stats;
+function removeDestinationLink(destination: string): void {
   try {
-    stat = fs.lstatSync(destination);
+    if (fs.lstatSync(destination).isSymbolicLink()) fs.unlinkSync(destination);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
     throw error;
   }
-  if (!stat.isSymbolicLink()) return true;
-
-  const linkedPath = path.resolve(path.dirname(destination), fs.readlinkSync(destination));
-  if (linkedPath === path.resolve(source)) return true;
-  fs.unlinkSync(destination);
-  return false;
 }
 
-function linkCliAuth(sourceAuth: string, runtimeAuth: string): boolean {
-  if (!fs.existsSync(sourceAuth)) return false;
-  if (path.resolve(sourceAuth) === path.resolve(runtimeAuth)) return true;
-
-  if (destinationReady(sourceAuth, runtimeAuth)) return true;
-
+function syncPrivateFile(source: string, destination: string): boolean {
+  if (!fs.existsSync(source)) return false;
+  if (path.resolve(source) === path.resolve(destination)) return true;
+  removeDestinationLink(destination);
   try {
-    fs.symlinkSync(sourceAuth, runtimeAuth, "file");
+    fs.copyFileSync(source, destination);
+    if (process.platform !== "win32") fs.chmodSync(destination, 0o600);
     return true;
-  } catch (symlinkError) {
-    try {
-      fs.linkSync(sourceAuth, runtimeAuth);
-      return true;
-    } catch {
-      throw new Error(
-        `Codex CLI authentication could not be linked into the isolated runtime home at ${runtimeAuth}. `
-        + "Set CODEX_API_KEY, OPENAI_API_KEY, or INCEPTION_CODEX_INHERIT_USER_CONFIG=true.",
-        { cause: symlinkError }
-      );
-    }
-  }
-}
-
-function linkSessionDirectory(sourceSessions: string, runtimeSessions: string): boolean {
-  if (!fs.existsSync(sourceSessions)) return false;
-  if (destinationReady(sourceSessions, runtimeSessions)) return true;
-  try {
-    fs.symlinkSync(
-      sourceSessions,
-      runtimeSessions,
-      process.platform === "win32" ? "junction" : "dir"
+  } catch (cause) {
+    throw new Error(
+      `Codex CLI state could not be prepared in the isolated runtime home at ${destination}. `
+      + "Set CODEX_API_KEY, OPENAI_API_KEY, or INCEPTION_CODEX_INHERIT_USER_CONFIG=true.",
+      { cause }
     );
-    return true;
-  } catch {
-    return false;
   }
 }
 
-function linkOptionalFile(sourceFile: string, runtimeFile: string): boolean {
-  if (!fs.existsSync(sourceFile)) return false;
-  if (destinationReady(sourceFile, runtimeFile)) return true;
-  try {
-    fs.symlinkSync(sourceFile, runtimeFile, "file");
-    return true;
-  } catch {
-    try {
-      fs.linkSync(sourceFile, runtimeFile);
-      return true;
-    } catch {
-      return false;
-    }
-  }
+function ensureLocalDirectory(directory: string): void {
+  removeDestinationLink(directory);
+  fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32") fs.chmodSync(directory, 0o700);
 }
 
 export function prepareCodexExecutionEnvironment(
@@ -177,9 +139,9 @@ export function prepareCodexExecutionEnvironment(
       configuration: "inherited",
       authMode,
       authSource,
-      cliAuthLinked: false,
-      sessionStateLinked: false,
-      modelMetadataLinked: false
+      cliAuthPrepared: false,
+      sessionStateIsolated: false,
+      modelMetadataSynced: false
     };
   }
 
@@ -196,23 +158,16 @@ export function prepareCodexExecutionEnvironment(
   fs.mkdirSync(runtimeCodexHome, { recursive: true, mode: 0o700 });
   if (process.platform !== "win32") fs.chmodSync(runtimeCodexHome, 0o700);
   env.CODEX_HOME = runtimeCodexHome;
-  env.CODEX_SQLITE_HOME = source.CODEX_SQLITE_HOME?.trim()
-    ? absolutePath(source.CODEX_SQLITE_HOME)
-    : fs.existsSync(sourceCodexHome)
-      ? sourceCodexHome
-      : runtimeCodexHome;
+  env.CODEX_SQLITE_HOME = runtimeCodexHome;
 
-  const cliAuthLinked = authSource === "cli"
-    ? linkCliAuth(
+  const cliAuthPrepared = authSource === "cli"
+    ? syncPrivateFile(
         sourceAuth,
         path.join(runtimeCodexHome, "auth.json")
       )
     : false;
-  const sessionStateLinked = linkSessionDirectory(
-    path.join(sourceCodexHome, "sessions"),
-    path.join(runtimeCodexHome, "sessions")
-  );
-  const modelMetadataLinked = linkOptionalFile(
+  ensureLocalDirectory(path.join(runtimeCodexHome, "sessions"));
+  const modelMetadataSynced = syncPrivateFile(
     path.join(sourceCodexHome, "models_cache.json"),
     path.join(runtimeCodexHome, "models_cache.json")
   );
@@ -223,9 +178,9 @@ export function prepareCodexExecutionEnvironment(
     configuration: "isolated",
     authMode,
     authSource,
-    cliAuthLinked,
-    sessionStateLinked,
-    modelMetadataLinked
+    cliAuthPrepared,
+    sessionStateIsolated: true,
+    modelMetadataSynced
   };
 }
 
@@ -261,6 +216,21 @@ export function normaliseCodexExecutionError(
         ? "Codex CLI quota rejected this turn. Reality Engine used ChatGPT/Codex CLI authentication; run `codex login status` and confirm the selected workspace has usage remaining."
         : "The selected Codex authentication source rejected this turn because no quota was available. Check Admin for the active authentication source before retrying.";
     return new Error(detail, { cause: error });
+  }
+  if (/invalid peer certificate|UnknownIssuer|certificate verify failed/i.test(safeRuntimeDetail ?? message)) {
+    return new Error(
+      "Codex could not establish a trusted TLS connection to OpenAI. "
+      + "No memory or code entered this Reality; check the machine or corporate proxy certificate trust, "
+      + "then retry the preserved Reality.",
+      { cause: error }
+    );
+  }
+  if (/thread-store internal error.*Operation not permitted/i.test(safeRuntimeDetail ?? message)) {
+    return new Error(
+      "Codex could not persist this Reality thread in its runtime state directory. "
+      + "No memory or code entered the parent Reality; confirm `.inception/codex-home` is writable, then retry.",
+      { cause: error }
+    );
   }
   if (safeRuntimeDetail) {
     return new Error(`Codex could not complete this turn: ${safeRuntimeDetail}`, { cause: error });

@@ -6,7 +6,7 @@
 
 ## Context
 
-A counterfactual exploration is not credible if its code mutations, conversation history, or assumptions leak into the waking world or a sibling Dream.
+A counterfactual exploration is not credible if its code mutations, conversation history, or assumptions leak into Reality or a sibling Dream.
 
 ## Decision
 

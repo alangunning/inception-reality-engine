@@ -58,19 +58,16 @@ describe("Codex runtime", () => {
         configuration: "isolated",
         authMode: "auto",
         authSource: "cli",
-        cliAuthLinked: true,
-        sessionStateLinked: true,
-        modelMetadataLinked: true
+        cliAuthPrepared: true,
+        sessionStateIsolated: true,
+        modelMetadataSynced: true
       });
       expect(prepared.env.CODEX_HOME).toBe(runtimeHome);
-      expect(prepared.env.CODEX_SQLITE_HOME).toBe(sourceHome);
+      expect(prepared.env.CODEX_SQLITE_HOME).toBe(runtimeHome);
       expect(prepared.env.OPENAI_API_KEY).toBeUndefined();
       expect(prepared.env.NODE_ENV).toBeUndefined();
       expect(fs.readFileSync(path.join(runtimeHome, "auth.json"), "utf8")).toContain('"auth_mode":"chatgpt"');
-      expect(fs.readFileSync(
-        path.join(runtimeHome, "sessions", "existing-thread.jsonl"),
-        "utf8"
-      )).toBe("{}\n");
+      expect(fs.readdirSync(path.join(runtimeHome, "sessions"))).toEqual([]);
       expect(fs.readFileSync(path.join(runtimeHome, "models_cache.json"), "utf8")).toContain("gpt-5.6-sol");
       expect(fs.existsSync(path.join(runtimeHome, "config.toml"))).toBe(false);
     } finally {
@@ -92,9 +89,9 @@ describe("Codex runtime", () => {
       configuration: "inherited",
       authMode: "auto",
       authSource: "none",
-      cliAuthLinked: false,
-      sessionStateLinked: false,
-      modelMetadataLinked: false
+      cliAuthPrepared: false,
+      sessionStateIsolated: false,
+      modelMetadataSynced: false
     });
     expect(prepared.env.CODEX_HOME).toBe(sourceHome);
   });
@@ -121,7 +118,7 @@ describe("Codex runtime", () => {
 
       expect(prepared.authMode).toBe("api");
       expect(prepared.authSource).toBe("api-key");
-      expect(prepared.cliAuthLinked).toBe(false);
+      expect(prepared.cliAuthPrepared).toBe(false);
       expect(prepared.env.OPENAI_API_KEY).toBe("explicit-api-key");
       expect(fs.existsSync(path.join(runtimeHome, "auth.json"))).toBe(false);
     } finally {
@@ -129,7 +126,7 @@ describe("Codex runtime", () => {
     }
   });
 
-  it("repairs isolated-home links when the source Codex home changes", () => {
+  it("refreshes copied auth and model metadata without importing user sessions", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "inception-codex-relink-"));
     const firstSource = path.join(root, "first");
     const secondSource = path.join(root, "second");
@@ -159,7 +156,7 @@ describe("Codex runtime", () => {
 
       expect(fs.readFileSync(path.join(runtimeHome, "auth.json"), "utf8")).toContain("second");
       expect(fs.readFileSync(path.join(runtimeHome, "models_cache.json"), "utf8")).toContain("second");
-      expect(fs.existsSync(path.join(runtimeHome, "sessions", "second.jsonl"))).toBe(true);
+      expect(fs.existsSync(path.join(runtimeHome, "sessions", "second.jsonl"))).toBe(false);
       expect(fs.existsSync(path.join(runtimeHome, "sessions", "first.jsonl"))).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
@@ -183,9 +180,9 @@ describe("Codex runtime", () => {
       expect(prepared.env.CODEX_HOME).toBe(runtimeHome);
       expect(prepared.env.CODEX_SQLITE_HOME).toBe(runtimeHome);
       expect(prepared.authSource).toBe("api-key");
-      expect(prepared.cliAuthLinked).toBe(false);
-      expect(prepared.sessionStateLinked).toBe(false);
-      expect(prepared.modelMetadataLinked).toBe(false);
+      expect(prepared.cliAuthPrepared).toBe(false);
+      expect(prepared.sessionStateIsolated).toBe(true);
+      expect(prepared.modelMetadataSynced).toBe(false);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -232,6 +229,18 @@ describe("Codex runtime", () => {
     );
   });
 
+  it("preserves the root TLS diagnostic across reconnect noise", () => {
+    const error = normaliseCodexExecutionError(
+      new Error("Codex Exec exited with code 1"),
+      "stream disconnected before completion: invalid peer certificate: UnknownIssuer",
+      "cli"
+    );
+
+    expect(error.message).toContain("trusted TLS connection");
+    expect(error.message).toContain("proxy certificate trust");
+    expect(error.message).not.toContain("UnknownIssuer");
+  });
+
   it("replaces a wrapper-only Codex Exec failure with an actionable boundary message", () => {
     const error = normaliseCodexExecutionError(
       new Error("Codex Exec exited with code 1: Reading prompt from stdin..."),
@@ -246,7 +255,7 @@ describe("Codex runtime", () => {
   });
 
   it("keeps one deterministic thread per mocked Reality", async () => {
-    const reality = RealityEntity.create({ depth: 0, kind: "waking", name: "Waking", premise: constitution.premise, constitution }).snapshot();
+    const reality = RealityEntity.create({ depth: 0, kind: "waking", name: "Reality", premise: constitution.premise, constitution }).snapshot();
     const runtime = new MockCodexRuntime();
     const first = await runtime.inspect(reality);
     const second = await runtime.inspect({ ...reality, codexThreadId: first.threadId });
@@ -317,7 +326,7 @@ describe("Codex runtime", () => {
         exit_code: 1,
         status: "failed"
       }
-    }, "Waking Reality", "password-reset security");
+    }, "Reality", "password-reset security");
 
     expect(event).toMatchObject({
       type: "tool",
@@ -333,11 +342,64 @@ describe("Codex runtime", () => {
     expect(JSON.stringify(event)).not.toContain("sk-example-secret");
   });
 
+  it("distinguishes a broken Python test harness from a failing assertion", () => {
+    const event = toSafeCodexRuntimeEvent({
+      type: "item.completed",
+      item: {
+        type: "command_execution",
+        command: "python3 tests/test_authorization_regression.py",
+        aggregated_output: [
+          "ERROR: test_owner_boundary (__main__.AuthorizationRegressionTest.test_owner_boundary)",
+          "Traceback (most recent call last):",
+          "TypeError: 'generator' object is not subscriptable",
+          "FAILED (errors=4)"
+        ].join("\n"),
+        exit_code: 1,
+        status: "failed"
+      }
+    }, "Authorization Dream", "ownership boundary");
+
+    expect(event).toMatchObject({
+      type: "tool",
+      summary: "Test harness failed with exit 1.",
+      metadata: {
+        status: "failed",
+        failureKind: "test-harness",
+        diagnostic: "The local test harness raised 4 errors before assertions completed."
+      }
+    });
+    expect(JSON.stringify(event)).not.toContain("generator");
+  });
+
+  it("identifies a missing local dependency without retaining its traceback", () => {
+    const event = toSafeCodexRuntimeEvent({
+      type: "item.completed",
+      item: {
+        type: "command_execution",
+        command: "python3 -c 'import app'",
+        aggregated_output: "ModuleNotFoundError: No module named 'flask_sqlalchemy'",
+        exit_code: 1,
+        status: "failed"
+      }
+    }, "Authorization Dream", "ownership boundary");
+
+    expect(event).toMatchObject({
+      type: "tool",
+      summary: "Command failed with exit 1.",
+      metadata: {
+        status: "failed",
+        failureKind: "missing-tool",
+        diagnostic: "A required executable or package was unavailable in this Reality."
+      }
+    });
+    expect(JSON.stringify(event)).not.toContain("flask_sqlalchemy");
+  });
+
   it("retains a concise SDK failure diagnostic", () => {
     expect(toSafeCodexRuntimeEvent({
       type: "turn.failed",
       error: { message: "Connection failed for sk-example-secret" }
-    }, "Waking Reality", "password-reset security")).toMatchObject({
+    }, "Reality", "password-reset security")).toMatchObject({
       type: "decision",
       metadata: {
         status: "failed",
@@ -407,7 +469,7 @@ describe("Codex runtime", () => {
     const prompt = buildSubjectOrchestrationPrompt(RealityEntity.create({
       depth: 0,
       kind: "waking",
-      name: "Waking",
+      name: "Reality",
       premise: constitution.premise,
       constitution
     }).snapshot());
@@ -601,7 +663,7 @@ describe("Codex runtime", () => {
       const reality = RealityEntity.create({
         depth: 0,
         kind: "waking",
-        name: "Waking Reality",
+        name: "Reality",
         premise: constitution.premise,
         constitution
       }).bindRuntime(fixture.parentThreadId, worktree, "inception/reality").snapshot();
@@ -719,7 +781,7 @@ describe("Codex runtime", () => {
       "/root/arthur_memory_integrity",
       "Einstein",
       null,
-      "Inherited context named SUBJECT_ID:demo-controlled-subject-mal, but this bounded task belongs to Arthur.",
+      "Inherited context named SUBJECT_ID:demo-adversarial-subject-mal, but this bounded task belongs to Arthur.",
       rolloutPath,
       worktree,
       createdAtMs
@@ -852,7 +914,7 @@ describe("Codex runtime", () => {
     expect(toSafeCodexRuntimeEvent({
       type: "thread.started",
       thread_id: "019f775b-ef89-7550-9834-e0f4244d2ac0"
-    }, "Waking Reality", "authorization review")).toMatchObject({
+    }, "Reality", "authorization review")).toMatchObject({
       type: "progress",
       metadata: {
         stage: "thread",
@@ -870,7 +932,7 @@ describe("Codex runtime", () => {
         type: "error",
         message: "Model metadata for `gpt-5.6` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."
       }
-    }, "Waking Reality", "password-reset review")).toMatchObject({
+    }, "Reality", "password-reset review")).toMatchObject({
       type: "decision",
       summary: "Codex continued with fallback model metadata.",
       metadata: {
@@ -887,7 +949,7 @@ describe("Codex runtime", () => {
       const reality = RealityEntity.create({
         depth: 0,
         kind: "waking",
-        name: "Waking",
+        name: "Reality",
         premise: constitution.premise,
         constitution
       }).bindRuntime("thread-1", "/tmp/reality-worktree", "inception/reality").snapshot();

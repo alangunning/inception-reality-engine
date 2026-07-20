@@ -12,7 +12,12 @@ import {
   type CodexRuntimeEvent,
   type CodexWakeResult
 } from "@inception/codex-runtime";
-import type { MissionInterventionContract, Reality, RealityEvent } from "@inception/domain";
+import {
+  DEFAULT_INTERVENTION_TOKEN_BUDGET,
+  type MissionInterventionContract,
+  type Reality,
+  type RealityEvent
+} from "@inception/domain";
 import type { WorktreeDescriptor, WorktreeManager } from "@inception/worktree-manager";
 import {
   InMemoryRealityEventBus,
@@ -185,7 +190,7 @@ class MissedCanonicalInterventionRuntime extends MockCodexRuntime {
     if (
       reality.depth === 2
       && (reality.constitution.runtimeLaws ?? []).some((law) =>
-        law.includes("sealed controlled intervention")
+        law.includes("sealed adversarial intervention")
       )
     ) {
       result.report.adversarialDiagnosis = {
@@ -212,6 +217,7 @@ class QuotaFailureRuntime extends MockCodexRuntime {
 
 class TokenHeavyInterventionRuntime extends MockCodexRuntime {
   interventionAttempts = 0;
+  interventionThreadIds: Array<string | undefined> = [];
 
   override async intervene(
     reality: Reality,
@@ -219,7 +225,11 @@ class TokenHeavyInterventionRuntime extends MockCodexRuntime {
     onEvent?: (event: CodexRuntimeEvent) => void | Promise<void>
   ): Promise<CodexInterventionResult> {
     this.interventionAttempts += 1;
+    this.interventionThreadIds.push(reality.codexThreadId);
     const result = await super.intervene(reality, contract, onEvent);
+    const observedTokens = this.interventionAttempts === 1
+      ? DEFAULT_INTERVENTION_TOKEN_BUDGET + 20_000
+      : DEFAULT_INTERVENTION_TOKEN_BUDGET - 100_000;
     return {
       ...result,
       events: [
@@ -230,8 +240,8 @@ class TokenHeavyInterventionRuntime extends MockCodexRuntime {
           metadata: {
             stage: "turn",
             status: "completed",
-            inputTokens: 12_000,
-            outputTokens: 6_000
+            inputTokens: observedTokens,
+            outputTokens: 0
           }
         }
       ]
@@ -246,7 +256,7 @@ class ThreadThenInvalidInspectionRuntime extends MockCodexRuntime {
   ): Promise<CodexExecutionResult> {
     await onEvent?.({
       type: "progress",
-      summary: "Codex thread entered the waking Reality worktree.",
+      summary: "Codex thread entered the Reality worktree.",
       metadata: {
         stage: "thread",
         status: "started",
@@ -283,7 +293,7 @@ class ConfigurationFailureWorktreeManager extends FakeWorktreeManager {
 }
 
 describe("RealityOrchestrator", () => {
-  it("serialises concurrent first-load seeding into one waking Reality", async () => {
+  it("serialises concurrent first-load seeding into one root Reality", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-seed-"));
     try {
       const repository = new InMemoryRealityRepository();
@@ -538,7 +548,7 @@ describe("RealityOrchestrator", () => {
     }
   });
 
-  it("approves and retries an over-budget controlled Subject in the Demo Mission", async () => {
+  it("approves and retries an over-budget Adversarial Subject in the Demo Mission", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-demo-budget-retry-"));
     try {
       const repository = new InMemoryRealityRepository();
@@ -568,7 +578,7 @@ describe("RealityOrchestrator", () => {
       expect(rejected.session.interventions[0]).toMatchObject({
         status: "rejected",
         rejectionCode: "intervention_token_budget_exceeded",
-        lastAttemptTokens: 18_000
+        lastAttemptTokens: DEFAULT_INTERVENTION_TOKEN_BUDGET + 20_000
       });
 
       Object.defineProperty(runtime, "mode", { value: "real" });
@@ -589,7 +599,7 @@ describe("RealityOrchestrator", () => {
       expect(rejected.nextAction?.id).toBe("intervene");
 
       await orchestrator.approveInterventionBudget({
-        tokenBudget: 32_000,
+        tokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
         retry: true
       });
       let retried = await orchestrator.snapshot();
@@ -599,15 +609,16 @@ describe("RealityOrchestrator", () => {
       }
 
       expect(runtime.interventionAttempts).toBe(2);
+      expect(runtime.interventionThreadIds.at(-1)).toBeUndefined();
       expect(retried.session.interventions[0]?.rejectionReason).toBeUndefined();
       expect(retried.session.interventions[0]).toMatchObject({
         status: "sealed",
-        lastAttemptTokens: 18_000,
-        budgetApprovals: [{
-          previousTokenBudget: 16_000,
-          approvedTokenBudget: 32_000,
-          failedAttemptTokens: 18_000
-        }]
+        lastAttemptTokens: DEFAULT_INTERVENTION_TOKEN_BUDGET - 100_000
+      });
+      expect(retried.session.interventions[0]?.budgetApprovals.at(-1)).toMatchObject({
+        previousTokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
+        approvedTokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
+        failedAttemptTokens: DEFAULT_INTERVENTION_TOKEN_BUDGET + 20_000
       });
       expect(retried.session.autopilot).toMatchObject({
         mode: "paused",
@@ -616,9 +627,10 @@ describe("RealityOrchestrator", () => {
       expect(retried.events.find((event) =>
         event.type === "intervention.budget.approved"
       )?.payload).toMatchObject({
-        previousTokenBudget: 16_000,
-        approvedTokenBudget: 32_000,
-        failedAttemptTokens: 18_000,
+        previousTokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
+        approvedTokenBudget: DEFAULT_INTERVENTION_TOKEN_BUDGET,
+        failedAttemptTokens: DEFAULT_INTERVENTION_TOKEN_BUDGET + 20_000,
+        sameHardCeilingRetry: true,
         retry: true
       });
     } finally {
@@ -866,7 +878,7 @@ describe("RealityOrchestrator", () => {
       }
       expect(interventionGate.session.autopilot.mode).toBe("paused");
       expect(interventionGate.nextAction?.id).toBe("intervene");
-      expect(interventionGate.session.autopilot.pauseReason).toContain("controlled intervention");
+      expect(interventionGate.session.autopilot.pauseReason).toContain("adversarial intervention");
 
       await orchestrator.controlAutopilot({ command: "resume" });
       let proofGate = await orchestrator.snapshot();
@@ -1032,7 +1044,7 @@ describe("RealityOrchestrator", () => {
       expect(retry.nextAction).toMatchObject({
         id: "wake_nested",
         retry: true,
-        label: expect.stringMatching(/^Retry Kick .*return validated memory$/)
+        label: expect.stringMatching(/^Retry Kick: return Memory from .+$/)
       });
       expect(retry.session.autopilot.pauseReason).toContain("Inactive and paused time was excluded");
     } finally {
@@ -1106,7 +1118,7 @@ describe("RealityOrchestrator", () => {
     }
   });
 
-  it("retains the Codex thread and restores the waking baseline when inspection is rejected", async () => {
+  it("retains the Codex thread and restores the Reality baseline when inspection is rejected", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "inception-inspection-transaction-"));
     try {
       const repository = new InMemoryRealityRepository();
