@@ -9,7 +9,7 @@
 | [Submission package](./SUBMISSION.md) | What description, video narration, evidence, URLs, and final checks should be submitted? |
 | [Product brief](./PRODUCT.md) | Why does this matter, who is it for, and how should the Dream metaphor be understood? |
 | [Product terminology](./TERMINOLOGY.md) | Which canonical terms must the UX, events, diagrams, and narration use? |
-| [Demo runbook](../DEMO_RUNBOOK.md) | How is a clean real run prepared, evaluated, and recovered before recording? |
+| [Demo runbook](../DEMO_RUNBOOK.md) | How is a clean real run prepared, accepted, preserved, recorded, and recovered? |
 | [Judging guide](./JUDGING.md) | How can I run, evaluate, and score it quickly? |
 | [Architecture](./ARCHITECTURE.md) | What is the system, where are its boundaries, and what is real? |
 | [Runtime flows](./RUNTIME_FLOWS.md) | How do inspection, Nested Dreams, Subjects, Memory return, synthesis, and proof work? |

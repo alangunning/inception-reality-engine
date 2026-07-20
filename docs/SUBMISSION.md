@@ -1,13 +1,14 @@
 # OpenAI Build Week Submission
 
 **Submission version:** 0.1.0
-**Status:** Recording-ready copy; final run evidence and manual fields pending
+**Status:** Completed real run verified; recording and manual fields pending
 **Track:** Developer Tools
 **Last reviewed:** 2026-07-20
 
 This document is the source of truth for the Devpost project description,
 three-minute video, repository evidence, and final submission checklist.
-`DEMO_RUNBOOK.md` owns operational preparation and recovery. `JUDGING.md` owns
+[Demo Mission Runbook](../DEMO_RUNBOOK.md) owns operational preparation,
+acceptance, preservation, and recovery. `JUDGING.md` owns
 the live judge evaluation path. [Product Terminology](./TERMINOLOGY.md) owns
 the vocabulary used by the script and UI.
 
@@ -87,8 +88,9 @@ Reality, while useful discoveries and tested improvements can return through
 every Dream level. GPT-5.6 then synthesises only verified Memories into
 Reality's worktree. Before synthesis, rotating sources deliver 12 of 12 resets;
 afterward, only 3 of 12 are delivered across two service instances sharing one
-identifier budget. Known and unknown accounts receive the same response, the
-planted mutation is contained, and all four immutable Anchors pass.
+identifier budget. Known and unknown accounts receive the same public response
+payload, the planted mutation is contained, and all four immutable Anchors
+pass.
 
 Reality Engine uses `@openai/codex-sdk`, native Codex Subjects, Git worktrees,
 structured Memory, and proof-gated synthesis. Mission Control applies the same
@@ -124,10 +126,10 @@ dwell, cuts, and short pauses around the measured outcome.
 | 0:22-0:43 | Rewind to the single ROOT node, then reveal the first child edge. | "Reality is the protected repository, marked ROOT in the graph. A Dream is an isolated Codex thread and Git worktree. A Nested Dream explores uncertainty discovered one level down. A Subject is a bounded Codex subagent injected into that world." |
 | 0:43-1:00 | Open the GPT-5.6 model event, persisted thread event, and real runtime badge. | "I built Reality Engine with Codex and GPT-5.6. Codex accelerated the architecture, SDK integration, debugging, and tests. At runtime, the Codex SDK powers this completed real run with persistent GPT-5.6 Reality threads." |
 | 1:00-1:20 | Play the password-reset audit in Reality and first Dream creation. | "The starting belief is that per-IP rate limiting prevents password-reset abuse. Codex discovers that rotating sources can still target one account. Instead of changing Reality, the engine creates a Dream where that assumption can be experienced safely." |
-| 1:20-1:41 | Expand the graph and open one native Subject event. | "Attacker, investigator, and test-engineer Subjects enter as native Codex child threads. Their evidence creates two deeper Dreams: one tests a shared abuse budget across service instances; the other tests account enumeration and boundary rollover." |
+| 1:20-1:41 | Expand the graph and open one native Subject event. | "Attacker, investigator, and test-engineer Subjects enter as native Codex child threads. Their evidence creates two deeper Dreams: one tests transactional-store contention and crash recovery; the other tests a campaign spread across independent identifiers." |
 | 1:41-2:07 | Show Mal entering, the independent investigator, Totem Check, and containment result. | "The deliberate inception attempt happens here. Mal plants one bounded regression deep in a child Dream, while the investigators are not told what changed. A Kick stops that Dream and asks it to return Memory. The Totem Check compares that Memory with the actual Git mutation, evidence, source, and immutable requirements." |
 | 2:07-2:27 | Show rollback, Memory ascent, and the Reality Mirror. | "The planted code is rolled back and zero injected files return upward. But the independently discovered regression test is safe, so that useful Memory survives the Kick. The Reality Mirror compares sibling Dreams, keeps shared truth, and preserves disagreement." |
-| 2:27-2:47 | Show synthesis, four passing Anchors, outcome metrics, and final diff. | "Only verified Memory reaches Reality. Four parent-owned Anchors then prove the Dreams did not overwrite Reality's requirements. Before, rotating sources delivered twelve resets out of twelve. After, only three are delivered across two instances, and known and unknown accounts look identical." |
+| 2:27-2:47 | Show synthesis, four passing Anchors, outcome metrics, and final diff. | "Only verified Memory reaches Reality. Four parent-owned Anchors then prove the Dreams did not overwrite Reality's requirements. Before, rotating sources delivered twelve resets out of twelve. After, only three are delivered across independent local processes sharing SQLite, and known and unknown accounts return the same public payload." |
 | 2:47-2:58 | Cut to Mission Control, then return to the stabilised graph. | "Mission Control applies this engine to any trusted repository. Good discoveries return as code; planted changes are contained before becoming Reality." |
 
 ### Required Evidence Shots
@@ -194,7 +196,7 @@ Before submission:
 - add a stabilised dashboard screenshot below the README tagline;
 - add top-fold links for the video, instant demo, real local mode, and
   architecture;
-- link the safe completed real-run export from the README;
+- keep the safe completed real-run export linked from the README;
 - publish a read-only deterministic replay URL when possible, while keeping
   local real mode as the technical evaluation path;
 - verify `npm ci`, `npm run verify`, and `npm run test:e2e` from a clean clone.

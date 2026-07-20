@@ -2,6 +2,8 @@ import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const repoRoot = path.resolve(import.meta.dirname);
+const playwrightPort = Number(process.env.PLAYWRIGHT_PORT ?? "3100");
+const baseURL = `http://127.0.0.1:${playwrightPort}`;
 
 export default defineConfig({
   testDir: "./apps/web/e2e",
@@ -17,18 +19,18 @@ export default defineConfig({
     }
   },
   use: {
-    baseURL: "http://127.0.0.1:3100",
+    baseURL,
     reducedMotion: "reduce",
     trace: "retain-on-failure",
     screenshot: "only-on-failure"
   },
   webServer: {
-    command: "npm run build -w @inception/web && npm run start -w @inception/web",
-    url: "http://127.0.0.1:3100/api/demo",
+    command: "npm run build -w @inception/web && node scripts/normalize-next-env.mjs && npm run start -w @inception/web",
+    url: `${baseURL}/api/demo`,
     timeout: 120_000,
     reuseExistingServer: false,
     env: {
-      PORT: "3100",
+      PORT: String(playwrightPort),
       DATABASE_URL: `file:${path.join(repoRoot, "prisma", "playwright.db")}`,
       INCEPTION_CODEX_MODE: "mock",
       INCEPTION_PERSISTENCE: "sqlite",

@@ -38,7 +38,7 @@ The UI renders this complete parent-child graph, including sibling Dreams, Neste
 
 ## Run It Live
 
-Requires Node.js 22.5+, npm, Git, and either the judge's Codex CLI login or an API key. Docker is not required.
+Requires Node.js 22.15+, npm, Git, and either the judge's Codex CLI login or an API key. Docker is not required.
 
 ```bash
 git clone https://github.com/alangunning/inception-reality-engine.git
@@ -60,9 +60,14 @@ npm run record:demo
 
 Recording mode is deterministic but uses the same domain, worktree, memory-integrity, event, and UI contracts. For the submitted video, complete a fresh real run first, export its safe run log, and record the completed run with adaptive timeline playback rather than waiting for Codex on camera. Live mode remains the recommended technical evaluation.
 
+A credential-redacted [completed real-run evidence bundle](./examples/run-exports/README.md)
+includes both the canonical run archive and judge-facing mission history for
+review, replay, and future import development.
+
 ## What To Try
 
-The immutable password-reset **Demo Mission** is the fastest complete story:
+The immutable password-reset **Demo Mission** is the fastest complete story.
+Deterministic recording mode uses these fixed titles:
 
 1. inspect an incomplete password-reset boundary;
 2. create **Under coordinated attack**;
@@ -71,6 +76,12 @@ The immutable password-reset **Demo Mission** is the fastest complete story:
 5. inject Mal into the enumeration Dream under a sealed one-file contract, then watch the Totem Check reveal and contain the planted boundary fault;
 6. Kick both nested Dreams and their parent, then synthesise three verified memories;
 7. run four immutable proofs and inspect the final Reality diff.
+
+Real mode derives Dream titles and premises from validated Codex evidence. The
+included completed run instead explored an atomic shared identifier budget,
+transactional adapter crash recovery, and a campaign distributed across
+independent identifiers while preserving the same four-Reality, three-depth
+story and proof contract.
 
 The completed outcome is deliberately concrete: rotating sources deliver `12/12` resets before synthesis and `3/12` after it; known and unknown accounts receive the same response; one planted mutation is rolled back; zero injected files ascend; and all four parent requirements pass across two service instances sharing one abuse budget.
 

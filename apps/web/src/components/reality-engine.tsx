@@ -58,6 +58,7 @@ import {
 } from "@inception/domain";
 import type { ActiveRealityOperation, DemoAction, DemoSnapshot } from "@inception/orchestrator";
 import {
+  interventionArtefactsThatAscended,
   replayActiveRealityId,
   replayAnchorResults,
   replayFinalDiff,
@@ -3300,17 +3301,10 @@ export function RealityEngine() {
     (total, entry) => total + (entry.changedFileCount ?? 0),
     0
   );
-  const injectedPaths = new Set(
-    containedInterventions.flatMap((entry) => entry.report?.changedFiles ?? [])
-  );
-  const injectedFilesAscended = new Set(
-    snapshot?.realities.flatMap((reality) =>
-      reality.wakeReport?.artefacts
-        .map((artefact) => artefact.path)
-        .filter((artefactPath) => injectedPaths.has(artefactPath))
-      ?? []
-    ) ?? []
-  ).size;
+  const injectedFilesAscended = interventionArtefactsThatAscended(
+    snapshot?.realities ?? [],
+    containedInterventions
+  ).length;
   const changedFileCount = new Set(
     snapshot?.session.finalDiff.match(/^diff --git a\/(.+?) b\//gm)
       ?.map((line) => line.replace(/^diff --git a\//, "").replace(/ b\/$/, ""))
@@ -3426,8 +3420,8 @@ export function RealityEngine() {
         <section className="outcome-summary" data-testid="outcome-summary">
           <div className="outcome-intro">
             <span className="eyebrow">REALITY OUTCOME</span>
-            <h2>Password reset survives coordinated abuse without exposing account state</h2>
-            <p>{memories.length} returned memories changed one process-local IP control into a generic response and shared IP, identifier, and global budgets while preserving token expiry.</p>
+            <h2>Password reset limits rotating-source delivery and removes response-shape enumeration</h2>
+            <p>{memories.length} returned memories changed one process-local IP control into a generic response and an atomic shared identifier budget while preserving the IP throttle and token expiry.</p>
           </div>
           <div className="outcome-causal-chain" aria-label="Validated causal path">
             <span><b>{snapshot.realities.length}</b><small>isolated Realities</small></span>
@@ -3443,11 +3437,11 @@ export function RealityEngine() {
           <div className="outcome-results" aria-label="Security outcome">
             <div>
               <XCircle size={19} />
-              <span><b>Before / 12 of 12 delivered</b><small>Rotating sources bypassed the IP-only limit and account existence was exposed.</small></span>
+              <span><b>Before / 12 of 12 delivered</b><small>Rotating sources bypassed the IP-only limit and public payloads exposed account existence.</small></span>
             </div>
             <div>
               <ShieldCheck size={19} />
-              <span><b>After / 3 of 12 delivered</b><small>A shared identifier budget holds across replicas; known and unknown responses match.</small></span>
+              <span><b>After / 3 of 12 delivered</b><small>An atomic identifier budget holds across processes sharing SQLite; known and unknown public payloads match.</small></span>
             </div>
             <div>
               <Fingerprint size={19} />
@@ -3460,7 +3454,7 @@ export function RealityEngine() {
           </div>
           <p className="outcome-boundary">
             <LockKeyhole size={15} />
-            <span><b>Production boundary</b> Replace the injectable in-memory store with a Redis or database adapter whose consume operation is one atomic increment; calibrate thresholds from operational telemetry.</span>
+            <span><b>Production boundary</b> Multi-host use still needs an async shared store, pseudonymised expiring keys, a campaign budget, and timing tests. This run proves local SQLite atomicity.</span>
           </p>
           <div className="outcome-actions">
             <button type="button" onClick={() => {

@@ -1,7 +1,7 @@
 # Operations
 
 **Operations version:** 0.1.0
-**Last reviewed:** 2026-07-19
+**Last reviewed:** 2026-07-20
 
 ## Supported Platforms
 
@@ -13,7 +13,7 @@
 | Windows via WSL2 | Expected; not verified |
 | Browser | Current Chromium; responsive desktop/tablet Playwright coverage |
 
-Runtime prerequisites are Node.js 22.5 or newer, npm, and Git with worktree support.
+Runtime prerequisites are Node.js 22.15 or newer, npm, and Git with worktree support.
 
 ## Modes and Authentication
 

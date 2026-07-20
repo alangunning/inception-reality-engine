@@ -80,7 +80,7 @@ The password-reset Demo Mission provides a reliable first-run proof. Mission Con
 The canonical completed run presents:
 
 - **Before:** `12/12` rotating-source requests deliver a reset and public responses expose account existence.
-- **After:** `3/12` requests deliver across two service instances sharing one identifier budget, and known/unknown responses match.
+- **After:** `3/12` requests deliver across two service instances sharing one identifier budget, and known/unknown public response payloads match.
 - **Integrity:** one planted boundary mutation is rolled back and zero injected files ascend.
 - **Proof:** four parent requirements plus returned regression artefacts pass.
 

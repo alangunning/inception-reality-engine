@@ -224,3 +224,19 @@ export function replayActiveRealityId(
   }
   return latest.realityId;
 }
+
+export function interventionArtefactsThatAscended(
+  realities: Reality[],
+  interventions: AdversarialInterventionLedger[]
+): string[] {
+  const paths = new Set<string>();
+  for (const intervention of interventions) {
+    if (!intervention.containedAt) continue;
+    const changedPaths = new Set(intervention.report?.changedFiles ?? []);
+    const sourceReality = realities.find((reality) => reality.id === intervention.realityId);
+    for (const artefact of sourceReality?.wakeReport?.artefacts ?? []) {
+      if (changedPaths.has(artefact.path)) paths.add(artefact.path);
+    }
+  }
+  return [...paths];
+}

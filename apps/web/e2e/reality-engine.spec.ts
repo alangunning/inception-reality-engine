@@ -1018,7 +1018,9 @@ test("the complete mocked narrative remains visually coherent", async ({ page })
   await expect(page.locator(".diff-workspace pre")).toHaveCount(0);
   await page.getByTestId("reveal-code").click();
   await expect(page.locator(".diff-workspace pre")).toBeVisible();
-  await expect(page.getByTestId("outcome-summary")).toContainText("Password reset survives coordinated abuse without exposing account state");
+  await expect(page.getByTestId("outcome-summary")).toContainText("Password reset limits rotating-source delivery and removes response-shape enumeration");
+  await expect(page.getByTestId("outcome-summary")).toContainText("atomic shared identifier budget");
+  await expect(page.getByTestId("outcome-summary")).not.toContainText("shared IP, identifier, and global budgets");
   await expect(page.getByTestId("outcome-summary")).toContainText("Proof / 4 of 4");
   await expect(page.getByTestId("outcome-summary")).toContainText("Before / 12 of 12 delivered");
   await expect(page.getByTestId("outcome-summary")).toContainText("After / 3 of 12 delivered");
@@ -1026,7 +1028,9 @@ test("the complete mocked narrative remains visually coherent", async ({ page })
   await expect(page.getByTestId("outcome-summary")).toContainText("0 injected files ascended");
   await expect(page.getByTestId("outcome-summary")).toContainText(/4\s*isolated Realities/);
   await expect(page.getByTestId("outcome-summary")).toContainText(/3\s*verified memories/);
-  await expect(page.getByTestId("outcome-summary")).toContainText("Redis or database adapter");
+  await expect(page.getByTestId("outcome-summary")).toContainText("pseudonymised expiring keys");
+  await expect(page.getByTestId("outcome-summary")).toContainText("timing tests");
+  await expect(page.getByTestId("outcome-summary")).toContainText("campaign budget");
   await expect(page.getByTestId("event-feed").getByText("Reality stabilised: implementation, memories, and anchors agree.")).toBeVisible();
   const completedJourney = page.getByTestId("reality-journey");
   await expect(completedJourney).toContainText("4 worlds / 3 Dreams");

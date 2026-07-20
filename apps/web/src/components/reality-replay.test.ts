@@ -10,6 +10,7 @@ import type {
   RegressionResult
 } from "@inception/domain";
 import {
+  interventionArtefactsThatAscended,
   replayActiveRealityId,
   replayAnchorResults,
   replayFinalDiff,
@@ -39,6 +40,90 @@ const event = (
 });
 
 describe("Reality timeline projection", () => {
+  it("counts only planted artefacts returned by the intervention Reality", () => {
+    const intervention = {
+      id: "ledger",
+      contractId: "contract",
+      realityId: dream.id,
+      status: "revealed",
+      armedAt: at(1),
+      containedAt: at(2),
+      report: {
+        contractId: "contract",
+        realityId: dream.id,
+        subjectId: "mal",
+        faultClass: "boundary-condition",
+        summary: "Bounded fault",
+        changedFiles: ["src/rate-limit.ts"],
+        expectedSymptoms: ["One excess delivery"],
+        generatedAt: at(1)
+      },
+      budgetApprovals: []
+    } satisfies AdversarialInterventionLedger;
+    const safeTest = {
+      name: "Independent regression",
+      path: "tests/rate-limit.test.ts",
+      kind: "test" as const,
+      summary: "Proves the observable boundary."
+    };
+    const sourceDream = {
+      ...dream,
+      wakeReport: {
+        realityId: dream.id,
+        initialBeliefs: [],
+        experiences: [],
+        changedBeliefs: [],
+        invariants: [],
+        artefacts: [safeTest],
+        remainingUncertainty: [],
+        recommendation: "Return only the independent regression.",
+        generatedAt: at(2)
+      }
+    } as Reality;
+    const synthesisedRoot = {
+      ...root,
+      wakeReport: {
+        realityId: root.id,
+        initialBeliefs: [],
+        experiences: [],
+        changedBeliefs: [],
+        invariants: [],
+        artefacts: [{
+          name: "Independently synthesised implementation",
+          path: "src/rate-limit.ts",
+          kind: "patch",
+          summary: "A verified parent implementation at the same repository path."
+        }],
+        remainingUncertainty: [],
+        recommendation: "Adopt the verified parent implementation.",
+        generatedAt: at(3)
+      }
+    } as Reality;
+
+    expect(interventionArtefactsThatAscended(
+      [synthesisedRoot, sourceDream],
+      [intervention]
+    )).toEqual([]);
+    expect(interventionArtefactsThatAscended(
+      [{
+        ...sourceDream,
+        wakeReport: {
+          ...sourceDream.wakeReport!,
+          artefacts: [
+            safeTest,
+            {
+              name: "Planted source",
+              path: "src/rate-limit.ts",
+              kind: "patch",
+              summary: "This must never ascend."
+            }
+          ]
+        }
+      } as Reality],
+      [intervention]
+    )).toEqual(["src/rate-limit.ts"]);
+  });
+
   it("reveals intervention, Totem Check, synthesis, proof, and outcome state only after causal events", () => {
     const intervention = {
       id: "ledger",
