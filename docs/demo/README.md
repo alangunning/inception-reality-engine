@@ -18,6 +18,8 @@ Each package contains:
   the proof that must be visible;
 - `VOICE_TRANSCRIPT.md`: spoken words only, generated from the timing source;
 - `subtitles.srt`: sentence-level, line-wrapped captions with exact timecodes.
+- `elevenlabs-script.csv`: nine natural narration clips with parsed start/end
+  columns; import this into Voiceover Studio instead of pasting the SRT.
 
 The source of truth for timing is
 [`scripts/demo-video-cues.mjs`](../../scripts/demo-video-cues.mjs). Regenerate
@@ -59,3 +61,10 @@ The VAmPI package is authored for normal speed and ends at `02:58`. Use the
 generated `vampi-sync.json` as the acceptance record: the output duration must
 be 178 seconds and `maximumActionDriftMs` must remain below the configured
 recording ceiling (750 ms by default).
+
+For ElevenLabs, use Voiceover Studio **Import Script**, assign one voice to the
+`Narrator` track, select all nine clips, and choose **Generate Audio Fixed
+Duration**. The VAmPI CSV leaves 800 ms between chapters and the asset generator
+rejects any clip above 145 words per minute. Dynamic generation may
+extend a clip into the next chapter and should not be used for the synchronized
+cut.

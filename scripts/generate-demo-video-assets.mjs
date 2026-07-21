@@ -48,6 +48,25 @@ ${entry.text}
 `).join("\n");
 }
 
+function csvCell(value) {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function seconds(milliseconds) {
+  return (milliseconds / 1_000).toFixed(3).replace(/\.?0+$/, "");
+}
+
+function elevenLabsScript(scenario) {
+  return `speaker,line,start_time,end_time
+${scenario.voiceCues.map((cue) => [
+    "Narrator",
+    csvCell(cue.text),
+    seconds(cue.startMs),
+    seconds(cue.endMs)
+  ].join(",")).join("\n")}
+`;
+}
+
 async function verifyOrWrite(filePath, content) {
   if (!checkOnly) {
     await mkdir(path.dirname(filePath), { recursive: true });
@@ -66,6 +85,11 @@ for (const [id, scenario] of Object.entries(DEMO_VIDEO_SCENARIOS)) {
   for (const cue of scenario.voiceCues) {
     if (cue.startMs < priorEnd || cue.endMs <= cue.startMs) {
       throw new Error(`${id}/${cue.id} has an invalid or overlapping time range`);
+    }
+    const words = cue.text.trim().split(/\s+/).length;
+    const wordsPerMinute = words / ((cue.endMs - cue.startMs) / 60_000);
+    if (wordsPerMinute > 145) {
+      throw new Error(`${id}/${cue.id} is too dense for natural fixed-duration narration (${Math.round(wordsPerMinute)} WPM)`);
     }
     priorEnd = cue.endMs;
   }
@@ -91,6 +115,10 @@ for (const [id, scenario] of Object.entries(DEMO_VIDEO_SCENARIOS)) {
   const outputDirectory = path.join(repoRoot, scenario.outputDirectory);
   await verifyOrWrite(path.join(outputDirectory, "VOICE_TRANSCRIPT.md"), voiceMarkdown(scenario));
   await verifyOrWrite(path.join(outputDirectory, "subtitles.srt"), subtitles(scenario));
+  await verifyOrWrite(
+    path.join(outputDirectory, "elevenlabs-script.csv"),
+    elevenLabsScript(scenario)
+  );
 }
 
 console.log(checkOnly ? "Demo video assets are synchronized." : "Demo video assets generated.");

@@ -1,248 +1,223 @@
 1
-00:00:00,000 --> 00:00:03,122
-Coding agents usually explore and edit one
-shared reality.
+00:00:00,000 --> 00:00:04,050
+Coding agents usually edit one shared
+reality, where
 
 2
-00:00:03,122 --> 00:00:05,551
-A persuasive mistake made deep in that
-
-3
-00:00:05,551 --> 00:00:07,633
-process can become an accepted
+00:00:04,050 --> 00:00:08,100
+a persuasive mistake can quietly become a
 requirement.
 
+3
+00:00:08,100 --> 00:00:12,150
+Reality Engine lets Codex dream in
+isolation and
+
 4
-00:00:07,633 --> 00:00:10,755
-Reality Engine lets Codex dream first,
-then requires evidence
+00:00:12,150 --> 00:00:16,200
+requires evidence before code or knowledge
+can return.
 
 5
-00:00:10,755 --> 00:00:13,878
-before anything can return to the
-protected repository, rather
+00:00:17,000 --> 00:00:22,179
+This graph is a real authorized review of
+local VAmPI:
 
 6
-00:00:13,878 --> 00:00:17,000
-than asking one context to grade its own
-work.
+00:00:22,179 --> 00:00:26,841
+fifteen isolated Realities, fourteen
+Dreams, and three levels deep.
 
 7
-00:00:17,000 --> 00:00:20,652
-This completed graph is a real authorized
-review
+00:00:26,841 --> 00:00:30,467
+Every node owns a premise, Codex thread,
 
 8
-00:00:20,652 --> 00:00:24,304
-of the local VAmPI educational fixture:
-fifteen isolated
-
-9
-00:00:24,304 --> 00:00:27,500
-Realities, fourteen Dreams, and three
-levels deep.
-
-10
-00:00:27,500 --> 00:00:31,152
-Every node owns a premise, persistent
-Codex thread,
-
-11
-00:00:31,152 --> 00:00:34,348
+00:00:30,467 --> 00:00:34,092
 Git worktree, inherited requirements,
 evidence, and history.
 
-12
-00:00:34,348 --> 00:00:38,000
-The topology makes every branch and
-Subject auditable.
+9
+00:00:34,092 --> 00:00:37,200
+Every branch and Subject remains
+auditable.
 
-13
-00:00:38,000 --> 00:00:41,800
+10
+00:00:38,000 --> 00:00:41,747
 The replay begins at ROOT and proves
 
-14
-00:00:41,800 --> 00:00:45,057
+11
+00:00:41,747 --> 00:00:44,959
 the runtime, not just the diagram.
 
-15
-00:00:45,057 --> 00:00:49,400
+12
+00:00:44,959 --> 00:00:48,706
 The inspector records GPT-5.6-sol, the
-Codex SDK, CLI
+Codex SDK,
 
-16
-00:00:49,400 --> 00:00:53,200
-authentication, persisted thread
-identifiers, and isolated worktrees.
+13
+00:00:48,706 --> 00:00:52,453
+CLI authentication, persisted threads, and
+isolated worktrees.
 
-17
-00:00:53,200 --> 00:00:57,000
-Raw reasoning is neither persisted nor
+14
+00:00:52,453 --> 00:00:56,200
+Raw reasoning is never persisted or
 displayed.
 
+15
+00:00:57,000 --> 00:01:00,276
+The Mission tests whether VAmPI enforces
+
+16
+00:01:00,276 --> 00:01:03,005
+book ownership and administrator-only
+deletion.
+
+17
+00:01:03,005 --> 00:01:06,281
+Codex does not patch ROOT immediately.
+
 18
-00:00:57,000 --> 00:00:59,930
-The Mission asks whether VAmPI really
+00:01:06,281 --> 00:01:10,103
+It creates competing Dreams for handler,
+model,
 
 19
-00:00:59,930 --> 00:01:02,860
-enforces book ownership and
-administrator-only deletion.
+00:01:10,103 --> 00:01:13,378
+integration, mutation, and fail-closed
+identity boundaries.
 
 20
-00:01:02,860 --> 00:01:06,279
-Codex does not patch the root immediately.
-
-21
-00:01:06,279 --> 00:01:09,209
-It creates competing Dreams for handler
-
-22
-00:01:09,209 --> 00:01:12,140
-boundaries, model boundaries,
-framework-backed integration, mutation
-
-23
-00:01:12,140 --> 00:01:14,581
-sensitivity, and fail-closed identity
-behavior.
-
-24
-00:01:14,581 --> 00:01:18,000
+00:01:13,378 --> 00:01:17,200
 No child can mutate its parent's Anchors.
 
-25
-00:01:18,000 --> 00:01:22,375
-Forty-four native Subjects enter those
-worlds as
+21
+00:01:18,000 --> 00:01:21,089
+Forty-four native Subjects enter as
+investigators,
 
-26
-00:01:22,375 --> 00:01:26,125
-investigators, boundary reviewers, and
-negative-test engineers.
+22
+00:01:21,089 --> 00:01:23,664
+boundary reviewers, and negative-test
+engineers.
 
-27
-00:01:26,125 --> 00:01:31,750
+23
+00:01:23,664 --> 00:01:28,298
 Their child threads produce one hundred
 fifteen evidence records.
 
+24
+00:01:28,298 --> 00:01:33,447
+Each Subject remains bound to its owning
+Dream and evidence.
+
+25
+00:01:33,447 --> 00:01:38,081
+The graph shows sibling Dreams inside
+sibling Dreams, while
+
+26
+00:01:38,081 --> 00:01:42,200
+every parent remains isolated from changes
+below it.
+
+27
+00:01:43,000 --> 00:01:46,108
+Mal enters under a bounded, sealed
+
 28
-00:01:31,750 --> 00:01:37,375
-The expanding graph shows sibling Dreams
-inside sibling Dreams,
+00:01:46,108 --> 00:01:49,215
+contract and plants one authorization
+fault.
 
 29
-00:01:37,375 --> 00:01:43,000
-while every parent remains isolated from
-changes below it.
-
-30
-00:01:43,000 --> 00:01:46,585
-Mal also enters under a bounded, sealed
-
-31
-00:01:46,585 --> 00:01:50,171
-intervention contract and plants one
-authorization fault.
-
-32
-00:01:50,171 --> 00:01:54,780
+00:01:49,215 --> 00:01:53,877
 Independent Subjects identify it without
 seeing the mutation ledger.
 
-33
-00:01:54,780 --> 00:01:59,390
-The Totem Check reveals the match,
+30
+00:01:53,877 --> 00:01:58,538
+The Totem Check confirms the match,
 restores the baseline,
 
-34
-00:01:59,390 --> 00:02:04,000
+31
+00:01:58,538 --> 00:02:03,200
 and prevents the injected path from
 crossing the Kick.
 
-35
-00:02:04,000 --> 00:02:07,182
+32
+00:02:04,000 --> 00:02:07,632
 Fourteen verified Memories ascend level by
 level.
 
-36
-00:02:07,182 --> 00:02:10,364
+33
+00:02:07,632 --> 00:02:10,746
 Seven Reality Mirrors compare sibling
-evidence, admit
+evidence,
 
-37
-00:02:10,364 --> 00:02:13,545
-only shared invariants, and keep
-disagreements visible.
+34
+00:02:10,746 --> 00:02:13,859
+admit shared invariants, and preserve
+disagreements.
 
-38
-00:02:13,545 --> 00:02:16,273
-Disagreement remains uncertainty, not
-artificial consensus.
-
-39
-00:02:16,273 --> 00:02:20,364
+35
+00:02:13,859 --> 00:02:18,530
 This is the difference from simply asking
 many agents:
 
-40
-00:02:20,364 --> 00:02:24,000
-conclusions need provenance and must
+36
+00:02:18,530 --> 00:02:23,200
+every conclusion needs provenance and must
 survive competing worlds.
 
+37
+00:02:24,000 --> 00:02:26,255
+Reality records seven changed files.
+
+38
+00:02:26,255 --> 00:02:29,413
+The judge-facing diff contains four
+product and
+
+39
+00:02:29,413 --> 00:02:32,570
+test files because engine controls are
+excluded.
+
+40
+00:02:32,570 --> 00:02:35,728
+It removes the unscoped secret lookup,
+enforces
+
 41
-00:02:24,000 --> 00:02:27,020
-The final Reality records seven changed
-files.
+00:02:35,728 --> 00:02:38,885
+owner-qualified access, fails closed on
+missing identities,
 
 42
-00:02:27,020 --> 00:02:30,039
-Its judge-facing diff shows four product
-and
+00:02:38,885 --> 00:02:42,043
+preserves administrator deletion, and adds
+twelve tests.
 
 43
-00:02:30,039 --> 00:02:33,059
-test files because engine-owned controls
-are excluded.
-
-44
-00:02:33,059 --> 00:02:36,510
-It removes the unscoped secret lookup,
-enforces owner-qualified
-
-45
-00:02:36,510 --> 00:02:39,961
-access, fails closed on missing
-identities, preserves administrator
-
-46
-00:02:39,961 --> 00:02:42,980
-deletion, and adds twelve service-free
-authorization tests.
-
-47
-00:02:42,980 --> 00:02:46,000
+00:02:42,043 --> 00:02:45,200
 The immutable proof passes, so Reality
 stabilises.
 
-48
-00:02:46,000 --> 00:02:48,571
-Mission Control can apply this
-counterfactual
+44
+00:02:46,000 --> 00:02:50,154
+Mission Control applies this runtime to
+any trusted repository.
 
-49
-00:02:48,571 --> 00:02:50,714
-runtime to any trusted repository.
+45
+00:02:50,154 --> 00:02:52,462
+Good code and knowledge return.
 
-50
-00:02:50,714 --> 00:02:53,286
-Good code and knowledge return;
-unsupported
+46
+00:02:52,462 --> 00:02:55,231
+Unsupported or planted Memory does not.
 
-51
-00:02:53,286 --> 00:02:55,429
-or planted Memory does not.
-
-52
-00:02:55,429 --> 00:02:58,000
+47
+00:02:55,231 --> 00:02:58,000
 Codex dreams before it changes Reality.

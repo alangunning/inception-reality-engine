@@ -95,56 +95,56 @@ export const DEMO_VIDEO_SCENARIOS = {
       {
         id: "VA-01",
         startMs: 0,
-        endMs: 17_000,
-        text: "Coding agents usually explore and edit one shared reality. A persuasive mistake made deep in that process can become an accepted requirement. Reality Engine lets Codex dream first, then requires evidence before anything can return to the protected repository, rather than asking one context to grade its own work."
+        endMs: 16_200,
+        text: "Coding agents usually edit one shared reality, where a persuasive mistake can quietly become a requirement. Reality Engine lets Codex dream in isolation and requires evidence before code or knowledge can return."
       },
       {
         id: "VA-02",
         startMs: 17_000,
-        endMs: 38_000,
-        text: "This completed graph is a real authorized review of the local VAmPI educational fixture: fifteen isolated Realities, fourteen Dreams, and three levels deep. Every node owns a premise, persistent Codex thread, Git worktree, inherited requirements, evidence, and history. The topology makes every branch and Subject auditable."
+        endMs: 37_200,
+        text: "This graph is a real authorized review of local VAmPI: fifteen isolated Realities, fourteen Dreams, and three levels deep. Every node owns a premise, Codex thread, Git worktree, inherited requirements, evidence, and history. Every branch and Subject remains auditable."
       },
       {
         id: "VA-03",
         startMs: 38_000,
-        endMs: 57_000,
-        text: "The replay begins at ROOT and proves the runtime, not just the diagram. The inspector records GPT-5.6-sol, the Codex SDK, CLI authentication, persisted thread identifiers, and isolated worktrees. Raw reasoning is neither persisted nor displayed."
+        endMs: 56_200,
+        text: "The replay begins at ROOT and proves the runtime, not just the diagram. The inspector records GPT-5.6-sol, the Codex SDK, CLI authentication, persisted threads, and isolated worktrees. Raw reasoning is never persisted or displayed."
       },
       {
         id: "VA-04",
         startMs: 57_000,
-        endMs: 78_000,
-        text: "The Mission asks whether VAmPI really enforces book ownership and administrator-only deletion. Codex does not patch the root immediately. It creates competing Dreams for handler boundaries, model boundaries, framework-backed integration, mutation sensitivity, and fail-closed identity behavior. No child can mutate its parent's Anchors."
+        endMs: 77_200,
+        text: "The Mission tests whether VAmPI enforces book ownership and administrator-only deletion. Codex does not patch ROOT immediately. It creates competing Dreams for handler, model, integration, mutation, and fail-closed identity boundaries. No child can mutate its parent's Anchors."
       },
       {
         id: "VA-05",
         startMs: 78_000,
-        endMs: 103_000,
-        text: "Forty-four native Subjects enter those worlds as investigators, boundary reviewers, and negative-test engineers. Their child threads produce one hundred fifteen evidence records. The expanding graph shows sibling Dreams inside sibling Dreams, while every parent remains isolated from changes below it."
+        endMs: 102_200,
+        text: "Forty-four native Subjects enter as investigators, boundary reviewers, and negative-test engineers. Their child threads produce one hundred fifteen evidence records. Each Subject remains bound to its owning Dream and evidence. The graph shows sibling Dreams inside sibling Dreams, while every parent remains isolated from changes below it."
       },
       {
         id: "VA-06",
         startMs: 103_000,
-        endMs: 124_000,
-        text: "Mal also enters under a bounded, sealed intervention contract and plants one authorization fault. Independent Subjects identify it without seeing the mutation ledger. The Totem Check reveals the match, restores the baseline, and prevents the injected path from crossing the Kick."
+        endMs: 123_200,
+        text: "Mal enters under a bounded, sealed contract and plants one authorization fault. Independent Subjects identify it without seeing the mutation ledger. The Totem Check confirms the match, restores the baseline, and prevents the injected path from crossing the Kick."
       },
       {
         id: "VA-07",
         startMs: 124_000,
-        endMs: 144_000,
-        text: "Fourteen verified Memories ascend level by level. Seven Reality Mirrors compare sibling evidence, admit only shared invariants, and keep disagreements visible. Disagreement remains uncertainty, not artificial consensus. This is the difference from simply asking many agents: conclusions need provenance and must survive competing worlds."
+        endMs: 143_200,
+        text: "Fourteen verified Memories ascend level by level. Seven Reality Mirrors compare sibling evidence, admit shared invariants, and preserve disagreements. This is the difference from simply asking many agents: every conclusion needs provenance and must survive competing worlds."
       },
       {
         id: "VA-08",
         startMs: 144_000,
-        endMs: 166_000,
-        text: "The final Reality records seven changed files. Its judge-facing diff shows four product and test files because engine-owned controls are excluded. It removes the unscoped secret lookup, enforces owner-qualified access, fails closed on missing identities, preserves administrator deletion, and adds twelve service-free authorization tests. The immutable proof passes, so Reality stabilises."
+        endMs: 165_200,
+        text: "Reality records seven changed files. The judge-facing diff contains four product and test files because engine controls are excluded. It removes the unscoped secret lookup, enforces owner-qualified access, fails closed on missing identities, preserves administrator deletion, and adds twelve tests. The immutable proof passes, so Reality stabilises."
       },
       {
         id: "VA-09",
         startMs: 166_000,
         endMs: 178_000,
-        text: "Mission Control can apply this counterfactual runtime to any trusted repository. Good code and knowledge return; unsupported or planted Memory does not. Codex dreams before it changes Reality."
+        text: "Mission Control applies this runtime to any trusted repository. Good code and knowledge return. Unsupported or planted Memory does not. Codex dreams before it changes Reality."
       }
     ],
     actions: [
