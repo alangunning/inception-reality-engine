@@ -6,6 +6,10 @@ Reality Engine lets Codex test a risky software assumption in nested, isolated w
 
 This is not a multi-agent dashboard. It is a proof-gated counterfactual runtime for software decisions.
 
+[![Complete VAmPI counterfactual world graph showing 15 Realities, 14 Dreams, 44 Subjects, and three nested Dream levels](./artifacts/vampi-submission/screenshots/topology-complete.png)](./artifacts/vampi-submission/screenshots/topology-complete.svg)
+
+*A completed real Codex run in one frame: 15 isolated Realities, 14 Dreams, 44 native Subjects, 115 evidence records, and 14 verified Memories returning through parent-owned gates. [Open the full-resolution PNG](./artifacts/vampi-submission/screenshots/topology-complete.png) or [lossless SVG](./artifacts/vampi-submission/screenshots/topology-complete.svg).*
+
 ## Why It Matters
 
 Coding-agent mistakes are paid for by engineers reviewing polluted branches and by users experiencing missed requirements, security defects, and regressions. A normal agent often proposes, implements, and judges a change in one conversation and one filesystem.
