@@ -1,0 +1,587 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="2560" height="2070" viewBox="0 0 2560 2070">
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#20292d" stroke-width="1" />
+    </pattern>
+    <filter id="memoryGlow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur stdDeviation="4" result="blur" />
+      <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+    </filter>
+  </defs>
+  <style>
+    text { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+    .eyebrow { fill: #58d7e5; font-size: 18px; font-weight: 800; }
+    .title { fill: #f3f6f7; font-size: 36px; font-weight: 760; }
+    .subtitle { fill: #8d999f; font-size: 18px; }
+    .metric { fill: #d8e0e3; font-size: 17px; font-weight: 720; }
+    .metric-value { fill: #72d89e; }
+    .depth-label { fill: #a6b1b6; font-size: 14px; font-weight: 800; }
+    .depth-kind { fill: #647178; font-size: 14px; }
+    .depth-rule { stroke: #273238; stroke-width: 1; }
+    .edge { fill: none; stroke: #d49e45; stroke-width: 2; stroke-dasharray: 8 9; }
+    .memory { fill: #eab454; filter: url(#memoryGlow); }
+    .node-card { fill: #0a0e10; stroke: #526067; stroke-width: 1.5; }
+    .depth-0 .node-card { fill: #0d1718; stroke: #58d7e5; }
+    .depth-1 .node-card { stroke: #67617d; }
+    .depth-2 .node-card { stroke: #806b46; }
+    .node-accent { fill: #58d7e5; }
+    .depth-1 .node-accent { fill: #8179a0; }
+    .depth-2 .node-accent, .depth-3 .node-accent { fill: #d49e45; }
+    .node-level { fill: #58d7e5; font-size: 14px; font-weight: 850; }
+    .node-status { fill: #72d89e; font-size: 14px; font-weight: 700; }
+    .node-title { fill: #f1f4f5; font-size: 22px; font-weight: 730; }
+    .node-stats { fill: #9eaaaf; font-size: 14px; }
+    .subject-card { fill: #0b1511; stroke: #397653; stroke-width: 1; }
+    .subject-head, .subject-body { fill: none; stroke: #72d89e; stroke-width: 1.5; }
+    .subject-name { fill: #dbe5df; font-size: 12px; font-weight: 800; }
+    .subject-role { fill: #72d89e; font-size: 10px; }
+    .legend { fill: #8d999f; font-size: 15px; }
+  </style>
+  <rect width="100%" height="100%" fill="#070a0c" />
+  <rect x="0" y="128" width="100%" height="1820" fill="url(#grid)" />
+  <rect x="0" y="0" width="100%" height="128" fill="#0b1114" />
+  <line x1="0" y1="127" x2="2560" y2="127" stroke="#273238" />
+  <text class="eyebrow" x="48" y="35">INCEPTION / REALITY ENGINE</text>
+  <text class="title" x="48" y="78">Complete counterfactual world graph</text>
+  <text class="subtitle" x="48" y="108">Final stabilised VAmPI authorization review • every Reality, Dream, Subject, and returned Memory in one frame</text>
+  <text class="metric" x="1630" y="51"><tspan class="metric-value">15</tspan> Realities</text>
+  <text class="metric" x="1810" y="51"><tspan class="metric-value">14</tspan> Dreams</text>
+  <text class="metric" x="1988" y="51"><tspan class="metric-value">44</tspan> Subjects</text>
+  <text class="metric" x="2170" y="51"><tspan class="metric-value">115</tspan> evidence</text>
+  <text class="metric" x="2390" y="51"><tspan class="metric-value">3</tspan> levels</text>
+  <text class="metric" x="1630" y="91"><tspan class="metric-value">14</tspan> verified Memories returned through parent-owned gates</text>
+  
+  <g transform="translate(48 154)">
+    <text class="depth-label" x="0" y="0">LEVEL 0</text>
+    <text class="depth-kind" x="0" y="22">Protected Reality</text>
+    <line class="depth-rule" x1="0" y1="38" x2="500" y2="38" />
+  </g>
+  <g transform="translate(670 154)">
+    <text class="depth-label" x="0" y="0">LEVEL 1</text>
+    <text class="depth-kind" x="0" y="22">Dream</text>
+    <line class="depth-rule" x1="0" y1="38" x2="500" y2="38" />
+  </g>
+  <g transform="translate(1292 154)">
+    <text class="depth-label" x="0" y="0">LEVEL 2</text>
+    <text class="depth-kind" x="0" y="22">Nested Dream</text>
+    <line class="depth-rule" x1="0" y1="38" x2="500" y2="38" />
+  </g>
+  <g transform="translate(1914 154)">
+    <text class="depth-label" x="0" y="0">LEVEL 3</text>
+    <text class="depth-kind" x="0" y="22">Nested Dream</text>
+    <line class="depth-rule" x1="0" y1="38" x2="500" y2="38" />
+  </g>
+  
+    <path class="edge" d="M 548 1050 C 609 1050, 609 634, 670 634" />
+    <circle class="memory" cx="609" cy="842" r="5" />
+    <path class="edge" d="M 1170 634 C 1231 634, 1231 426, 1292 426" />
+    <circle class="memory" cx="1231" cy="530" r="5" />
+    <path class="edge" d="M 1792 426 C 1853 426, 1853 322, 1914 322" />
+    <circle class="memory" cx="1853" cy="374" r="5" />
+    <path class="edge" d="M 1792 426 C 1853 426, 1853 530, 1914 530" />
+    <circle class="memory" cx="1853" cy="478" r="5" />
+    <path class="edge" d="M 1170 634 C 1231 634, 1231 842, 1292 842" />
+    <circle class="memory" cx="1231" cy="738" r="5" />
+    <path class="edge" d="M 1792 842 C 1853 842, 1853 738, 1914 738" />
+    <circle class="memory" cx="1853" cy="790" r="5" />
+    <path class="edge" d="M 1792 842 C 1853 842, 1853 946, 1914 946" />
+    <circle class="memory" cx="1853" cy="894" r="5" />
+    <path class="edge" d="M 548 1050 C 609 1050, 609 1466, 670 1466" />
+    <circle class="memory" cx="609" cy="1258" r="5" />
+    <path class="edge" d="M 1170 1466 C 1231 1466, 1231 1258, 1292 1258" />
+    <circle class="memory" cx="1231" cy="1362" r="5" />
+    <path class="edge" d="M 1792 1258 C 1853 1258, 1853 1154, 1914 1154" />
+    <circle class="memory" cx="1853" cy="1206" r="5" />
+    <path class="edge" d="M 1792 1258 C 1853 1258, 1853 1362, 1914 1362" />
+    <circle class="memory" cx="1853" cy="1310" r="5" />
+    <path class="edge" d="M 1170 1466 C 1231 1466, 1231 1674, 1292 1674" />
+    <circle class="memory" cx="1231" cy="1570" r="5" />
+    <path class="edge" d="M 1792 1674 C 1853 1674, 1853 1570, 1914 1570" />
+    <circle class="memory" cx="1853" cy="1622" r="5" />
+    <path class="edge" d="M 1792 1674 C 1853 1674, 1853 1778, 1914 1778" />
+    <circle class="memory" cx="1853" cy="1726" r="5" />
+  
+    <g class="reality-node depth-0" transform="translate(48 986)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">ROOT</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Reality stabilised</text>
+      <text class="node-title" x="20" y="54">VAmPI Ownership Regression</text>
+      <text class="node-stats" x="20" y="112">39m dream-time</text>
+      <text class="node-stats" x="178" y="112">9 evidence</text>
+      <text class="node-stats" x="326" y="112">2 Subjects</text>
+    </g>
+    
+      <g transform="translate(48 1122)">
+        <rect class="subject-card" width="246" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">book_ownership</text>
+        <text class="subject-role" x="30" y="34">Read-only book-ownership investigation</text>
+      </g>
+      <g transform="translate(302 1122)">
+        <rect class="subject-card" width="246" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">user_deletion</text>
+        <text class="subject-role" x="30" y="34">Read-only user-deletion authorization investigation</text>
+      </g>
+    <g class="reality-node depth-1" transform="translate(670 570)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L1</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Enforce ownership at the book</text><text class="node-title" x="20" y="78">handler boundary</text>
+      <text class="node-stats" x="20" y="112">44m dream-time</text>
+      <text class="node-stats" x="178" y="112">9 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(670 706)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(839.3333333333334 706)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(1008.6666666666667 706)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-2" transform="translate(1292 362)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L2</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Branch-only counterfactual replay</text>
+      <text class="node-stats" x="20" y="112">1h 15m dream-time</text>
+      <text class="node-stats" x="178" y="112">8 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1292 498)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(1461.3333333333333 498)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(1630.6666666666667 498)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 258)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Owner-qualified query boundary</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">6 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 394)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 394)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 394)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 466)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Post-fetch owner identity gate</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">8 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 602)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 602)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 602)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-2" transform="translate(1292 778)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L2</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Owner-scoped model lookup boundary</text>
+      <text class="node-stats" x="20" y="112">1h 6m dream-time</text>
+      <text class="node-stats" x="178" y="112">7 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1292 914)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(1461.3333333333333 914)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(1630.6666666666667 914)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 674)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Local ORM relationship integration</text><text class="node-title" x="20" y="78">proof</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">8 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 810)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 810)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 810)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 882)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Secret-lookup policy regression</text><text class="node-title" x="20" y="78">scan</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">8 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 1018)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 1018)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 1018)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-1" transform="translate(670 1402)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L1</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Encode owned-book lookup in the</text><text class="node-title" x="20" y="78">model boundary</text>
+      <text class="node-stats" x="20" y="112">44m dream-time</text>
+      <text class="node-stats" x="178" y="112">6 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(670 1538)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(839.3333333333334 1538)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(1008.6666666666667 1538)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-2" transform="translate(1292 1194)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L2</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Framework-backed ORM integration</text><text class="node-title" x="20" y="78">proof</text>
+      <text class="node-stats" x="20" y="112">1h 6m dream-time</text>
+      <text class="node-stats" x="178" y="112">8 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1292 1330)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(1461.3333333333333 1330)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(1630.6666666666667 1330)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 1090)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Execute against a local</text><text class="node-title" x="20" y="78">declared-dependency environment</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">7 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 1226)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 1226)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 1226)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 1298)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">SQLAlchemy-only persistence</text><text class="node-title" x="20" y="78">counterfactual</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">10 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 1434)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 1434)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 1434)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-2" transform="translate(1292 1610)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L2</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Authorization mutation-sensitivity</text><text class="node-title" x="20" y="78">proof</text>
+      <text class="node-stats" x="20" y="112">1h 6m dream-time</text>
+      <text class="node-stats" x="178" y="112">7 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1292 1746)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(1461.3333333333333 1746)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(1630.6666666666667 1746)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 1506)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">SQLite ownership-boundary</text><text class="node-title" x="20" y="78">integration</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">7 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 1642)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 1642)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 1642)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+    <g class="reality-node depth-3" transform="translate(1914 1714)">
+      <rect class="node-card" width="500" height="128" rx="7" />
+      <rect class="node-accent" width="4" height="128" rx="2" />
+      <text class="node-level" x="20" y="25">L3</text>
+      <text class="node-status" x="482" y="25" text-anchor="end">Memory returned</text>
+      <text class="node-title" x="20" y="54">Fail-closed identity and role</text><text class="node-title" x="20" y="78">matrix</text>
+      <text class="node-stats" x="20" y="112">48m dream-time</text>
+      <text class="node-stats" x="178" y="112">7 evidence</text>
+      <text class="node-stats" x="326" y="112">3 Subjects</text>
+    </g>
+    
+      <g transform="translate(1914 1850)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Ariadne</text>
+        <text class="subject-role" x="30" y="34">Contract investigator</text>
+      </g>
+      <g transform="translate(2083.3333333333335 1850)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Saito</text>
+        <text class="subject-role" x="30" y="34">Boundary reviewer</text>
+      </g>
+      <g transform="translate(2252.6666666666665 1850)">
+        <rect class="subject-card" width="161.33333333333334" height="48" rx="4" />
+        <circle class="subject-head" cx="15" cy="17" r="5" />
+        <path class="subject-body" d="M 8 32 C 9 23, 21 23, 22 32" />
+        <text class="subject-name" x="30" y="17">Eames</text>
+        <text class="subject-role" x="30" y="34">Negative-test engineer</text>
+      </g>
+  <rect x="0" y="1948" width="100%" height="122" fill="#0b1114" />
+  <line x1="0" y1="1948" x2="2560" y2="1948" stroke="#273238" />
+  <line x1="48" y1="1990" x2="92" y2="1990" stroke="#d49e45" stroke-width="2" stroke-dasharray="8 9" />
+  <circle cx="70" cy="1990" r="5" fill="#eab454" />
+  <text class="legend" x="108" y="1996">Validated Memory path</text>
+  <rect x="360" y="1970" width="34" height="34" rx="4" fill="#0b1511" stroke="#397653" />
+  <text class="legend" x="410" y="1996">Native Subject owned by its Reality</text>
+  <text class="legend" x="2520" y="1996" text-anchor="end">GPT-5.6-sol • Codex SDK • isolated Git worktree + project-local runtime per Reality</text>
+  <text class="legend" x="48" y="2034">Source: preserved safe VAmPI real-mode mission history • Unsupported or planted Memory cannot cross a Totem Check.</text>
+</svg>
